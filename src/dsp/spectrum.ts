@@ -3,6 +3,7 @@ import { getWindow, powerSum, coherentGain, type WindowType } from './windows';
 import { BandMap, PrefixSum, rangeSum } from './bands';
 import type { Smoothing } from './freq';
 import type { RingBuffer } from './ring';
+import { DecimatedRing, decimationFactor, type LfResolution } from './decimate';
 import type { Averaging } from './transfer';
 
 /**
@@ -63,6 +64,10 @@ export class SpectrumAnalyzer {
   /** Last single-frame (un-averaged) power, used by the spectrogram. */
   private last?: Float64Array;
 
+  get hasData(): boolean {
+    return this.frames > 0;
+  }
+
   get instantaneous(): Float64Array {
     return this.last ?? this.power;
   }
@@ -92,7 +97,7 @@ export class SpectrumAnalyzer {
    * Render onto the display grid. fraction 0 = narrowband spectrum (sine-referenced per-bin amplitude),
    * otherwise fractional octave band power.
    */
-  render(fraction: Smoothing, src: 'avg' | 'peak' | 'inst', out: Float64Array): Float64Array {
+  render(fraction: Smoothing, src: 'avg' | 'peak' | 'inst', out: Float64Array, fLo = 0, fHi = Infinity): Float64Array {
     const g = this.grid;
     let map = this.maps.get(fraction);
     if (!map) this.maps.set(fraction, (map = new BandMap(g, this.size, this.fs, fraction)));
@@ -106,12 +111,14 @@ export class SpectrumAnalyzer {
       const enbwBins = powerSum(w) / (this.size * cg * cg);
       // Peak-pick the bins under each display point so tonal components keep their true level
       for (let i = 0; i < g.length; i++) {
+        if (g[i] < fLo || g[i] >= fHi) continue;
         let m = 0;
         for (let k = lo[i]; k <= hi[i]; k++) if (data[k] > m) m = data[k];
         out[i] = 10 * Math.log10(Math.max(m * enbwBins, 1e-30));
       }
     } else {
       for (let i = 0; i < g.length; i++) {
+        if (g[i] < fLo || g[i] >= fHi) continue;
         let s = rangeSum(p, lo[i], hi[i]);
         // Bands narrower than one bin: scale by fractional coverage so pink noise still reads correctly
         const df = this.fs / this.size;
@@ -130,5 +137,74 @@ export class SpectrumAnalyzer {
     let s = 0;
     for (let k = 1; k < this.bins; k++) s += this.power[k];
     return 10 * Math.log10(Math.max(s, 1e-30));
+  }
+}
+
+/**
+ * RTA with optional extra-long analysis windows for the bass (see LfResolution): the main FFT covers everything,
+ * and below 160 Hz longer windows computed on a decimated copy of the signal take over, so low-frequency detail
+ * improves 4–8× while the mids and highs keep their fast response.
+ */
+export class MultiSpectrum {
+  readonly main: SpectrumAnalyzer;
+  private low: { sa: SpectrumAnalyzer; fLo: number; fHi: number }[] = [];
+  private dec: DecimatedRing | null = null;
+  private avg: Averaging = 4;
+
+  constructor(
+    readonly fs: number,
+    readonly size: number,
+    readonly grid: Float64Array,
+    readonly lf: LfResolution = 'standard',
+  ) {
+    this.main = new SpectrumAnalyzer(fs, size, grid);
+    const scale = Math.max(1, Math.round(fs / 48000));
+    const specs = lf === 'max' ? [[131072, 0, 80], [65536, 80, 160]] : lf === 'high' ? [[65536, 0, 160]] : [];
+    const d = decimationFactor(fs);
+    // Only windows longer than the main FFT add detail
+    const useful = specs.filter(([eq]) => eq * scale > size);
+    if (!useful.length) return;
+    this.dec = new DecimatedRing(fs, d);
+    this.low = useful.map(([eq, fLo, fHi]) => ({ sa: new SpectrumAnalyzer(fs / d, (eq * scale) / d, grid), fLo, fHi }));
+    // If only the longest window is dropped, the next one covers down to 0 Hz
+    this.low[0].fLo = 0;
+  }
+
+  get averaging(): Averaging {
+    return this.avg;
+  }
+
+  set averaging(a: Averaging) {
+    this.avg = a;
+    this.main.averaging = a;
+    for (const l of this.low) l.sa.averaging = a;
+  }
+
+  reset(): void {
+    this.main.reset();
+    this.dec?.reset();
+    for (const l of this.low) l.sa.reset();
+  }
+
+  process(ring: RingBuffer): void {
+    this.main.process(ring);
+    if (!this.dec) return;
+    this.dec.update(ring);
+    for (const l of this.low) l.sa.process(this.dec.ring);
+  }
+
+  render(fraction: Smoothing, src: 'avg' | 'peak', out: Float64Array): Float64Array {
+    this.main.render(fraction, src, out);
+    // Bass windows replace the main FFT once they have data (a 128k window needs ≈ 2.7 s for its first frame)
+    let pendingLo: number | null = null;
+    for (const l of this.low) {
+      if (!l.sa.hasData) {
+        pendingLo ??= l.fLo;
+        continue;
+      }
+      l.sa.render(fraction, src, out, pendingLo ?? l.fLo, l.fHi);
+      pendingLo = null;
+    }
+    return out;
   }
 }

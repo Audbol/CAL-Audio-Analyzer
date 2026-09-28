@@ -1,4 +1,5 @@
 import type { PlaylistPrefs } from './audio/playlist';
+import type { LfResolution } from './dsp/decimate';
 import type { Smoothing } from './dsp/freq';
 import type { Averaging } from './dsp/transfer';
 import type { Weighting } from './dsp/weighting';
@@ -53,6 +54,8 @@ export interface Settings {
   tfAveraging: Averaging;
   rtaAveraging: Averaging;
   rtaFft: number;
+  /** Bass resolution: extra long analysis windows below ~160 Hz (see dsp/decimate.ts). */
+  lfResolution: LfResolution;
   /** RTA drawn as a line or as fractional-octave bars. */
   rtaStyle: 'line' | 'bars';
   /** Remote devices: analysis computed by the measurement host (fast, identical everywhere) or on this device. */
@@ -95,6 +98,7 @@ export function defaultSettings(): Settings {
     tfAveraging: 8,
     rtaAveraging: 4,
     rtaFft: 16384,
+    lfResolution: 'high',
     rtaStyle: 'line',
     remoteProcessing: 'host',
     graphQuality: 'auto',

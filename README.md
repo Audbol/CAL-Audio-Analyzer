@@ -18,10 +18,10 @@ A professional, real-time **sound system and room acoustics analyzer** that runs
 
 | Area | What you get |
 | --- | --- |
-| **Dual-channel transfer function** | Multi-time-window FFT (32k → 1k, constant ~1/48-octave resolution), magnitude, phase and coherence. Coherence blanking fades unreliable data. Averaging from none to 64 frames, or cumulative. Smoothing from 1/48 to 1/1 octave. |
+| **Dual-channel transfer function** | Multi-time-window FFT (32k → 1k, constant ~1/48-octave resolution; with *Bass resolution* High/Maximum, 64k/128k-equivalent windows below 90 Hz), magnitude, phase and coherence. Coherence blanking fades unreliable data. Averaging from none to 64 frames, or cumulative. Smoothing from 1/48 to 1/1 octave. |
 | **Delay finder** | GCC-PHAT cross-correlation with sub-sample refinement, confidence estimate and polarity detection. Converts to distance using the air temperature. |
 | **Internal or loopback reference** | Use the generator's own signal as the reference (works with any interface), or a hardware loopback for program-material measurements. |
-| **RTA / spectrum** | True fractional-octave band power (pink noise reads flat) or narrowband FFT with peak picking. FFT sizes 4k–64k, peak hold, dBFS or calibrated dB SPL. Draw it as a line or as 1/1–1/24-octave **bars** (**B**). |
+| **RTA / spectrum** | True fractional-octave band power (pink noise reads flat) or narrowband FFT with peak picking. FFT sizes 4k–64k, plus longer bass windows below 160 Hz (0.7 Hz or 0.4 Hz detail) that keep the mids and highs fast. Peak hold, dBFS or calibrated dB SPL. Draw it as a line or as 1/1–1/24-octave **bars** (**B**). |
 | **Spectrogram** | Scrolling log-frequency spectrogram of any channel, with an adjustable range. |
 | **Live impulse response** | Linear IR and energy-time curve from the averaged transfer function. One click sets the delay from the IR peak. Shows arrival time, distance and polarity. |
 | **Sweep & room acoustics** | Exponential sweep (Farina) with synchronous averaging. Frequency response with selectable time windows (5 ms gated up to full). Harmonic distortion (H2, H3, THD). **ISO 3382** parameters per octave or 1/3 octave: EDT, T20, T30, C50, C80, D50 and centre time, using Lundeby noise-floor truncation and compensation. Fit-quality and INR indicators. Impulse response export as WAV. |
@@ -116,6 +116,8 @@ Walk the room with a tablet while the analyzer and audio interface stay at the m
 4. Enter the 6-digit **PIN** if asked. The QR link already includes it.
 
 How it works: the host streams its live, sample-aligned audio (about 0.2 MB/s per input channel) to each remote device, so every tab and meter works there. The host holds the shared session: sweeps started on any device run on the host, and their progress and results appear on every device (devices that join later get the latest result). Traces captured, renamed or deleted on any device are stored on the host and shown everywhere. Calibration, the mic correction, temperature and the measurement channel setup are shared the same way. View settings (tabs, smoothing, zoom, colour scheme) stay on each device.
+
+**Bass resolution** (*Tools → Display & performance*): *High* (default) and *Maximum* add longer analysis windows for the low end: 0.7 Hz or 0.4 Hz detail below 160 Hz on the spectrum and below 90 Hz on the transfer function, instead of 2.9 Hz and 1.5 Hz. They run on a down-sampled copy of the signal, so the extra processing is too small to measure. The trade-off is time: the bass needs about 1.4 s (High) or 2.7 s (Maximum) of signal and reacts more slowly. *Standard* gives the fastest bass response.
 
 **Speed on older phones and tablets:** by default a remote device lets the host do the analysis. The host runs the FFTs and sends each device finished spectra and transfer functions (about 130 kB/s), so a slow device only draws them, and every device shows the same curves. Each device still applies its own smoothing and bar settings. *Tools → Display & performance* switches a device to *On this device* (independent averaging) and sets the graph quality. *Auto* lowers the graph resolution when drawing can't keep up.
 

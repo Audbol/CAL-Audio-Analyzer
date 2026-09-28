@@ -3,6 +3,7 @@ import { getWindow } from './windows';
 import { BandMap, PrefixSum, rangeSum } from './bands';
 import type { Smoothing } from './freq';
 import type { RingBuffer } from './ring';
+import { DecimatedRing, decimationFactor, type LfResolution } from './decimate';
 
 /** Averaging: number of frames in an exponential average, or 0 for infinite (cumulative) averaging. */
 export type Averaging = 1 | 2 | 4 | 8 | 16 | 32 | 64 | 0;
@@ -19,6 +20,8 @@ export interface TransferResult {
 
 interface WindowState {
   size: number;
+  /** Sample rate of the data this window analyses (lower for the decimated bass windows). */
+  fs: number;
   hop: number;
   fLo: number;
   fHi: number;
@@ -47,6 +50,11 @@ export class TransferFunction {
   averaging: Averaging = 8;
   /** Delay applied to the reference channel, in samples. */
   delay = 0;
+  /** Extra long bass windows on decimated data (see LfResolution). */
+  private lowWindows: WindowState[] = [];
+  private decRef: DecimatedRing | null = null;
+  private decMic: DecimatedRing | null = null;
+  lf: LfResolution = 'standard';
 
   constructor(
     readonly fs: number,
@@ -56,36 +64,30 @@ export class TransferFunction {
     const scale = Math.max(1, Math.round(fs / 48000));
     const base = [32768, 16384, 8192, 4096, 2048, 1024].map((s) => s * scale);
     const cross = [0, 180, 360, 720, 1440, 2880, Infinity];
-    this.windows = base.map((size, i) => {
-      const bins = size / 2 + 1;
-      return {
-        size,
-        hop: size / 4,
-        fLo: cross[i],
-        fHi: cross[i + 1],
-        nextEnd: -1,
-        frames: 0,
-        maps: new Map(),
-        gxx: new Float64Array(bins),
-        gyy: new Float64Array(bins),
-        gxyRe: new Float64Array(bins),
-        gxyIm: new Float64Array(bins),
-        xr: new Float64Array(size),
-        xi: new Float64Array(size),
-        yr: new Float64Array(size),
-      };
-    });
+    this.windows = base.map((size, i) => newWindow(size, fs, cross[i], cross[i + 1]));
+  }
+
+  /**
+   * Bass resolution: `high` adds a window of 64k (at 48 kHz, ≈ 1.4 s) below 90 Hz; `max` also a 128k window
+   * (≈ 2.7 s) below 45 Hz. They run on a decimated copy of both channels, so they cost only a few percent.
+   */
+  setLfResolution(lf: LfResolution): void {
+    if (lf === this.lf && (lf === 'standard' || this.lowWindows.length)) return;
+    this.lf = lf;
+    const scale = Math.max(1, Math.round(this.fs / 48000));
+    const d = decimationFactor(this.fs);
+    const fsd = this.fs / d;
+    const specs = lf === 'max' ? [[131072, 0, 45], [65536, 45, 90]] : lf === 'high' ? [[65536, 0, 90]] : [];
+    this.lowWindows = specs.map(([size, lo, hi]) => newWindow((size * scale) / d, fsd, lo, hi));
+    this.windows[0].fLo = specs.length ? 90 : 0;
+    this.decRef = specs.length ? new DecimatedRing(this.fs, d, this.delay) : null;
+    this.decMic = specs.length ? new DecimatedRing(this.fs, d) : null;
   }
 
   reset(): void {
-    for (const w of this.windows) {
-      w.frames = 0;
-      w.nextEnd = -1;
-      w.gxx.fill(0);
-      w.gyy.fill(0);
-      w.gxyRe.fill(0);
-      w.gxyIm.fill(0);
-    }
+    this.decRef?.reset();
+    this.decMic?.reset();
+    for (const w of [...this.windows, ...this.lowWindows]) resetWindow(w);
   }
 
   /** Largest time window in samples (for delay/IR estimation). */
@@ -99,25 +101,39 @@ export class TransferFunction {
    */
   process(ref: RingBuffer, mic: RingBuffer, maxFramesPerWindow = 8): void {
     const head = Math.min(ref.written, mic.written);
-    for (const w of this.windows) {
-      if (w.nextEnd < 0 || head - w.nextEnd > w.size * 4) {
-        // (Re)start close to the head – never try to catch up on stale data
-        w.nextEnd = Math.max(w.size + this.delay, head - w.size);
-      }
-      let count = 0;
-      while (w.nextEnd <= head && count < maxFramesPerWindow) {
-        this.frame(w, ref, mic, w.nextEnd);
-        w.nextEnd += w.hop;
-        count++;
-      }
+    for (const w of this.windows) this.run(w, ref, mic, head, this.delay, maxFramesPerWindow);
+    if (!this.lowWindows.length || !this.decRef || !this.decMic) return;
+    // Bass windows: the reference delay is applied before decimation, so it stays sample-exact
+    if (this.decRef.offset !== this.delay) {
+      this.decRef.offset = this.delay;
+      this.decRef.reset();
+      this.decMic.reset();
+      for (const w of this.lowWindows) resetWindow(w);
+    }
+    this.decRef.update(ref);
+    this.decMic.update(mic);
+    const dHead = Math.min(this.decRef.ring.written, this.decMic.ring.written);
+    for (const w of this.lowWindows) this.run(w, this.decRef.ring, this.decMic.ring, dHead, 0, maxFramesPerWindow);
+  }
+
+  private run(w: WindowState, ref: RingBuffer, mic: RingBuffer, head: number, delay: number, maxFrames: number): void {
+    if (w.nextEnd < 0 || head - w.nextEnd > w.size * 4) {
+      // (Re)start close to the head – never try to catch up on stale data
+      w.nextEnd = Math.max(w.size + delay, head - w.size);
+    }
+    let count = 0;
+    while (w.nextEnd <= head && count < maxFrames) {
+      this.frame(w, ref, mic, w.nextEnd, delay);
+      w.nextEnd += w.hop;
+      count++;
     }
   }
 
-  private frame(w: WindowState, ref: RingBuffer, mic: RingBuffer, end: number): void {
+  private frame(w: WindowState, ref: RingBuffer, mic: RingBuffer, end: number, delay: number): void {
     const n = w.size;
     const win = getWindow('hann', n);
     const { xr, xi, yr } = w;
-    ref.read(end - n - this.delay, n, xr);
+    ref.read(end - n - delay, n, xr);
     mic.read(end - n, n, yr);
     for (let i = 0; i < n; i++) {
       xr[i] *= win[i];
@@ -166,9 +182,17 @@ export class TransferFunction {
       coh: new Float64Array(n),
     };
     if (this.tmp.length < n) this.tmp = new Float64Array(n);
-    for (const w of this.windows) {
+    // Bass windows join once they have data; until then the next window covers their range
+    let pendingLo: number | null = null;
+    for (const w of [...this.lowWindows, ...this.windows]) {
+      if (w.frames === 0 && this.lowWindows.includes(w)) {
+        pendingLo ??= w.fLo;
+        continue;
+      }
+      const fLo = pendingLo ?? w.fLo;
+      pendingLo = null;
       let map = w.maps.get(fraction);
-      if (!map) w.maps.set(fraction, (map = new BandMap(g, w.size, this.fs, fraction)));
+      if (!map) w.maps.set(fraction, (map = new BandMap(g, w.size, w.fs, fraction)));
       const bins = w.size / 2 + 1;
       const pxx = this.prefix.build(w.gxx, bins).slice();
       const pyy = this.prefix.build(w.gyy, bins).slice();
@@ -177,7 +201,7 @@ export class TransferFunction {
       const { lo, hi } = map;
       for (let i = 0; i < n; i++) {
         const f = g[i];
-        if (f < w.fLo || f >= w.fHi) continue;
+        if (f < fLo || f >= w.fHi) continue;
         const sxx = rangeSum(pxx, lo[i], hi[i]);
         const syy = rangeSum(pyy, lo[i], hi[i]);
         const sr = rangeSum(pre, lo[i], hi[i]);
@@ -218,4 +242,34 @@ export class TransferFunction {
     for (let i = 0; i < n; i++) ir[(i + pre) % n] = re[i];
     return { ir, fs: this.fs, t0: pre };
   }
+}
+
+function newWindow(size: number, fs: number, fLo: number, fHi: number): WindowState {
+  const bins = size / 2 + 1;
+  return {
+    size,
+    fs,
+    hop: size / 4,
+    fLo,
+    fHi,
+    nextEnd: -1,
+    frames: 0,
+    maps: new Map(),
+    gxx: new Float64Array(bins),
+    gyy: new Float64Array(bins),
+    gxyRe: new Float64Array(bins),
+    gxyIm: new Float64Array(bins),
+    xr: new Float64Array(size),
+    xi: new Float64Array(size),
+    yr: new Float64Array(size),
+  };
+}
+
+function resetWindow(w: WindowState): void {
+  w.frames = 0;
+  w.nextEnd = -1;
+  w.gxx.fill(0);
+  w.gyy.fill(0);
+  w.gxyRe.fill(0);
+  w.gxyIm.fill(0);
 }

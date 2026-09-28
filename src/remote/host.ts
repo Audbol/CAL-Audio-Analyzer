@@ -155,7 +155,7 @@ export class HostLink {
       generator: s.generator,
       shared: sharedOf(s),
       busy: a.busy,
-      analysis: { rtaFft: s.rtaFft, rtaAveraging: s.rtaAveraging, tfAveraging: s.tfAveraging },
+      analysis: { rtaFft: s.rtaFft, rtaAveraging: s.rtaAveraging, tfAveraging: s.tfAveraging, lfResolution: s.lfResolution },
       playlist: this.playlistState(),
     };
   }
@@ -230,7 +230,7 @@ export class HostLink {
         app.playlist.act(msg.a);
         break;
       case 'setAnalysis':
-        Object.assign(app.settings, { rtaFft: msg.analysis.rtaFft, rtaAveraging: msg.analysis.rtaAveraging, tfAveraging: msg.analysis.tfAveraging });
+        Object.assign(app.settings, { rtaFft: msg.analysis.rtaFft, rtaAveraging: msg.analysis.rtaAveraging, tfAveraging: msg.analysis.tfAveraging, lfResolution: msg.analysis.lfResolution ?? app.settings.lfResolution });
         app.applyAnalysisSettings();
         break;
     }

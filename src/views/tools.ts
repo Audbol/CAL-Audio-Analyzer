@@ -134,6 +134,25 @@ export class ToolsView implements View {
           { dataset: { setting: 'graphQuality' } },
         ),
       ),
+      h(
+        'div',
+        { class: 'row gap8' },
+        h('span', {}, 'Bass resolution'),
+        select(
+          [
+            { value: 'standard' as const, label: 'Standard (fastest response)' },
+            { value: 'high' as const, label: 'High (0.7 Hz, ≈1.4 s)' },
+            { value: 'max' as const, label: 'Maximum (0.4 Hz, ≈2.7 s)' },
+          ],
+          s.lfResolution,
+          (v) => {
+            s.lfResolution = v;
+            app.applyAnalysisSettings();
+          },
+          { dataset: { setting: 'lfResolution' } },
+        ),
+      ),
+      h('p', { class: 'dim small' }, 'Finer detail in the low end (room modes, subwoofer alignment) for the spectrum below 160 Hz and the transfer function below 90 Hz. The bass then reacts more slowly: it needs a longer stretch of signal. Mids and highs are not affected, and the extra processing is only a few percent.'),
       app.remote
         ? h(
             'div',

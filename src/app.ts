@@ -299,7 +299,7 @@ export class App {
     for (const m of this.measurements) m.applySettings(this.settings);
     this.save();
     const s = this.settings;
-    if (this.hostProcessing) this.sendToHost({ t: 'cmd', cmd: 'setAnalysis', analysis: { rtaFft: s.rtaFft, rtaAveraging: s.rtaAveraging, tfAveraging: s.tfAveraging } });
+    if (this.hostProcessing) this.sendToHost({ t: 'cmd', cmd: 'setAnalysis', analysis: { rtaFft: s.rtaFft, rtaAveraging: s.rtaAveraging, tfAveraging: s.tfAveraging, lfResolution: s.lfResolution } });
   }
 
   /** Remote device whose live analysis is computed by the measurement host. */
@@ -533,7 +533,7 @@ export class App {
     const s = this.settings;
     s.generator = { ...st.generator };
     if (st.playlist && this.playlist instanceof RemotePlaylist) this.playlist.update(st.playlist);
-    if (this.hostProcessing && st.analysis && (st.analysis.rtaFft !== s.rtaFft || st.analysis.rtaAveraging !== s.rtaAveraging || st.analysis.tfAveraging !== s.tfAveraging)) {
+    if (this.hostProcessing && st.analysis && (st.analysis.rtaFft !== s.rtaFft || st.analysis.rtaAveraging !== s.rtaAveraging || st.analysis.tfAveraging !== s.tfAveraging || (st.analysis.lfResolution && st.analysis.lfResolution !== s.lfResolution))) {
       // The host's analysis settings apply to what this device shows
       Object.assign(s, st.analysis);
       for (const m of this.measurements) m.applySettings(s);

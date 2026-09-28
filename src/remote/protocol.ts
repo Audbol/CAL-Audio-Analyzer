@@ -26,6 +26,7 @@ import type { MicCalibration } from '../dsp/calibration';
 import type { Trace, TraceOp } from '../traces';
 import type { Settings } from '../state';
 import type { Averaging } from '../dsp/transfer';
+import type { LfResolution } from '../dsp/decimate';
 import type { PlaylistAction, PlaylistState } from '../audio/playlist';
 
 /** The subset of settings that belongs to the measurement setup and is shared by every device. */
@@ -62,6 +63,7 @@ export interface AnalysisSettings {
   rtaFft: number;
   rtaAveraging: Averaging;
   tfAveraging: Averaging;
+  lfResolution?: LfResolution;
 }
 
 export interface HubInfo {

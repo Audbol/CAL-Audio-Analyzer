@@ -19,6 +19,11 @@ The builds are not code-signed yet:
 
 On first launch, choose **Explore with the demo room** to try every feature without hardware.
 
+## What's new in 1.4
+
+- **Better low-end resolution:** the spectrum and transfer function use longer analysis windows for the bass. Detail is 0.7 Hz (*High*, the new default) or 0.4 Hz (*Maximum*), instead of 2.9 Hz on the spectrum and 1.5 Hz on the transfer function. Tones 2 Hz apart at 40 Hz now show as two separate peaks. Mids and highs keep their fast response, and the extra processing is too small to measure because the bass windows run on a down-sampled copy of the signal. The bass needs a longer stretch of signal (≈1.4 s or 2.7 s) and reacts more slowly: choose *Standard* in Tools → Display & performance for the fastest bass response.
+- The EQ filter export button is now called **Copy filter text**, and the calibration file help describes the supported file types.
+
 ## What's new in 1.3
 
 - **Spectrum bars:** show the RTA as 1/1, 1/3, 1/6, 1/12 or 1/24-octave bars (Display → Bars, or **B**). Peak hold shows as a cap on each bar.

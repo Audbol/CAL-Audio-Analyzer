@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { FFT } from '../src/dsp/fft';
 import { weightingDb, WeightingFilter } from '../src/dsp/weighting';
 import { RingBuffer } from '../src/dsp/ring';
-import { SpectrumAnalyzer } from '../src/dsp/spectrum';
+import { SpectrumAnalyzer, MultiSpectrum } from '../src/dsp/spectrum';
+import { DecimatedRing, decimationFactor } from '../src/dsp/decimate';
 import { TransferFunction } from '../src/dsp/transfer';
-import { logGrid, interp, bandCentres, gridPpo, regroupBands } from '../src/dsp/freq';
+import { logGrid, interp, bandCentres, gridPpo, regroupBands, sampleLogGrid } from '../src/dsp/freq';
 import { findDelay } from '../src/dsp/delay';
 import { logSweep, deconvolve, harmonicDistortion, linearIR } from '../src/dsp/sweep';
 import { analyseIR, roomModes } from '../src/dsp/acoustics';
@@ -297,5 +298,94 @@ describe('host-processed band regrouping', () => {
     for (const v of mid) expect(v).toBeCloseTo(-40 + 10 * Math.log10(ppo / 3), 1);
     // The ends are compensated for the part of the band outside the grid
     expect(out[0]).toBeCloseTo(mid[0], 1);
+  });
+});
+
+describe('low-frequency resolution (decimated bass windows)', () => {
+  const feed = (rings: RingBuffer[], sigs: Float32Array[], step: (i: number) => void) => {
+    for (let i = 0; i < sigs[0].length; i += 1024) {
+      rings.forEach((r, k) => r.push(sigs[k].subarray(i, i + 1024)));
+      step(i);
+    }
+  };
+
+  it('decimates without changing bass levels and without aliasing into the bass', () => {
+    const d = decimationFactor(FS);
+    expect(FS / d).toBeGreaterThanOrEqual(2400);
+    const level = (f: number) => {
+      const src = new RingBuffer(1 << 18);
+      const dec = new DecimatedRing(FS, d);
+      const x = Float32Array.from({ length: FS * 2 }, (_, i) => Math.sin((2 * Math.PI * f * i) / FS));
+      feed([src], [x], () => dec.update(src));
+      const out = new Float64Array(1024);
+      dec.ring.read(dec.ring.written - 1024, 1024, out);
+      return 20 * Math.log10(Math.max(...out.map(Math.abs)));
+    };
+    for (const f of [20, 63, 160, 350]) expect(Math.abs(level(f))).toBeLessThan(0.05);
+    // A tone just below the decimated sample rate would fold down to ~100 Hz
+    expect(level(FS / d - 100)).toBeLessThan(-70);
+  });
+
+  it('separates tones 2 Hz apart at 40 Hz only with the long bass windows', () => {
+    const grid = logGrid(20, 20000, 48);
+    const x = Float32Array.from({ length: FS * 8 }, (_, i) => 0.5 * Math.sin((2 * Math.PI * 40 * i) / FS) + 0.5 * Math.sin((2 * Math.PI * 42 * i) / FS));
+    const dip = (lf: 'standard' | 'high' | 'max') => {
+      const ms = new MultiSpectrum(FS, 16384, grid, lf);
+      ms.averaging = 0;
+      const ring = new RingBuffer(1 << 20);
+      feed([ring], [x], () => ms.process(ring));
+      const out = new Float64Array(grid.length);
+      ms.render(0, 'avg', out);
+      // Narrowband display: deepest point between the tones relative to the tone peaks
+      let peak = -Infinity;
+      let mid = Infinity;
+      grid.forEach((g, i) => {
+        if (g >= 39.8 && g <= 42.2) peak = Math.max(peak, out[i]);
+        if (g > 40.2 && g < 41.8) mid = Math.min(mid, out[i]);
+      });
+      return { dip: peak - mid, peak };
+    };
+    expect(dip('standard').dip).toBeLessThan(1); // one merged hump
+    expect(dip('high').dip).toBeGreaterThan(6); // two separate tones
+    const max = dip('max');
+    expect(max.dip).toBeGreaterThan(15);
+    expect(max.peak).toBeGreaterThan(-8); // each tone still reads close to its −6 dBFS level
+  });
+
+  it('keeps band levels continuous where the long windows take over', () => {
+    const grid = logGrid(20, 20000, 48);
+    const ms = new MultiSpectrum(FS, 16384, grid, 'high');
+    ms.averaging = 0;
+    const ring = new RingBuffer(1 << 20);
+    const pink = new PinkNoise(9);
+    const x = Float32Array.from({ length: FS * 12 }, () => pink.next() * 0.1);
+    feed([ring], [x], () => ms.process(ring));
+    const out = new Float64Array(grid.length);
+    ms.render(3, 'avg', out);
+    const at = (f: number) => sampleLogGrid(grid, out, f);
+    expect(Math.abs(at(150) - at(170))).toBeLessThan(1); // across the 160 Hz handover
+    expect(Math.abs(at(63) - at(1000))).toBeLessThan(1.5); // pink noise still reads flat
+  });
+
+  it('keeps the transfer function exact in the bass with a delay that is not a multiple of the decimation', () => {
+    const grid = logGrid(20, 20000, 24);
+    const tf = new TransferFunction(FS, grid);
+    tf.setLfResolution('max');
+    tf.delay = 1237;
+    const r = rng(21);
+    const n = FS * 10;
+    const x = Float32Array.from({ length: n }, r);
+    const y = new Float32Array(n);
+    for (let i = 1237; i < n; i++) y[i] = 0.5 * x[i - 1237];
+    const ref = new RingBuffer(1 << 20);
+    const mic = new RingBuffer(1 << 20);
+    feed([ref, mic], [x, y], () => tf.process(ref, mic, 1000));
+    const res = tf.result(24);
+    for (const f of [25, 40, 70, 120]) {
+      const i = grid.findIndex((g) => g >= f);
+      expect(res.mag[i]).toBeCloseTo(-6.02, 1);
+      expect(Math.abs(res.phase[i])).toBeLessThan(2);
+      expect(res.coh[i]).toBeGreaterThan(0.98);
+    }
   });
 });
