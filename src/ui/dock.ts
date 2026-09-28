@@ -272,7 +272,7 @@ export class Dock {
       const old = this.layout.windows?.[id];
       if (rect.w > 50 && rect.h > 50 && (!old || old.x !== rect.x || old.y !== rect.y || old.w !== rect.w || old.h !== rect.h)) {
         (this.layout.windows ??= {})[id] = rect;
-        this.commit();
+        this.onChange(this.layout); // save only: nothing in this window changed
       }
     }, 700);
     this.render();

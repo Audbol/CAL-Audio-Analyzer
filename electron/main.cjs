@@ -77,12 +77,16 @@ function registerServerIpc() {
 
 function serveDist() {
   protocol.handle(SCHEME, (request) => {
-    const url = new URL(request.url);
-    let rel = decodeURIComponent(url.pathname);
+    let rel;
+    try {
+      rel = decodeURIComponent(new URL(request.url).pathname);
+    } catch {
+      return new Response('Bad request', { status: 400 });
+    }
     if (rel === '/' || rel === '') rel = '/index.html';
     const file = path.normalize(path.join(DIST, rel));
     // Never serve anything outside the bundled app
-    if (!file.startsWith(DIST)) return new Response('Not found', { status: 404 });
+    if (!file.startsWith(DIST + path.sep)) return new Response('Not found', { status: 404 });
     return net.fetch(pathToFileURL(file).toString());
   });
 }

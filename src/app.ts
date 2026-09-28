@@ -162,6 +162,7 @@ export class App {
   applyShared(shared: SharedSettings): void {
     const s = this.settings;
     const measChanged = JSON.stringify(s.measurements) !== JSON.stringify(shared.measurements);
+    if (s.splOffset !== shared.splOffset) this.spl.resetLeq();
     s.splOffset = shared.splOffset;
     s.splCalibrated = shared.splCalibrated;
     s.micCal = shared.micCal;
@@ -437,7 +438,11 @@ export class App {
     );
   }
 
-  captureTrace(m: Measurement, kind: 'tf' | 'rta' = 'tf'): Trace {
+  captureTrace(m: Measurement, kind: 'tf' | 'rta' = 'tf'): Trace | null {
+    if (!this.engine.running || (kind === 'tf' && !m.tfReady)) {
+      this.toast(kind === 'tf' ? 'No transfer function yet: start audio with the generator on, then capture.' : 'Start audio first, then capture.', 'warn');
+      return null;
+    }
     const now = new Date();
     const stamp = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
     const t =
@@ -531,17 +536,24 @@ export class App {
   /** Apply the host's generator state and (when they change on the host) its calibration and channel setup. */
   adoptHost(st: HostStatus, force = false): void {
     const s = this.settings;
+    // The host sends its status whenever anything changes (several times a second while music plays):
+    // only re-render and save what actually changed, so controls the user is operating are not rebuilt
+    const genChanged = force || JSON.stringify(s.generator) !== JSON.stringify(st.generator);
     s.generator = { ...st.generator };
     if (st.playlist && this.playlist instanceof RemotePlaylist) this.playlist.update(st.playlist);
+    let changed = genChanged;
     if (this.hostProcessing && st.analysis && (st.analysis.rtaFft !== s.rtaFft || st.analysis.rtaAveraging !== s.rtaAveraging || st.analysis.tfAveraging !== s.tfAveraging || (st.analysis.lfResolution && st.analysis.lfResolution !== s.lfResolution))) {
       // The host's analysis settings apply to what this device shows
       Object.assign(s, st.analysis);
       for (const m of this.measurements) m.applySettings(s);
       this.syncSettingControls();
+      changed = true;
     }
     const shared = JSON.stringify(st.shared);
     if (force || shared !== this.sharedApplied) {
       this.sharedApplied = shared;
+      changed = true;
+      if (s.splOffset !== st.shared.splOffset) this.spl.resetLeq(); // Leq / Lmax were in the old units
       s.splOffset = st.shared.splOffset;
       s.splCalibrated = st.shared.splCalibrated;
       s.micCal = st.shared.micCal;
@@ -552,11 +564,18 @@ export class App {
       if (this.engine.running) this.rebuildMeasurements();
       this.renderMeasurements();
     }
+    const label = `${st.deviceLabel}|${st.running}`;
+    if (label !== this.lastHostLabel) {
+      this.lastHostLabel = label;
+      this.refreshDevices();
+      changed = true;
+    }
+    if (!changed) return;
     this.save();
-    this.renderGenControls();
+    if (genChanged) this.renderGenControls();
     this.renderTopState();
-    this.refreshDevices();
   }
+  private lastHostLabel = '';
 
   /** How this page can host remote clients: the desktop app's built-in server, the CLI server, or not at all. */
   get serverMode(): 'desktop' | 'cli' | null {
@@ -1327,8 +1346,13 @@ export class App {
 
   private bindKeys(): void {
     window.addEventListener('keydown', (e) => {
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || target?.isContentEditable || e.metaKey || e.ctrlKey || e.altKey) return;
+      // Enter / Space on a focused button or link activate that control: don't also run a shortcut
+      if ((e.key === 'Enter' || e.key === ' ') && target?.closest('button, a, [role="button"]')) return;
+      // A dialog is open: shortcuts would act on the app behind it
+      if (document.querySelector('.modal-overlay') && e.key !== 'F11') return;
       const m = this.measurements.find((x) => x.cfg.enabled);
       switch (e.key) {
         case ' ':

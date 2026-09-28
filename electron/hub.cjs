@@ -49,6 +49,24 @@ function isLoopback(addr) {
   return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
 }
 
+/** Host names the server answers to: localhost, IP addresses and this computer's own names (blocks DNS rebinding). */
+function allowedHostHeader(hostHeader) {
+  if (!hostHeader) return true; // HTTP/1.0 clients
+  let name = String(hostHeader).toLowerCase();
+  if (name.startsWith('[')) name = name.slice(1, name.indexOf(']'));
+  else name = name.replace(/:\d+$/, '');
+  if (name === 'localhost' || /^\d{1,3}(\.\d{1,3}){3}$/.test(name) || name.includes(':')) return true;
+  const own = os.hostname().toLowerCase();
+  return name === own || name === `${own}.local` || name === own.split('.')[0] || name === `${own.split('.')[0]}.local`;
+}
+
+/** The host page is this app itself: the desktop app (app://cal) or the loopback /host page. */
+function allowedHostOrigin(origin) {
+  if (!origin) return true; // not a browser
+  // The desktop app, or a page on this computer (the /host page, or the development server)
+  return origin === 'app://cal' || /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origin);
+}
+
 function safeEqual(a, b) {
   const x = Buffer.from(String(a));
   const y = Buffer.from(String(b));
@@ -98,7 +116,20 @@ function createHub(options) {
   }
 
   function onRequest(req, res) {
-    const url = new URL(req.url, 'http://x');
+    if (!allowedHostHeader(req.headers.host)) {
+      res.writeHead(421, { 'content-type': 'text/plain' });
+      res.end('Unknown host name. Open the app by its IP address.');
+      return;
+    }
+    let url;
+    let pathname;
+    try {
+      url = new URL(req.url, 'http://x');
+      pathname = decodeURIComponent(url.pathname);
+    } catch {
+      res.writeHead(400).end();
+      return;
+    }
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       res.writeHead(405).end();
       return;
@@ -118,7 +149,7 @@ function createHub(options) {
       }
       return sendIndex(res, 'host');
     }
-    const file = path.normalize(path.join(distDir, decodeURIComponent(url.pathname)));
+    const file = path.normalize(path.join(distDir, pathname));
     if (!file.startsWith(distDir + path.sep)) {
       res.writeHead(404).end();
       return;
@@ -294,22 +325,42 @@ function createHub(options) {
   }
 
   function onUpgrade(req, socket, head) {
-    const url = new URL(req.url, 'http://x');
-    if (url.pathname !== '/ws') return socket.destroy();
+    let url;
+    try {
+      url = new URL(req.url, 'http://x');
+    } catch {
+      return socket.destroy();
+    }
+    if (url.pathname !== '/ws' || !allowedHostHeader(req.headers.host)) return socket.destroy();
     const ip = String(req.socket.remoteAddress);
     const role = url.searchParams.get('role');
+    const origin = req.headers.origin;
+    // Browsers send an Origin: a web page from another site must not open a connection (cross-site WebSocket)
+    if (role === 'host' && !allowedHostOrigin(origin)) return socket.destroy();
+    if (role !== 'host' && origin) {
+      let sameHost = false;
+      try {
+        sameHost = new URL(origin).host === req.headers.host;
+      } catch {
+        sameHost = false;
+      }
+      if (!sameHost) return socket.destroy();
+    }
     wss.handleUpgrade(req, socket, head, (ws) => {
       if (role === 'host') {
         if (!safeEqual(url.searchParams.get('token') || '', hostToken)) return ws.close(4003, 'Invalid host token');
         return acceptHost(ws);
       }
+      const now = Date.now();
       const f = failures.get(ip);
-      if (f && f.until > Date.now()) return ws.close(4029, 'Too many wrong PIN attempts. Wait a minute and try again.');
+      if (f && f.until > now) return ws.close(4029, 'Too many wrong PIN attempts. Wait a minute and try again.');
       if (state.pin && !safeEqual(url.searchParams.get('pin') || '', state.pin)) {
-        const rec = f && f.until > Date.now() - 60000 ? f : { count: 0, until: 0 };
+        // Count wrong PINs per address over a one-minute window; 8 of them lock the address out for a minute
+        const rec = f && now - f.first < 60000 ? f : { count: 0, first: now, until: 0 };
         rec.count++;
-        if (rec.count >= 8) rec.until = Date.now() + 60000;
+        if (rec.count >= 8) rec.until = now + 60000;
         failures.set(ip, rec);
+        if (failures.size > 10000) failures.clear(); // bound memory under a flood of addresses
         return ws.close(4001, 'Wrong PIN');
       }
       failures.delete(ip);

@@ -39,7 +39,8 @@ export interface PlaylistApi {
   state(): PlaylistState;
   act(a: PlaylistAction): void;
   addFiles(files: File[]): Promise<void>;
-  onChange(fn: () => void): void;
+  /** Listen for changes; returns a function that removes the listener. */
+  onChange(fn: () => void): () => void;
 }
 
 export const AUDIO_ACCEPT = 'audio/*,.mp3,.wav,.flac,.ogg,.oga,.m4a,.aac,.opus,.webm,.aif,.aiff';
@@ -53,13 +54,28 @@ interface StoredTrack extends TrackInfo {
   blob: Blob;
 }
 
+let dbPromise: Promise<IDBDatabase> | null = null;
+
+/** One shared connection (opening a new one per request would leave connections open). */
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  dbPromise ??= new Promise<IDBDatabase>((resolve, reject) => {
     const req = indexedDB.open(DB, 1);
     req.onupgradeneeded = () => req.result.createObjectStore(STORE, { keyPath: 'id' });
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const db = req.result;
+      // Another tab upgrading or deleting the database: let it, and reconnect next time
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+      resolve(db);
+    };
+    req.onerror = () => {
+      dbPromise = null;
+      reject(req.error);
+    };
   });
+  return dbPromise;
 }
 
 async function tx<T>(mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
@@ -148,8 +164,9 @@ export class Playlist implements PlaylistApi {
     this.emit();
   }
 
-  onChange(fn: () => void): void {
+  onChange(fn: () => void): () => void {
     this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
   }
 
   private emit(): void {
@@ -221,7 +238,7 @@ export class Playlist implements PlaylistApi {
       const data = await decodeTrack(blob, fs);
       const t = this.tracks.find((x) => x.id === id);
       if (t && !t.duration) t.duration = data.length / fs;
-      // The selection may have changed while decoding
+      // The selection may have changed while decoding: that song is loaded right after (below)
       if (this.prefs.current !== id) return;
       const key = this.nextKey++;
       this.engine().loadMusic(key, data, Math.round(startAt * fs));
@@ -234,8 +251,8 @@ export class Playlist implements PlaylistApi {
     } finally {
       this.loading = false;
       this.emit();
+      if (this.prefs.current && this.prefs.current !== this.loadedId && !this.error) queueMicrotask(() => this.ensureLoaded());
     }
-    if (this.prefs.current !== this.loadedId) this.ensureLoaded();
   }
 
   /** The engine reports the end of the loaded track. */
@@ -391,7 +408,8 @@ export class RemotePlaylist implements PlaylistApi {
     for (const l of this.listeners) l();
   }
 
-  onChange(fn: () => void): void {
+  onChange(fn: () => void): () => void {
     this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
   }
 }

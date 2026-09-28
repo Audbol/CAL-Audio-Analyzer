@@ -111,6 +111,17 @@ check(hw.running && !hw.sim && hw.ch >= 1, `hardware input running with ${hw.ch}
 check(hw.peak > 0, 'fake microphone delivers signal');
 await page.screenshot({ path: `${out}/09-hardware.png` });
 
+// Enter on a focused button activates that button only (no Enter shortcut on top)
+{
+  const before = await page.evaluate(() => window.calApp.engine.running);
+  await page.locator('.theme-btn').focus();
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(300);
+  check((await page.evaluate(() => window.calApp.engine.running)) === before, 'Enter on a focused button does not also start/stop audio');
+  await page.locator('.theme-btn').click(); // theme back
+  await page.locator('body').click({ position: { x: 5, y: 900 } });
+}
+
 // App fullscreen button
 await page.locator('.fullscreen-btn').click();
 await page.waitForTimeout(400);

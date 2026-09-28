@@ -229,6 +229,10 @@ check((await host.evaluate(() => window.calApp.settings.tempC)) === 27 && (await
   await rem.waitForTimeout(900);
   const rs = await rem.evaluate(() => { const s = window.calApp.playlist.state(); return { name: s.tracks.find((t) => t.id === s.current)?.name, pos: s.pos }; });
   check(rs.name === 'Remote song' && rs.pos > 0, `remotes show the playing song and its position (${rs.name} ${rs.pos.toFixed(1)} s)`);
+  // The host's status changes several times a second while music plays: controls on the remote must not be rebuilt
+  await rem.evaluate(() => { window.__genSel = document.querySelector('.gen-controls select'); });
+  await rem.waitForTimeout(1600);
+  check(await rem.evaluate(() => document.querySelector('.gen-controls select') === window.__genSel), 'remote generator controls stay put while the host status updates');
   await rem.evaluate(() => { window.calApp.setGenerator({ type: 'pink' }); });
 }
 await lateCtx.close();

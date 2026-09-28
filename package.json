@@ -20,7 +20,8 @@
     "dist:linux": "vite build && electron-builder --linux",
     "test:electron": "vite build && xvfb-run -a node tests/e2e/electron.mjs",
     "serve": "node server/cli.mjs",
-    "bench:remote": "vite build && node tests/e2e/perf.mjs"
+    "bench:remote": "vite build && node tests/e2e/perf.mjs",
+    "test:stress": "vite build && node tests/e2e/stress.mjs"
   },
   "devDependencies": {
     "@types/qrcode": "^1.5.6",

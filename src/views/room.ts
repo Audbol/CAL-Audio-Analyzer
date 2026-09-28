@@ -149,8 +149,18 @@ export class RoomView implements View {
 
   /** Host: run a sweep requested by a remote device (with that device's settings). */
   async measureWith(req: { duration: number; level: number; repeats: number; f1: number; f2: number; measIdx: number }, by: string): Promise<void> {
-    if (this.running) return;
-    Object.assign(this.opts, { duration: req.duration, level: req.level, repeats: req.repeats, f1: req.f1, f2: req.f2, measIdx: req.measIdx });
+    if (this.running) return; // the running sweep's progress and result reach that device too
+    // Settings from the network: keep them within what the UI offers
+    const num = (v: unknown, lo: number, hi: number, dflt: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : dflt);
+    const o = this.opts;
+    Object.assign(o, {
+      duration: num(req.duration, 0.5, 16, o.duration),
+      level: num(req.level, -60, 0, o.level),
+      repeats: Math.round(num(req.repeats, 1, 8, o.repeats)),
+      f1: num(req.f1, 5, 1000, o.f1),
+      f2: num(req.f2, 200, 24000, o.f2),
+      measIdx: Math.round(num(req.measIdx, 0, Math.max(0, this.app.settings.measurements.length - 1), 0)),
+    });
     this.show();
     this.app.toast(`Sweep requested by ${by}`, 'info');
     await this.measure(by);
@@ -175,18 +185,26 @@ export class RoomView implements View {
       this.showHostProgress(true, 0, 'Starting the sweep on the measurement host…');
       return;
     }
+    // A sweep that can't start is reported to every device (a remote that asked for it is waiting)
+    const fail = (msg: string) => {
+      app.toast(msg, 'warn');
+      this.setProgress(0, msg, false);
+    };
     const e = app.engine;
     if (!e.running) {
       await app.start();
-      if (!e.running) return;
+      if (!e.running) return fail('Could not start audio for the sweep.');
     }
     const cfg = app.settings.measurements[this.opts.measIdx] ?? app.settings.measurements[0];
     const ring = e.ring(cfg.mic);
-    if (!ring) return app.toast('Measurement channel not available', 'warn');
+    if (!ring) return fail('Measurement channel not available.');
     const fs = e.sampleRate;
+    const tail = Math.round(fs * 2.5);
+    // The recording must fit in the capture buffer (long sweeps at very high sample rates may not)
+    const maxSeconds = Math.floor(ring.capacity / fs - 3.5);
+    if (this.opts.duration + 2.5 > ring.capacity / fs - 1) return fail(`At ${fs / 1000} kHz sweeps can be at most ${maxSeconds} s long. Choose a shorter sweep.`);
     const spec: SweepSpec = { fs, f1: this.opts.f1, f2: Math.min(this.opts.f2, fs / 2 - 500), duration: this.opts.duration, amplitude: Math.pow(10, this.opts.level / 20) };
     const sweep = logSweep(spec);
-    const tail = Math.round(fs * 2.5);
     const buf = new Float32Array(sweep.length + tail);
     buf.set(sweep);
     const sum = new Float64Array(buf.length);
@@ -204,8 +222,12 @@ export class RoomView implements View {
           const frac = Math.min(1, (performance.now() - t0) / 1000 / (buf.length / fs));
           this.setProgress((r + frac) / this.opts.repeats, `Sweep ${r + 1}/${this.opts.repeats} · ${Math.round(frac * 100)}%${frac > sweep.length / buf.length ? ' · recording decay' : ''}`);
         }, 100);
-        const { start } = await e.play(buf);
-        clearInterval(timer);
+        let start: number;
+        try {
+          ({ start } = await e.play(buf));
+        } finally {
+          clearInterval(timer);
+        }
         if (token.cancelled) throw new Error('cancelled');
         await e.waitForFrame(start + buf.length, token);
         const rec = new Float64Array(buf.length);

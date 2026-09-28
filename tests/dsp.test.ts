@@ -481,3 +481,46 @@ describe('bass windows in real conditions', () => {
     expect(Math.abs(level(123_456_789))).toBeLessThan(1);
   });
 });
+
+describe('other sample rates', () => {
+  for (const fs of [44100, 96000, 192000]) {
+    it(`measures correctly at ${fs / 1000} kHz with the bass windows`, () => {
+      const grid = logGrid(20, 20000, 48);
+      // Transfer function: −6 dB, 777-sample delay, all bass windows active
+      const tf = new TransferFunction(fs, grid);
+      tf.setLfResolution('max');
+      tf.delay = 777;
+      const ms = new MultiSpectrum(fs, 16384 * Math.max(1, Math.round(fs / 48000)), grid, 'max');
+      ms.averaging = 0;
+      const r = rng(5);
+      const n = Math.round(fs * 7);
+      const x = Float32Array.from({ length: n }, r);
+      const y = new Float32Array(n);
+      for (let i = 777; i < n; i++) y[i] = 0.5 * x[i - 777];
+      // Sine at 50 Hz, −6 dBFS, on its own channel for the RTA
+      const s = Float32Array.from({ length: n }, (_, i) => 0.5 * Math.sin((2 * Math.PI * 50 * i) / fs));
+      const ref = new RingBuffer(1 << 22);
+      const mic = new RingBuffer(1 << 22);
+      const sin = new RingBuffer(1 << 22);
+      for (let i = 0; i < n; i += 2048) {
+        ref.push(x.subarray(i, i + 2048));
+        mic.push(y.subarray(i, i + 2048));
+        sin.push(s.subarray(i, i + 2048));
+        tf.process(ref, mic, 1000);
+        ms.process(sin);
+      }
+      const res = tf.result(24);
+      for (const f of [30, 60, 150, 1000, 10000]) {
+        const i = grid.findIndex((g) => g >= f);
+        expect(res.mag[i]).toBeCloseTo(-6.02, 1);
+        expect(Math.abs(res.phase[i])).toBeLessThan(2);
+      }
+      const out = new Float64Array(grid.length);
+      ms.render(0, 'avg', out);
+      // Narrowband peak of a −6 dBFS sine: within the Hann window's worst-case scalloping (1.42 dB) below
+      const pk = Math.max(...out.filter((_, i) => grid[i] > 45 && grid[i] < 55));
+      expect(pk).toBeLessThan(-6.02 + 0.2);
+      expect(pk).toBeGreaterThan(-6.02 - 1.45);
+    });
+  }
+});

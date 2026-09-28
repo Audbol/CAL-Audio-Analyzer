@@ -156,8 +156,12 @@ export function showPlaylist(app: App): void {
     );
     if (!st.tracks.length) list.append(h('div', { class: 'empty' }, 'The playlist is empty.'));
   };
-  pl.onChange(render);
-  const timer = window.setInterval(() => (el.isConnected ? render() : clearInterval(timer)), 500);
+  const unsubscribe = pl.onChange(render);
+  const timer = window.setInterval(() => {
+    if (el.isConnected) return render();
+    clearInterval(timer);
+    unsubscribe();
+  }, 500);
   render();
   void close;
 }
