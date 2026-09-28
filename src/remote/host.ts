@@ -1,5 +1,5 @@
 import type { App } from '../app';
-import { encodeAudio, type HostStatus, type HubInfo, type HubMessage } from './protocol';
+import { encodeAudio, encodeSweep, sharedOf, type HostStatus, type HubInfo, type HubMessage, type SweepMeta } from './protocol';
 
 /** Desktop bridge exposed by electron/preload.cjs. */
 export interface DesktopBridge {
@@ -59,6 +59,9 @@ export class HostLink {
         this.sendStatus();
         this.statusTimer = window.setInterval(() => this.sendStatus(), 400);
         this.unsubscribe = this.app.engine.onData((blocks, gen) => this.sendAudio(blocks, gen));
+        // Publish the shared session state (traces, last sweep) for devices that connect
+        this.sendTraces();
+        this.app.republishSweep();
         this.onChange?.();
         resolve();
       };
@@ -99,6 +102,23 @@ export class HostLink {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));
   }
 
+  private tracesTimer = 0;
+
+  /** Broadcast the shared trace list (debounced). */
+  sendTraces(): void {
+    clearTimeout(this.tracesTimer);
+    this.tracesTimer = window.setTimeout(() => this.send({ t: 'traces', traces: this.app.traces.traces }), 60);
+  }
+
+  /** Broadcast a sweep measurement result to every device. */
+  sendSweep(meta: SweepMeta, ir: ArrayLike<number>): void {
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(encodeSweep(meta, ir));
+  }
+
+  sendSweepProgress(running: boolean, frac: number, text: string): void {
+    this.send({ t: 'sweepProgress', running, frac, text });
+  }
+
   private status(): HostStatus {
     const a = this.app;
     const s = a.settings;
@@ -111,7 +131,7 @@ export class HostLink {
       deviceLabel: a.engine.deviceLabel,
       simulate: a.engine.simulate,
       generator: s.generator,
-      shared: { splOffset: s.splOffset, splCalibrated: s.splCalibrated, micCal: s.micCal, tempC: s.tempC, measurements: s.measurements },
+      shared: sharedOf(s),
       busy: a.busy,
     };
   }
@@ -165,6 +185,18 @@ export class HostLink {
       case 'stopPlay':
         app.engine.stopPlayback();
         break;
+      case 'sweep':
+        app.runSweep(msg.opts, remoteName(this.info, msg.from));
+        break;
+      case 'sweepCancel':
+        app.cancelSweep();
+        break;
+      case 'traces':
+        for (const op of msg.ops) app.traces.apply(op);
+        break;
+      case 'setShared':
+        app.applyShared(msg.shared);
+        break;
     }
   }
 
@@ -188,4 +220,9 @@ export class HostLink {
       if (wasGen !== 'off') app.engine.setGenerator(app.settings.generator);
     }
   }
+}
+
+function remoteName(info: HubInfo | null, id: number): string {
+  const c = info?.clients.find((x) => x.id === id);
+  return c ? `${c.name} (${c.address})` : 'a remote device';
 }

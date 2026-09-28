@@ -84,13 +84,88 @@ await rem.keyboard.press(' ');
 await host.waitForTimeout(700);
 check((await host.evaluate(() => window.calApp.settings.generator.type)) !== 'off', 'remote switched the host generator on');
 
-// --- Remote runs a sweep measurement that plays on the host
+// --- A second remote (phone) joins: shared session state is kept on the host
+const phoneCtx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true });
+const phone = await phoneCtx.newPage();
+phone.on('pageerror', (e) => errors.push(`phone: ${e}`));
+await phone.goto(`http://127.0.0.1:${PORT}/?pin=${PIN}`);
+await phone.waitForFunction(() => window.calApp.engine.running === true, null, { timeout: 15000 });
+
+// The host is SPL-calibrated (the RTA switches from dBFS to dB SPL, ~120 dB higher)
+await host.evaluate(() => { const s = window.calApp.settings; s.splCalibrated = true; s.splOffset = 120; window.calApp.spl.offsetDb = 120; window.calApp.save(); });
+// Spectrum on a remote: the data is inside the plot (not an off-scale fill) and the zoom buttons work
+await phone.keyboard.press('1');
+await phone.waitForTimeout(2500);
+const inView = () => {
+  const p = window.calApp.views.find((v) => v.id === 'spectrum').rta;
+  const ys = Array.from(p.series.find((s) => !s.id.endsWith('-pk')).y).filter((v, i) => window.calApp.grid[i] > 100 && window.calApp.grid[i] < 10000);
+  const med = ys.sort((a, b) => a - b)[ys.length >> 1];
+  return { med, lo: p.cfg.yMin, hi: p.cfg.yMax, unit: p.cfg.yUnit };
+};
+const sp = await phone.evaluate(inView);
+console.log(JSON.stringify(sp));
+check(sp.med > sp.lo && sp.med < sp.hi, `remote spectrum shows the data in range (${sp.med.toFixed(0)} ${sp.unit} in ${sp.lo}…${sp.hi})`);
+const zoomBtn = phone.locator('.view:visible .plot-zoom button[data-act="out"]').first();
+check(await zoomBtn.isVisible(), 'zoom buttons are visible on touch screens');
+await zoomBtn.tap();
+const sp2 = await phone.evaluate(inView);
+check(sp2.hi - sp2.lo > sp.hi - sp.lo + 5, `zoom out widens the range (${sp.hi - sp.lo} → ${(sp2.hi - sp2.lo).toFixed(0)} dB)`);
+await phone.evaluate(() => { const p = window.calApp.views.find((v) => v.id === 'spectrum').rta; p.setY(300 - 400, 300 - 350); });
+await phone.locator('.view:visible .plot-zoom button[data-act="fit"]').first().tap();
+const sp3 = await phone.evaluate(inView);
+check(sp3.med > sp3.lo && sp3.med < sp3.hi, 'Fit brings the data back into view');
+await phone.screenshot({ path: `${out}/remote-05-phone-spectrum.png` });
+check(sp.unit === 'dB SPL', 'remote spectrum adopts the host calibration');
+
+// --- Remote runs a sweep: it runs on the host and the result appears on every device
 await rem.keyboard.press('5');
 await rem.getByRole('button', { name: 'Measure sweep' }).click();
 await rem.waitForFunction(() => window.calApp.views.find((v) => v.id === 'room').result !== null, null, { timeout: 40000 });
 const room = await rem.evaluate(() => window.calApp.views.find((v) => v.id === 'room').result.acoustics.broadband.t20.rt);
 check(room > 0.3 && room < 1.5, `remote sweep measured through the host (T20 ${room.toFixed(2)} s)`);
+const t20 = (p) => p.evaluate(() => window.calApp.views.find((v) => v.id === 'room').result?.acoustics.broadband.t20.rt ?? null);
+const [hostT20, phoneT20] = [await t20(host), await t20(phone)];
+check(hostT20 !== null && Math.abs(hostT20 - room) < 1e-3, 'the sweep result is on the host');
+check(phoneT20 !== null && Math.abs(phoneT20 - room) < 0.01, 'the sweep result is shared to the other remote');
 await rem.screenshot({ path: `${out}/remote-02-room.png` });
+
+// A sweep started on the host shows on the remotes too, with progress
+const hostWhen = await host.evaluate(() => window.calApp.views.find((v) => v.id === 'room').result.when.getTime());
+await host.keyboard.press('5');
+await host.getByRole('button', { name: 'Measure sweep' }).click();
+await phone.waitForFunction(() => /Sweep|Playing/.test(document.querySelector('.view:not([hidden]) .sweep-status, .room-status')?.textContent ?? '') || window.calApp.views.find((v) => v.id === 'room').running !== null, null, { timeout: 8000 }).then(() => check(true, 'remotes show the host sweep progress')).catch(() => check(false, 'remotes show the host sweep progress'));
+await phone.waitForFunction((w) => (window.calApp.views.find((v) => v.id === 'room').result?.when.getTime() ?? 0) > w, hostWhen, { timeout: 40000 });
+check(true, 'a sweep run on the host appears on the remotes');
+
+// A remote device joining later gets the latest result
+const lateCtx = await browser.newContext();
+const late = await lateCtx.newPage();
+await late.goto(`http://127.0.0.1:${PORT}/?pin=${PIN}`);
+await late.waitForFunction(() => window.calApp.views.find((v) => v.id === 'room').result !== null, null, { timeout: 15000 }).catch(() => undefined);
+check((await t20(late)) !== null, 'a device joining later receives the latest sweep');
+
+// --- Traces are shared: captured on one device, visible (and deletable) everywhere
+const nTraces = await host.evaluate(() => window.calApp.traces.traces.length);
+await rem.evaluate(() => window.calApp.captureTrace(window.calApp.measurements[0], 'tf'));
+await host.waitForTimeout(800);
+const names = (p) => p.evaluate(() => window.calApp.traces.traces.map((t) => t.name));
+const hostNames = await names(host);
+check(hostNames.length === nTraces + 1, 'a trace captured on a remote is stored on the host');
+check(JSON.stringify(await names(phone)) === JSON.stringify(hostNames) && JSON.stringify(await names(late)) === JSON.stringify(hostNames), 'the trace list is identical on every device');
+const id = await phone.evaluate(() => window.calApp.traces.traces.at(-1).id);
+await phone.evaluate((i) => window.calApp.traces.update(i, { name: 'Renamed on phone' }), id);
+await host.waitForTimeout(600);
+check((await names(rem)).includes('Renamed on phone'), 'trace edits on one remote reach the others');
+await phone.evaluate((i) => window.calApp.traces.remove(i), id);
+await host.waitForTimeout(600);
+check((await names(host)).length === nTraces && (await names(rem)).length === nTraces, 'deleting a trace on a remote deletes it everywhere');
+
+// --- Measurement setup changed on a remote is applied on the host and the other remotes
+await phone.evaluate(() => { window.calApp.settings.tempC = 27; window.calApp.save(); });
+await host.waitForTimeout(1200);
+check((await host.evaluate(() => window.calApp.settings.tempC)) === 27 && (await rem.evaluate(() => window.calApp.settings.tempC)) === 27, 'shared settings changed on a remote sync to the host and other remotes');
+await lateCtx.close();
+await phoneCtx.close();
 
 // --- Host: Tools → Remote access shows addresses, PIN, QR and clients
 await host.keyboard.press('8');

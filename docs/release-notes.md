@@ -19,6 +19,13 @@ The builds are not code-signed yet:
 
 On first launch, choose **Explore with the demo room** to try every feature without hardware.
 
+## What's new in 1.2
+
+- **One shared session across devices:** the measurement host now keeps all results. A sweep started on a phone, tablet or the host runs on the host, shows its progress everywhere, and the result appears on every connected device (and on devices that connect later). Traces captured, renamed or deleted on any device appear on all of them. Calibration and channel setup changes on a remote reach the host and every other remote.
+- **Spectrum on remote devices fixed:** the graph follows the host's SPL calibration instead of going off-scale (the screen-filling blue area).
+- **Zoom and move buttons on every graph** (▲ ▼ − + Fit): always shown on touch screens, on hover with a mouse. *Fit* scales the graph to the data.
+- **Fullscreen button** in the top bar (or **F11**).
+
 ## What's new in 1.1
 
 - **Spectrum** and **Transfer** tabs, each with its own movable, resizable and detachable panels (graphs, SPL meter, input level meters).

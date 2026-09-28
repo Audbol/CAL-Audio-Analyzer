@@ -21,7 +21,7 @@ import { applyChartTheme } from './ui/theme';
 import { Dock } from './ui/dock';
 import { RemoteEngine } from './remote/client';
 import { HostLink, desktopBridge, hubPageInfo } from './remote/host';
-import type { HostStatus } from './remote/protocol';
+import { sharedOf, type HostStatus, type RemoteCommand, type SharedSettings, type SweepMeta, type SweepRequest } from './remote/protocol';
 
 export interface View {
   id: ViewId;
@@ -92,7 +92,10 @@ export class App {
     this.applyTheme();
     this.updateCal();
     this.build();
-    this.traces.onChange(() => this.renderTraces());
+    this.traces.onChange(() => {
+      this.renderTraces();
+      this.hostLink?.sendTraces();
+    });
     this.scheduleFrame();
     setInterval(() => this.updateHints(), 700);
     this.bindKeys();
@@ -109,6 +112,66 @@ export class App {
 
   save(): void {
     saveSettings(this.settings);
+    if (this.remote) this.pushShared();
+  }
+
+  // ---------------------------------------------------------------------------------------------------------
+  // Shared session state (host-authoritative: remotes send changes to the host, which broadcasts them)
+
+  /** Remote client: send a command to the measurement host. False when not connected. */
+  sendToHost(msg: RemoteCommand): boolean {
+    return this.remote ? (this.engine as RemoteEngine).send(msg) : false;
+  }
+
+  /** Remote client: send calibration / measurement setup changes made on this device to the host. */
+  private pushShared(): void {
+    if (!this.sharedApplied) return; // not yet synchronised with the host
+    const shared = JSON.stringify(sharedOf(this.settings));
+    if (shared === this.sharedApplied) return;
+    if (this.sendToHost({ t: 'cmd', cmd: 'setShared', shared: sharedOf(this.settings) })) this.sharedApplied = shared;
+  }
+
+  /** Host: apply measurement setup changes sent by a remote device. */
+  applyShared(shared: SharedSettings): void {
+    const s = this.settings;
+    const measChanged = JSON.stringify(s.measurements) !== JSON.stringify(shared.measurements);
+    s.splOffset = shared.splOffset;
+    s.splCalibrated = shared.splCalibrated;
+    s.micCal = shared.micCal;
+    s.tempC = shared.tempC;
+    if (measChanged) {
+      s.measurements = JSON.parse(JSON.stringify(shared.measurements));
+      if (this.engine.running) this.rebuildMeasurements();
+    }
+    this.spl.offsetDb = s.splOffset;
+    this.updateCal();
+    this.renderMeasurements();
+    this.save();
+  }
+
+  private lastSweep: { meta: SweepMeta; ir: ArrayLike<number> } | null = null;
+
+  /** Host: publish a finished sweep measurement to every connected device. */
+  shareSweep(meta: SweepMeta, ir: ArrayLike<number>): void {
+    this.lastSweep = { meta, ir };
+    this.hostLink?.sendSweep(meta, ir);
+  }
+
+  republishSweep(): void {
+    if (this.lastSweep) this.hostLink?.sendSweep(this.lastSweep.meta, this.lastSweep.ir);
+  }
+
+  private get roomView(): RoomView {
+    return this.views.find((v) => v.id === 'room') as RoomView;
+  }
+
+  /** Host: run a sweep requested by a remote device. */
+  runSweep(opts: SweepRequest, by: string): void {
+    this.roomView.measureWith(opts, by);
+  }
+
+  cancelSweep(): void {
+    this.roomView.cancel();
   }
 
   // ---------------------------------------------------------------------------------------------------------
@@ -295,6 +358,11 @@ export class App {
   private async initRemoteClient(): Promise<void> {
     const eng = this.engine as RemoteEngine;
     eng.onStatus = (st) => this.adoptHost(st);
+    // Traces and sweep results live on the host; this device mirrors them
+    this.traces.sink = (op) => void this.sendToHost({ t: 'cmd', cmd: 'traces', ops: [op] });
+    eng.onTraces = (list) => this.traces.setAll(list);
+    eng.onSweep = (meta, ir) => this.roomView.applyShared(meta, ir);
+    eng.onSweepProgress = (p) => this.roomView.showHostProgress(p.running, p.frac, p.text);
     eng.onChange = () => {
       this.renderTopState();
       if (eng.state === 'connected') this.reconnectDelay = 1500;
@@ -456,6 +524,37 @@ export class App {
     for (const v of this.views) v.invalidate?.();
   }
 
+  /** Whole-app fullscreen toggle (hidden where the browser can't do it, e.g. iPhone Safari). */
+  private fullscreenBtn(): HTMLElement | null {
+    type FsDoc = Document & { webkitFullscreenElement?: Element; webkitExitFullscreen?: () => void; webkitFullscreenEnabled?: boolean };
+    type FsEl = HTMLElement & { webkitRequestFullscreen?: () => void };
+    const doc = document as FsDoc;
+    if (!(doc.fullscreenEnabled || doc.webkitFullscreenEnabled)) return null;
+    const btn = h('button', { class: 'btn icon-btn fullscreen-btn', onclick: () => this.toggleFullscreen() });
+    const render = () => {
+      const on = !!(doc.fullscreenElement || doc.webkitFullscreenElement);
+      btn.replaceChildren(icon(on ? 'minimize' : 'maximize', 18));
+      btn.title = on ? 'Exit fullscreen — F11' : 'Fullscreen — F11';
+      btn.classList.toggle('on', on);
+    };
+    document.addEventListener('fullscreenchange', render);
+    document.addEventListener('webkitfullscreenchange', render);
+    render();
+    this.toggleFullscreen = () => {
+      if (doc.fullscreenElement || doc.webkitFullscreenElement) {
+        if (doc.exitFullscreen) doc.exitFullscreen().catch(() => undefined);
+        else doc.webkitExitFullscreen?.();
+      } else {
+        const el = document.documentElement as FsEl;
+        if (el.requestFullscreen) el.requestFullscreen({ navigationUI: 'hide' }).catch(() => this.toast('Fullscreen is not available here', 'warn'));
+        else el.webkitRequestFullscreen?.();
+      }
+    };
+    return btn;
+  }
+
+  toggleFullscreen: () => void = () => undefined;
+
   toggleTheme(): void {
     this.settings.theme = this.settings.theme === 'day' ? 'night' : 'day';
     this.save();
@@ -486,6 +585,7 @@ export class App {
     this.extraGroup = h(
       'div',
       { class: 'group extra-group' },
+      this.fullscreenBtn(),
       this.themeBtn,
       h('button', { class: 'btn icon-btn', title: 'Help & shortcuts (?)', onclick: () => showHelp(this) }, icon('help', 18)),
       this.remote ? null : h('button', { class: 'btn icon-btn', title: 'Setup assistant', onclick: () => showWizard(this) }, icon('sparkle', 18)),
@@ -1111,6 +1211,10 @@ export class App {
         case 'F':
           for (const x of this.measurements) x.frozen = !x.frozen;
           this.toast(this.measurements[0]?.frozen ? 'Display frozen' : 'Display live');
+          break;
+        case 'F11':
+          e.preventDefault();
+          this.toggleFullscreen();
           break;
         case '?':
           showHelp(this);

@@ -1,7 +1,8 @@
 import { AudioEngine, type EngineOptions } from '../audio/engine';
 import { RingBuffer } from '../dsp/ring';
 import type { GeneratorConfig } from '../audio/protocol';
-import { decodeAudio, type HostStatus, type HubMessage, type RemoteCommand } from './protocol';
+import { decodeAudio, decodeSweep, binaryType, BIN_SWEEP, type HostStatus, type HubMessage, type RemoteCommand, type SweepMeta, type SweepProgress } from './protocol';
+import type { Trace } from '../traces';
 
 const RING_SIZE = 1 << 21;
 
@@ -24,6 +25,10 @@ export class RemoteEngine extends AudioEngine {
   lastError = '';
   onStatus?: (s: HostStatus) => void;
   onChange?: () => void;
+  /** Shared session state published by the host. */
+  onTraces?: (traces: Trace[]) => void;
+  onSweep?: (meta: SweepMeta, ir: Float64Array) => void;
+  onSweepProgress?: (p: SweepProgress) => void;
   private closing = false;
 
   constructor(private pinProvider: () => string, private clientName: () => string) {
@@ -97,7 +102,7 @@ export class RemoteEngine extends AudioEngine {
     // Wait for the first status; ask the host to start its audio if it is stopped
     await this.waitFor(() => !!this.status, 4000);
     if (this.status && !this.status.running && this.allowControl) {
-      this.send({ t: 'cmd', cmd: 'start' });
+      this.sendLegacy({ t: 'cmd', cmd: 'start' });
       await this.waitFor(() => !!this.status?.running, 10000);
     }
   }
@@ -109,6 +114,12 @@ export class RemoteEngine extends AudioEngine {
 
   private onMessage(msg: HubMessage): void {
     switch (msg.t) {
+      case 'traces':
+        this.onTraces?.(msg.traces);
+        return;
+      case 'sweepProgress':
+        this.onSweepProgress?.(msg);
+        return;
       case 'welcome':
         this.allowControl = msg.allowControl;
         this.hostConnected = msg.hostConnected;
@@ -155,6 +166,11 @@ export class RemoteEngine extends AudioEngine {
 
   /** Live audio from the host: keep the local rings aligned to the host's absolute frame clock. */
   private onAudio(buf: ArrayBuffer): void {
+    if (binaryType(buf) === BIN_SWEEP) {
+      const { meta, ir } = decodeSweep(buf);
+      this.onSweep?.(meta, ir);
+      return;
+    }
     const { frame, inputs, gen } = decodeAudio(buf);
     if (inputs.length !== this.inputs.length) this.resetRings(inputs.length);
     const head = this.gen.written;
@@ -172,12 +188,19 @@ export class RemoteEngine extends AudioEngine {
     this.ingest(inputs, gen);
   }
 
-  private send(msg: RemoteCommand): void {
+  /** Send a command to the measurement host. Returns false when not connected. */
+  send(msg: RemoteCommand): boolean {
+    if (this.ws?.readyState !== WebSocket.OPEN) return false;
+    this.ws.send(JSON.stringify(msg));
+    return true;
+  }
+
+  private sendLegacy(msg: RemoteCommand): void {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));
   }
 
   override setGenerator(config: GeneratorConfig): void {
-    this.send({ t: 'cmd', cmd: 'setGenerator', config });
+    this.sendLegacy({ t: 'cmd', cmd: 'setGenerator', config });
   }
 
   /** Sweep playback happens on the host; the result carries host frame indices, which match our rings. */
@@ -195,7 +218,7 @@ export class RemoteEngine extends AudioEngine {
   }
 
   override stopPlayback(): void {
-    this.send({ t: 'cmd', cmd: 'stopPlay' });
+    this.sendLegacy({ t: 'cmd', cmd: 'stopPlay' });
     for (const [, w] of this.playWaiters) w.resolve({ start: 0, end: 0 });
     this.playWaiters.clear();
   }

@@ -94,6 +94,14 @@ check(hw.running && !hw.sim && hw.ch >= 1, `hardware input running with ${hw.ch}
 check(hw.peak > 0, 'fake microphone delivers signal');
 await page.screenshot({ path: `${out}/09-hardware.png` });
 
+// App fullscreen button
+await page.locator('.fullscreen-btn').click();
+await page.waitForTimeout(400);
+check(await page.evaluate(() => !!document.fullscreenElement), 'fullscreen button enters fullscreen');
+await page.locator('.fullscreen-btn').click();
+await page.waitForTimeout(400);
+check(await page.evaluate(() => !document.fullscreenElement), 'fullscreen button exits fullscreen');
+
 check(errors.length === 0, `no console errors ${errors.length ? JSON.stringify(errors.slice(0, 5)) : ''}`);
 await browser.close();
 server.httpServer.close();

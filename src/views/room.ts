@@ -123,18 +123,58 @@ export class RoomView implements View {
     this.dirty = true;
   }
 
-  private cancel(): void {
+  cancel(): void {
+    if (this.app.remote) {
+      this.app.sendToHost({ t: 'cmd', cmd: 'sweepCancel' });
+      return;
+    }
     if (this.running) this.running.cancelled = true;
     this.app.engine.stopPlayback();
   }
 
-  private setProgress(frac: number, text: string): void {
+  private setProgress(frac: number, text: string, running = !!this.running): void {
+    (this.progress.firstChild as HTMLElement).style.width = `${Math.round(frac * 100)}%`;
+    this.statusText.textContent = text;
+    // The host shows sweep progress on every connected device
+    if (!this.app.remote) this.app.hostLink?.sendSweepProgress(running, frac, text);
+  }
+
+  /** Remote devices: progress of a sweep running on the measurement host. */
+  showHostProgress(running: boolean, frac: number, text: string): void {
+    this.running = running ? (this.running ?? { cancelled: false }) : null;
+    this.setMeasureLabel();
     (this.progress.firstChild as HTMLElement).style.width = `${Math.round(frac * 100)}%`;
     this.statusText.textContent = text;
   }
 
-  async measure(): Promise<void> {
+  /** Host: run a sweep requested by a remote device (with that device's settings). */
+  async measureWith(req: { duration: number; level: number; repeats: number; f1: number; f2: number; measIdx: number }, by: string): Promise<void> {
+    if (this.running) return;
+    Object.assign(this.opts, { duration: req.duration, level: req.level, repeats: req.repeats, f1: req.f1, f2: req.f2, measIdx: req.measIdx });
+    this.show();
+    this.app.toast(`Sweep requested by ${by}`, 'info');
+    await this.measure(by);
+  }
+
+  /** Show a sweep result measured on the host (shared with every device). */
+  applyShared(meta: { spec: SweepSpec; peak: number; fs: number; channel: number; when: number; by: string }, ir: Float64Array): void {
+    const d: Deconvolution = { ir, fs: meta.fs, peak: meta.peak };
+    this.result = this.analyse(d, meta.spec, meta.channel);
+    this.result.when = new Date(meta.when);
+    this.renderResults();
+    const bb = this.result.acoustics.broadband;
+    this.showHostProgress(false, 1, `Measured on the host${meta.by ? ` (requested by ${meta.by})` : ''} at ${this.result.when.toLocaleTimeString()} · peak-to-noise ${this.result.peakDb.toFixed(0)} dB · T30 ${fmtS(bb.t30.rt)} · EDT ${fmtS(bb.edt.rt)}`);
+  }
+
+  async measure(by = 'the host'): Promise<void> {
     const app = this.app;
+    if (app.remote) {
+      // All measurements run on the host, which captures the sweep sample-accurately and shares the result
+      const sent = app.sendToHost({ t: 'cmd', cmd: 'sweep', opts: { duration: this.opts.duration, level: this.opts.level, repeats: this.opts.repeats, f1: this.opts.f1, f2: this.opts.f2, measIdx: this.opts.measIdx } });
+      if (!sent) return app.toast('Not connected to the measurement host', 'warn');
+      this.showHostProgress(true, 0, 'Starting the sweep on the measurement host…');
+      return;
+    }
     const e = app.engine;
     if (!e.running) {
       await app.start();
@@ -178,11 +218,15 @@ export class RoomView implements View {
       this.result = this.analyse(d, spec, cfg.mic);
       this.renderResults();
       const bb = this.result.acoustics.broadband;
-      this.setProgress(1, `Done · peak-to-noise ${this.result.peakDb.toFixed(0)} dB · T30 ${fmtS(bb.t30.rt)} · EDT ${fmtS(bb.edt.rt)}`);
+      this.running = null;
+      this.setProgress(1, `Done · peak-to-noise ${this.result.peakDb.toFixed(0)} dB · T30 ${fmtS(bb.t30.rt)} · EDT ${fmtS(bb.edt.rt)}`, false);
+      // Share the result with every connected device
+      app.shareSweep({ spec, peak: d.peak, fs: d.fs, channel: cfg.mic, when: Date.now(), by: by === 'the host' ? '' : by }, d.ir);
       if (this.result.peakDb < 40) app.toast('Low signal-to-noise ratio: raise the level, use a longer sweep or more repeats for reliable RT60.', 'warn');
     } catch (err) {
       if ((err as Error).message !== 'cancelled') app.toast(`Sweep failed: ${(err as Error).message}`, 'warn');
-      this.setProgress(0, 'Cancelled.');
+      this.running = null;
+      this.setProgress(0, 'Cancelled.', false);
     } finally {
       this.running = null;
       app.busy = false;

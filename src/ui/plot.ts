@@ -45,6 +45,8 @@ export interface PlotConfig {
   yLimits?: [number, number];
   formatX?: (x: number) => string;
   showNote?: boolean;
+  /** Fit the y axis to the data once when it first appears entirely outside the visible range. */
+  autoFit?: boolean;
 }
 
 const COLORS = CHART;
@@ -90,6 +92,7 @@ export class Plot {
     hint.className = 'plot-hint';
     hint.textContent = 'Scroll: zoom · Drag: pan · Double-click: reset';
     this.el.append(hint);
+    this.el.append(this.zoomBar());
     this.ctx = this.canvas.getContext('2d')!;
     new ResizeObserver(() => this.resize()).observe(this.el);
     this.bindEvents();
@@ -174,6 +177,98 @@ export class Plot {
       },
       { passive: false },
     );
+  }
+
+  /** Zoom / pan / fit buttons: the only way to change the scale on touch screens, handy with a mouse too. */
+  private zoomBar(): HTMLElement {
+    const bar = document.createElement('div');
+    bar.className = 'plot-zoom';
+    const btn = (label: string, title: string, act: string, run: () => void) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      b.title = title;
+      b.dataset.act = act;
+      b.addEventListener('pointerdown', (e) => e.stopPropagation());
+      b.addEventListener('dblclick', (e) => e.stopPropagation());
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        run();
+        this.draw();
+      });
+      bar.append(b);
+    };
+    btn('▲', 'Move up', 'up', () => this.panY(0.2));
+    btn('▼', 'Move down', 'down', () => this.panY(-0.2));
+    btn('−', 'Zoom out', 'out', () => this.zoomY(1.4));
+    btn('+', 'Zoom in', 'in', () => this.zoomY(1 / 1.4));
+    btn('Fit', 'Fit the scale to the data', 'fit', () => this.fitY());
+    return bar;
+  }
+
+  /** Scale the y range around its centre (k > 1 zooms out). */
+  zoomY(k: number): void {
+    const c = (this.cfg.yMin + this.cfg.yMax) / 2;
+    const half = ((this.cfg.yMax - this.cfg.yMin) / 2) * k;
+    const [lo, hi] = this.cfg.yLimits ?? [-Infinity, Infinity];
+    if (half * 2 > hi - lo) return this.setY(lo, hi);
+    this.setY(c - half, c + half);
+  }
+
+  /** Move the view by a fraction of its height (positive shows higher values). */
+  panY(frac: number): void {
+    const d = (this.cfg.yMax - this.cfg.yMin) * frac;
+    this.setY(this.cfg.yMin + d, this.cfg.yMax + d);
+  }
+
+  /** Values of the visible primary-axis series inside the x range (for fitting the scale). */
+  private visibleValues(): number[] {
+    const vals: number[] = [];
+    for (const s of this.series) {
+      if (s.secondary) continue;
+      const n = Math.min(s.x.length, s.y.length);
+      const step = Math.max(1, Math.floor(n / 600));
+      for (let i = 0; i < n; i += step) {
+        const x = s.x[i];
+        const y = s.y[i];
+        if (x >= this.cfg.xMin && x <= this.cfg.xMax && Number.isFinite(y) && y > -190) vals.push(y);
+      }
+    }
+    return vals;
+  }
+
+  /** Fit the y axis to the data currently shown (ignoring outliers). Returns false when there is no data. */
+  fitY(): boolean {
+    const vals = this.visibleValues().sort((a, b) => a - b);
+    if (vals.length < 4) return false;
+    const pick = (q: number) => vals[Math.min(vals.length - 1, Math.max(0, Math.round(q * (vals.length - 1))))];
+    let lo = pick(0.02);
+    let hi = pick(1);
+    const step = this.cfg.yStep ?? 10;
+    const span = Math.max(hi - lo, step * 2);
+    lo = Math.floor((lo - span * 0.15) / step) * step;
+    hi = Math.ceil((hi + span * 0.1) / step) * step;
+    this.setY(lo, hi);
+    return true;
+  }
+
+  private autoFitted = false;
+
+  private maybeAutoFit(): void {
+    if (!this.cfg.autoFit || this.autoFitted) return;
+    const vals = this.visibleValues();
+    if (vals.length < 20) return;
+    const outside = vals.filter((v) => v > this.cfg.yMax || v < this.cfg.yMin).length;
+    this.autoFitted = true;
+    if (outside / vals.length > 0.9) this.fitY();
+  }
+
+  /** Shift the y range and its reset defaults, e.g. when a calibration offset changes the units. */
+  shiftY(d: number): void {
+    this.defaults.yMin += d;
+    this.defaults.yMax += d;
+    this.cfg.yMin += d;
+    this.cfg.yMax += d;
   }
 
   resetZoom(): void {
@@ -265,6 +360,7 @@ export class Plot {
     const ctx = this.ctx;
     const { w, hgt: H, pad } = this;
     if (!w || !H) return;
+    this.maybeAutoFit();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.fillStyle = COLORS.bg;
     ctx.fillRect(0, 0, w, H);

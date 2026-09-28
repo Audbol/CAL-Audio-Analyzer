@@ -1139,6 +1139,53 @@ body.popout-body {
 .plot:not(:hover) .plot-hint {
   display: none;
 }
+.plot-zoom {
+  position: absolute;
+  right: 18px;
+  bottom: 30px;
+  display: flex;
+  gap: 3px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+.plot:hover .plot-zoom,
+.plot-zoom:focus-within {
+  opacity: 0.9;
+  pointer-events: auto;
+}
+.plot-zoom button {
+  min-width: 26px;
+  height: 24px;
+  padding: 0 6px;
+  font: 600 12px/1 Inter, system-ui, sans-serif;
+  color: var(--text);
+  background: var(--overlay);
+  border: 1px solid var(--border-2);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.plot-zoom button:hover {
+  border-color: var(--accent);
+}
+/* Touch screens have no hover: the buttons are the way to zoom and move, so always show them */
+@media (hover: none) {
+  .plot-zoom {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+}
+html.compact .plot-zoom {
+  opacity: 0.9;
+  pointer-events: auto;
+  right: 8px;
+  bottom: 26px;
+}
+html.compact .plot-zoom button {
+  min-width: 32px;
+  height: 30px;
+  font-size: 14px;
+}
 .plot-tip {
   display: none;
   position: absolute;

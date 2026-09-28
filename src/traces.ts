@@ -22,9 +22,21 @@ export interface Trace {
 
 const KEY = 'cal-analyzer-traces-v1';
 
+/** A change to the trace list, as exchanged between remote devices and the measurement host. */
+export type TraceOp =
+  | { op: 'add'; trace: Trace }
+  | { op: 'update'; id: string; patch: Partial<Trace> }
+  | { op: 'remove'; id: string }
+  | { op: 'clear' };
+
 export class TraceStore {
   traces: Trace[] = [];
   private listeners = new Set<() => void>();
+  /**
+   * Remote devices: changes are applied locally at once and forwarded here (to the measurement host, which
+   * owns the shared trace list and broadcasts it to every device). Nothing is persisted on the remote.
+   */
+  sink: ((op: TraceOp) => void) | null = null;
 
   constructor() {
     try {
@@ -39,13 +51,44 @@ export class TraceStore {
     this.listeners.add(fn);
   }
 
-  private emit(): void {
-    try {
-      localStorage.setItem(KEY, JSON.stringify(this.traces));
-    } catch {
-      /* ignore quota errors */
+  private emit(op?: TraceOp): void {
+    if (this.sink) {
+      if (op) this.sink(op);
+    } else {
+      try {
+        localStorage.setItem(KEY, JSON.stringify(this.traces));
+      } catch {
+        /* ignore quota errors */
+      }
     }
     for (const l of this.listeners) l();
+  }
+
+  /** Remote devices: replace the list with the host's shared list. */
+  setAll(traces: Trace[]): void {
+    this.traces = traces;
+    for (const l of this.listeners) l();
+  }
+
+  /** Host: apply a change made on a remote device. */
+  apply(op: TraceOp): void {
+    switch (op.op) {
+      case 'add':
+        if (!this.traces.some((t) => t.id === op.trace.id)) this.traces.push(op.trace);
+        break;
+      case 'update': {
+        const t = this.traces.find((x) => x.id === op.id);
+        if (t) Object.assign(t, op.patch);
+        break;
+      }
+      case 'remove':
+        this.traces = this.traces.filter((t) => t.id !== op.id);
+        break;
+      case 'clear':
+        this.traces = [];
+        break;
+    }
+    this.emit();
   }
 
   nextColor(): string {
@@ -62,24 +105,24 @@ export class TraceStore {
       ...t,
     } as Trace;
     this.traces.push(trace);
-    this.emit();
+    this.emit({ op: 'add', trace });
     return trace;
   }
 
   update(id: string, patch: Partial<Trace>): void {
     const t = this.traces.find((x) => x.id === id);
     if (t) Object.assign(t, patch);
-    this.emit();
+    this.emit({ op: 'update', id, patch });
   }
 
   remove(id: string): void {
     this.traces = this.traces.filter((t) => t.id !== id);
-    this.emit();
+    this.emit({ op: 'remove', id });
   }
 
   clear(): void {
     this.traces = [];
-    this.emit();
+    this.emit({ op: 'clear' });
   }
 
   /**

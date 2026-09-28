@@ -24,13 +24,15 @@ export class SpectrumView extends DockedView implements View {
   title = 'Spectrum';
   icon = 'bars' as const;
   private rta: Plot;
+  /** Calibration offset the RTA's y range is currently shifted by (the saved range is in dBFS). */
+  private appliedCal = 0;
 
   constructor(app: App) {
     super(app, 'spectrumLayout', defaultSpectrumLayout);
     const s = app.settings;
-    this.rta = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: s.rtaRange[0], yMax: s.rtaRange[1], yUnit: 'dBFS', yStep: 10, showNote: true, yLimits: [-200, 160] });
+    this.rta = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: s.rtaRange[0], yMax: s.rtaRange[1], yUnit: 'dBFS', yStep: 10, showNote: true, yLimits: [-200, 200], autoFit: true });
     this.rta.onRangeChange = (a, b) => {
-      s.rtaRange = [a, b];
+      s.rtaRange = [a - this.appliedCal, b - this.appliedCal];
       app.save();
     };
     this.mountDock([this.plotPanel('rta', 'Spectrum (RTA)', this.rta), ...this.meterPanels()], this.toolbar());
@@ -82,6 +84,11 @@ export class SpectrumView extends DockedView implements View {
         series.push({ id: t.id, label: t.name, x: t.freqs, y: t.offset ? t.mag.map((v) => v + t.offset) : t.mag, color: t.color, width: 1.2, dash: [5, 3] });
       }
       const cal = s.splCalibrated ? s.splOffset : 0;
+      if (cal !== this.appliedCal) {
+        // Keep the view on the data when SPL calibration (e.g. adopted from the measurement host) changes units
+        this.rta.shiftY(cal - this.appliedCal);
+        this.appliedCal = cal;
+      }
       const shift = (y: Float64Array) => (cal ? Array.from(y, (v) => v + cal) : y);
       for (const m of app.measurements) {
         if (!m.cfg.enabled) continue;

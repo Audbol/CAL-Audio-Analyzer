@@ -73,6 +73,9 @@ function createHub(options) {
   let wss = null;
   let host = null;
   let lastStatus = null;
+  /** Latest shared session state, replayed to devices that connect later. */
+  let lastTraces = null;
+  let lastSweep = null;
   let nextId = 1;
   const remotes = new Map(); // id -> { ws, name, address, dropped }
   const failures = new Map(); // ip -> { count, until }
@@ -168,6 +171,12 @@ function createHub(options) {
     for (const c of remotes.values()) send(c.ws, JSON.stringify({ t: 'host', connected: true }));
     ws.on('message', (data, isBinary) => {
       if (isBinary) {
+        // Byte 12 is the message type: 1 = sweep result (never dropped, cached for late joiners)
+        if (data.length > 12 && data[12] === 1) {
+          lastSweep = data;
+          for (const c of remotes.values()) send(c.ws, data);
+          return;
+        }
         // Live audio: fan out to every remote, dropping blocks for clients that can't keep up
         for (const c of remotes.values()) {
           if (c.ws.readyState !== 1) continue;
@@ -188,6 +197,12 @@ function createHub(options) {
       if (msg.t === 'status') {
         lastStatus = JSON.stringify(msg);
         for (const c of remotes.values()) send(c.ws, lastStatus);
+      } else if (msg.t === 'traces') {
+        lastTraces = JSON.stringify(msg);
+        for (const c of remotes.values()) send(c.ws, lastTraces);
+      } else if (msg.t === 'sweepProgress') {
+        const text = JSON.stringify(msg);
+        for (const c of remotes.values()) send(c.ws, text);
       } else if (msg.t === 'event' && remotes.has(msg.to)) {
         send(remotes.get(msg.to).ws, JSON.stringify(msg));
       } else if (msg.t === 'config') {
@@ -202,6 +217,7 @@ function createHub(options) {
       host = null;
       lastStatus = null;
       log('host disconnected');
+      // Traces and the last sweep stay available until the host reconnects and republishes them
       for (const c of remotes.values()) send(c.ws, JSON.stringify({ t: 'host', connected: false }));
     });
   }
@@ -214,6 +230,8 @@ function createHub(options) {
     log(`remote ${id} connected from ${address}`);
     send(ws, JSON.stringify({ t: 'welcome', id, allowControl: state.allowControl, hostConnected: !!host }));
     if (lastStatus) send(ws, lastStatus);
+    if (lastTraces) send(ws, lastTraces);
+    if (lastSweep) send(ws, lastSweep);
     notifyHost();
     ws.on('message', (data, isBinary) => {
       if (!host) return send(ws, JSON.stringify({ t: 'error', message: 'The measurement host is not connected.' }));

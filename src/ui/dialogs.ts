@@ -127,6 +127,7 @@ export function showHelp(app: App): void {
     ['F', 'Freeze / unfreeze display'],
     ['1 – 8', 'Switch views'],
     ['T', 'Day / night colour scheme'],
+    ['F11', 'Fullscreen'],
     ['?', 'This help'],
   ];
   const body = h(
