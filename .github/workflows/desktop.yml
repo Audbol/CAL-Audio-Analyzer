@@ -1,13 +1,19 @@
 name: Desktop app
 
 # Builds the standalone desktop program for Windows (installer + portable .exe), macOS (Intel + Apple Silicon)
-# and Linux (x64 + ARM64). Every push produces downloadable artifacts; pushing a tag like v1.1.0 also
-# publishes all of them as a GitHub Release.
+# and Linux (x64 + ARM64). Every push produces downloadable artifacts. A GitHub Release is published when a
+# tag like v1.1.0 is pushed, or when the workflow is run manually with "release" enabled (the tag v<version>
+# from package.json is then created on the built commit).
 on:
   push:
     branches: ['**']
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      release:
+        description: Publish a GitHub Release (tag v<package.json version>)
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -51,7 +57,7 @@ jobs:
 
   release:
     # Publish once, after every platform built successfully
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release)
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -61,9 +67,18 @@ jobs:
           path: dist-release
           merge-multiple: true
       - run: ls -la dist-release
+      - name: Determine version tag
+        id: tag
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT";
+          else echo "tag=v$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"; fi
       - uses: softprops/action-gh-release@v2
         with:
-          name: CAL Audio Analyzer ${{ github.ref_name }}
+          tag_name: ${{ steps.tag.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: CAL Audio Analyzer ${{ steps.tag.outputs.tag }}
+          make_latest: true
           body_path: docs/release-notes.md
           files: dist-release/*
           fail_on_unmatched_files: true
