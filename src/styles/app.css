@@ -28,8 +28,9 @@
   --meter-mid: #1b170b;
   --meter-hi: #1f0e0f;
   --meter-hold: #ffffff;
-  --overlay: rgba(var(--shadow-rgb), 0.72);
-  --scrim: rgba(var(--shadow-rgb), 0.78);
+  --overlay: rgba(0, 0, 0, 0.72);
+  --scrim: rgba(0, 0, 0, 0.78);
+  --tip-bg: rgba(10, 10, 12, 0.96);
   --shadow-rgb: 0, 0, 0;
   --start-on: #ff8a96;
   --gen-on: #ffc857;
@@ -71,6 +72,7 @@
   --meter-hi: #f5d0d0;
   --meter-hold: #000000;
   --overlay: rgba(255, 255, 255, 0.85);
+  --tip-bg: rgba(255, 255, 255, 0.97);
   --scrim: rgba(40, 44, 52, 0.55);
   --shadow-rgb: 30, 35, 45;
   --start-on: #b00020;
@@ -1118,7 +1120,7 @@ body.popout-body {
   left: 56px;
   font-size: 11px;
   font-weight: 600;
-  color: rgba(236, 236, 238, 0.7);
+  color: var(--text-2);
   pointer-events: none;
   background: var(--overlay);
   padding: 1px 6px;
@@ -1129,7 +1131,8 @@ body.popout-body {
   top: 8px;
   right: 18px;
   font-size: 10px;
-  color: rgba(236, 236, 238, 0.25);
+  color: var(--dim);
+  opacity: 0.6;
   pointer-events: none;
 }
 .plot:not(:hover) .plot-hint {
@@ -1139,7 +1142,8 @@ body.popout-body {
   display: none;
   position: absolute;
   pointer-events: none;
-  background: rgba(10, 10, 12, 0.96);
+  background: var(--tip-bg);
+  color: var(--text);
   border: 1px solid var(--border-2);
   border-radius: 6px;
   padding: 6px 9px;
