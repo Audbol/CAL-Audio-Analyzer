@@ -277,7 +277,7 @@ describe('EQ', () => {
 });
 
 describe('mic calibration', () => {
-  it('parses a miniDSP style file', () => {
+  it('parses a quoted-sensitivity calibration file', () => {
     const cal = parseMicCal(`"Sens Factor =-1.2dB, SERNO: 7000000"\n20 -2.0\n1000 0.0\n20000 3.0\n`);
     expect(cal.sensitivity).toBeCloseTo(-1.2);
     expect(cal.freqs).toEqual([20, 1000, 20000]);

@@ -47,7 +47,7 @@ export class EqView implements View {
         h('button', { class: 'btn accent', onclick: () => this.run() }, icon('sparkle', 15), 'Calculate EQ'),
       ),
       this.summary,
-      h('div', { class: 'eq-split' }, h('div', { class: 'pane fill' }, this.plot.el), h('div', { class: 'peq-side' }, h('h4', {}, 'Parametric EQ'), this.list, h('div', { class: 'row gap4' }, h('button', { class: 'btn small', onclick: () => this.copy('apo') }, 'Copy (Equalizer APO / REW)'), h('button', { class: 'btn small', onclick: () => this.copy('csv') }, 'Copy CSV')))),
+      h('div', { class: 'eq-split' }, h('div', { class: 'pane fill' }, this.plot.el), h('div', { class: 'peq-side' }, h('h4', {}, 'Parametric EQ'), this.list, h('div', { class: 'row gap4' }, h('button', { class: 'btn small', onclick: () => this.copy('text') }, 'Copy filter text'), h('button', { class: 'btn small', onclick: () => this.copy('csv') }, 'Copy CSV')))),
     );
     this.summary.textContent = 'Choose a source measurement and press Calculate EQ. Use a spatially averaged trace for best results.';
   }
@@ -122,10 +122,10 @@ export class EqView implements View {
     });
   }
 
-  private copy(fmt: 'apo' | 'csv'): void {
+  private copy(fmt: 'text' | 'csv'): void {
     if (!this.filters.length) return;
     const text =
-      fmt === 'apo'
+      fmt === 'text'
         ? this.filters.map((f, i) => `Filter ${i + 1}: ON PK Fc ${f.f.toFixed(1)} Hz Gain ${f.gain.toFixed(1)} dB Q ${f.q.toFixed(2)}`).join('\n')
         : ['type,frequency_hz,gain_db,q', ...this.filters.map((f) => `${f.type},${f.f},${f.gain},${f.q}`)].join('\n');
     navigator.clipboard?.writeText(text).then(

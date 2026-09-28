@@ -10,7 +10,7 @@ export interface MicCalibration {
 }
 
 /**
- * Parse common microphone calibration formats (miniDSP / Dayton / REW / FRD):
+ * Parse common microphone calibration formats (plain text / CSV / FRD):
  * lines of `freq  dB  [phase]`, optional `"Sens Factor =-1.23dB"` header, comments with `*`, `#`, `;` or quotes.
  */
 export function parseMicCal(text: string, name = 'Microphone'): MicCalibration {

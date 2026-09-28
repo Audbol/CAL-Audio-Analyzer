@@ -189,7 +189,7 @@ export function traceToCsv(t: Trace): string {
   return lines.join('\n');
 }
 
-/** Parse CSV / REW / FRD style text: frequency, magnitude [, phase [, coherence]]. */
+/** Parse CSV / FRD / plain measurement text: frequency, magnitude [, phase [, coherence]]. */
 export function parseTraceText(text: string): Pick<Trace, 'freqs' | 'mag' | 'phase' | 'coh'> {
   const freqs: number[] = [];
   const mag: number[] = [];

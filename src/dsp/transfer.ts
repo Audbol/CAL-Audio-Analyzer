@@ -38,7 +38,7 @@ interface WindowState {
 /**
  * Multi-time-window dual-channel FFT transfer function.
  * Each FFT size covers one frequency band so resolution is roughly constant per octave, with long windows at
- * low frequencies and short windows at high frequencies (constant-Q style, like Smaart/OSM "MTW").
+ * low frequencies and short windows at high frequencies (constant-Q style multi-time-window analysis).
  */
 export class TransferFunction {
   private windows: WindowState[] = [];

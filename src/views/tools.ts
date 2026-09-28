@@ -62,7 +62,7 @@ export class ToolsView implements View {
       'section',
       { class: 'tool-card' },
       h('h4', {}, icon('upload', 15), ' Microphone calibration file'),
-      h('p', { class: 'dim small' }, 'Load the frequency response file supplied with your measurement mic (miniDSP UMIK, Dayton, Sonarworks, REW/FRD text). The correction is applied to RTA, transfer function and sweep results.'),
+      h('p', { class: 'dim small' }, 'Load the frequency response file supplied with your measurement mic (.txt, .cal, .frd or .csv: frequency, dB and optionally phase). The correction is applied to RTA, transfer function and sweep results.'),
       h('div', { class: 'row gap8' }, h('button', { class: 'btn small', onclick: () => file.click() }, icon('upload', 14), 'Load file…'), h('button', { class: 'btn small ghost', onclick: () => { s.micCal = null; this.app.updateCal(); this.app.save(); this.renderStatus(); } }, 'Remove')),
       this.micStatus,
       file,

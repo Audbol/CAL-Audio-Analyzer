@@ -785,7 +785,7 @@ export class App {
           h(
             'div',
             { class: 'row gap4' },
-            h('button', { class: 'btn small ghost', onclick: () => fileInput.click(), title: 'Import CSV / REW / FRD text' }, icon('upload', 14)),
+            h('button', { class: 'btn small ghost', onclick: () => fileInput.click(), title: 'Import measurement text (CSV, FRD, TXT)' }, icon('upload', 14)),
             h('button', { class: 'btn small ghost', onclick: () => this.averageSelected(), title: 'Power-average the selected traces' }, 'Avg'),
           ),
         ),
