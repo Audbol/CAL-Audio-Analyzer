@@ -1,0 +1,94 @@
+# CAL Audio Analyzer
+
+A professional, real-time **sound system and room acoustics analyzer** that runs entirely in the browser. It sits in the same space as Smaart, REW and Open Sound Meter, with a focus on being approachable: a guided setup, a live assistant that explains what the data means, and a built-in virtual room so you can learn every feature without any hardware.
+
+![Live view: RTA, transfer function magnitude with coherence, and phase](docs/screenshot-live.png)
+
+## Features
+
+| Area | What you get |
+| --- | --- |
+| **Dual-channel transfer function** | Multi-time-window FFT (32k → 1k, constant ~1/48-octave resolution), magnitude, phase and coherence. Coherence blanking fades unreliable data. Averaging from none to 64 frames, or cumulative. Smoothing from 1/48 to 1/1 octave. |
+| **Delay finder** | GCC-PHAT cross-correlation with sub-sample refinement, confidence estimate and polarity detection. Converts to distance using the air temperature. |
+| **Internal or loopback reference** | Use the generator's own signal as the reference (works with any interface), or a hardware loopback for program-material measurements. |
+| **RTA / spectrum** | True fractional-octave band power (pink noise reads flat) or narrowband FFT with peak picking. FFT sizes 4k–64k, peak hold, dBFS or calibrated dB SPL. |
+| **Spectrogram** | Scrolling log-frequency spectrogram of any channel, with an adjustable range. |
+| **Live impulse response** | Linear IR and energy-time curve from the averaged transfer function. One click sets the delay from the IR peak. Shows arrival time, distance and polarity. |
+| **Sweep & room acoustics** | Exponential sweep (Farina) with synchronous averaging. Frequency response with selectable time windows (5 ms gated up to full). Harmonic distortion (H2, H3, THD). **ISO 3382** parameters per octave or 1/3 octave: EDT, T20, T30, C50, C80, D50 and centre time, using Lundeby noise-floor truncation and compensation. Fit-quality and INR indicators. Impulse response export as WAV. |
+| **EQ Assistant** | Automatic parametric EQ against Flat, House, Tilt or X-curve targets. Prefers cuts, limits boosts and ignores low-coherence regions. Filters can be edited, the predicted result is shown, and filters export to Equalizer APO/REW text or CSV. |
+| **SPL meter** | IEC 61672 A/C/Z weighting, Fast/Slow, Leq, Lmax, peak and a 2-minute history. Calibrates with a 94/114 dB calibrator or a reference meter. |
+| **Traces** | Capture, overlay, offset, rename, spatially average (power average), and import/export CSV, REW and FRD text. Traces persist in the browser. |
+| **Tools** | Mic calibration file loader (miniDSP/UMIK, Dayton, FRD), room mode calculator with Schroeder frequency and critical distance, delay/distance/wavelength calculator, and a weighting table. |
+| **Usability** | Setup wizard, a context-aware assistant (clipping, missing excitation, unset delay, low coherence, and so on), hover readouts with note name and wavelength, zoom and pan, keyboard shortcuts, and input/generator meters with clip indicators. |
+
+![Sweep & Room: ISO 3382 parameters per octave band](docs/screenshot-room.png)
+
+## Quick start
+
+```bash
+npm install
+npm run dev        # open the printed URL (localhost is required for microphone access)
+```
+
+On first launch, choose **Explore with the demo room** to try everything with the built-in virtual loudspeaker and room. Nothing is played through your speakers. To measure a real system, choose **Measure a real system** and follow the wizard.
+
+### Typical system-tuning workflow
+
+1. Start audio and select your interface. Route **Out 1/2** to the system, put the measurement mic on **In 1**, and pick a reference: *Generator (internal)* or a loopback on *In 2*.
+2. Turn on pink noise (Space) and raise the level until the mic reads 10–20 dB above the background.
+3. Press **Find** (or `D`) to time-align the reference. Coherence should rise toward 100 %.
+4. Capture traces (`C`) at several positions, select them and press **Avg** for a spatial average.
+5. Open the **EQ Assistant**, pick the averaged trace and a target, then apply and verify the suggested filters.
+6. For room acoustics, run a sweep in **Sweep & Room** to get RT60, EDT, clarity and definition per band.
+
+### Keyboard shortcuts
+
+| Key | Action |
+| --- | --- |
+| Enter | Start / stop audio |
+| Space | Generator on/off |
+| D | Find delay |
+| C | Capture transfer function |
+| R | Reset averages |
+| P | Peak hold |
+| F | Freeze display |
+| 1–7 | Switch views |
+| ? | Help |
+
+## Architecture
+
+```
+src/
+  dsp/            Pure, unit-tested DSP (no DOM)
+    fft.ts          radix-2 FFT with cached tables
+    transfer.ts     multi-time-window dual-channel transfer function (H1, coherence)
+    spectrum.ts     RTA / FFT spectrum (sine-referenced dBFS, band power)
+    delay.ts        GCC-PHAT delay estimation
+    sweep.ts        log sweep, regularised deconvolution, Farina harmonic distortion
+    acoustics.ts    Schroeder/Lundeby decay analysis, ISO 3382 parameters, ETC, room modes
+    weighting.ts    IEC 61672 A/C weighting (analytic + optimised IIR)
+    spl.ts          sound level meter
+    eq.ts           PEQ model and auto-EQ fitting
+    calibration.ts  mic calibration file parsing
+  audio/
+    processor.ts    AudioWorklet: generator + sample-accurate multichannel capture
+    simulator.ts    virtual loudspeaker + room for demo mode
+    engine.ts       AudioContext, device handling, per-channel ring buffers
+  views/          Live, Spectrogram, Impulse, Sweep & Room, EQ, SPL, Tools
+  ui/             canvas plot, spectrogram, dialogs, DOM helpers
+```
+
+Audio is captured in an AudioWorklet and written into per-channel ring buffers that are addressed by absolute sample index. That keeps every channel, including the internal generator reference, sample-aligned for dual-channel analysis. All processing happens locally, and audio never leaves the device.
+
+## Testing
+
+```bash
+npm run check      # TypeScript + DSP unit tests (FFT, weighting, SPL, RTA, TF, delay, sweep, THD, RT60, EQ…)
+npm run test:e2e   # builds, then drives the app in headless Chromium (demo room + fake mic) and verifies results
+```
+
+The end-to-end test checks that the delay finder recovers the virtual room's 12.5 ms propagation delay, that coherence is high after alignment, that the 47 Hz room mode appears in the transfer function, that the sweep's reverberation time is plausible, and that the hardware input path works.
+
+## Browser notes
+
+Works best in Chromium-based browsers (Chrome, Edge) and Firefox. Microphone access requires HTTPS or `localhost`. Multichannel interfaces expose as many input channels as the browser and driver allow. Echo cancellation, noise suppression and automatic gain control are disabled automatically for measurement accuracy.

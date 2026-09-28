@@ -225,6 +225,20 @@ describe('room acoustics', () => {
     expect(res.t20.rt).toBeLessThan(rt * 1.1);
   });
 
+  it('is robust to a silent gap between direct sound and reverberant tail', () => {
+    const rt = 0.6;
+    const r = rng(33);
+    const n = FS * 2;
+    const ir = new Float64Array(n);
+    const k = Math.log(10 ** 3) / rt;
+    const gap = Math.round(0.05 * FS);
+    ir[0] = 1;
+    for (let i = gap; i < n; i++) ir[i] = 0.05 * r() * Math.exp((-k * i) / FS) + r() * 1e-7;
+    const res = analyseIR(ir, FS);
+    expect(res.t30.rt).toBeGreaterThan(rt * 0.85);
+    expect(res.t30.rt).toBeLessThan(rt * 1.15);
+  });
+
   it('computes axial modes of a room', () => {
     const modes = roomModes(5, 4, 3, 343, 100);
     expect(modes[0].f).toBeCloseTo(34.3, 1);

@@ -66,29 +66,84 @@ export function bandFilter(ir: Float64Array, fs: number, fc: number, fraction: 1
   return re.slice(0, ir.length);
 }
 
+interface Truncation {
+  /** Index where the decay meets the noise floor. */
+  end: number;
+  /** Noise floor (mean energy per sample). */
+  noise: number;
+  /** Energy of the extrapolated decay beyond `end` (Lundeby compensation). */
+  tail: number;
+}
+
+function meanRange(e: Float64Array, a: number, b: number): number {
+  let s = 0;
+  for (let i = a; i < b; i++) s += e[i];
+  return s / Math.max(1, b - a);
+}
+
 /**
- * Estimate the noise floor and the truncation point where the decay meets it
- * (simplified Lundeby iteration).
+ * Noise floor, truncation point and late-tail compensation after Lundeby et al. (1995):
+ * iteratively fit the smoothed decay, intersect it with the noise floor and re-estimate the noise from the
+ * region well past the intersection. Falls back to a backward scan when no decay slope can be fitted.
  */
-function truncation(energy: Float64Array, fs: number, start: number): { end: number; noise: number } {
-  const n = energy.length;
-  const tail = Math.max(Math.round(n * 0.1), 1);
-  let noise = 0;
-  for (let i = n - tail; i < n; i++) noise += energy[i];
-  noise /= tail;
-  // Smoothed envelope in 10 ms blocks
+function truncation(e: Float64Array, fs: number, peakIdx: number, centre: number): Truncation {
+  const n = e.length;
+  const tailN = Math.max(Math.round(n * 0.1), 1);
+  let noise = meanRange(e, n - tailN, n);
+  let blkS = centre > 0 && centre < 250 ? 0.03 : centre > 0 && centre < 1000 ? 0.02 : 0.01;
+  let tc = NaN;
+  let slope = NaN;
+  for (let iter = 0; iter < 6; iter++) {
+    const blk = Math.max(8, Math.round(blkS * fs));
+    const noiseDb = 10 * Math.log10(Math.max(noise, 1e-300));
+    const t: number[] = [];
+    const v: number[] = [];
+    let maxDb = -Infinity;
+    for (let i = peakIdx; i + blk <= n; i += blk) {
+      const db = 10 * Math.log10(Math.max(meanRange(e, i, i + blk), 1e-300));
+      maxDb = Math.max(maxDb, db);
+      if (db < noiseDb + 5) break;
+      t.push((i + blk / 2 - peakIdx) / fs);
+      v.push(db);
+    }
+    // Fit only the part of the decay 5 dB below its maximum (skip the direct sound)
+    const xs: number[] = [];
+    const ys: number[] = [];
+    for (let k = 0; k < t.length; k++) if (v[k] <= maxDb - 5) {
+      xs.push(t[k]);
+      ys.push(v[k]);
+    }
+    if (xs.length < 3) break;
+    const fit = linearFit(xs, ys);
+    if (!(fit.slope < 0)) break;
+    const newTc = (noiseDb - fit.intercept) / fit.slope;
+    if (!Number.isFinite(newTc) || newTc <= 0) break;
+    const converged = Number.isFinite(tc) && Math.abs(newTc - tc) < 0.01 * tc;
+    tc = newTc;
+    slope = fit.slope;
+    // Re-estimate noise starting where the decay would be 10 dB below the current noise estimate
+    const nStart = peakIdx + Math.round((tc + 10 / -slope) * fs);
+    noise = n - nStart >= tailN ? meanRange(e, nStart, n) : meanRange(e, n - tailN, n);
+    // About 6 blocks per 10 dB of decay
+    blkS = Math.min(0.05, Math.max(0.004, 10 / -slope / 6));
+    if (converged) break;
+  }
+  if (Number.isFinite(tc) && slope < 0) {
+    const end = Math.min(n, peakIdx + Math.round(tc * fs));
+    const a = (-slope * Math.LN10) / 10; // energy decay rate (1/s)
+    const tail = noise / (1 - Math.exp(-a / fs));
+    return { end, noise, tail };
+  }
+  // Fallback: last 10 ms block clearly above the noise floor
   const blk = Math.max(1, Math.round(fs * 0.01));
   let end = n;
-  for (let i = start; i + blk < n; i += blk) {
-    let s = 0;
-    for (let j = 0; j < blk; j++) s += energy[i + j];
-    s /= blk;
-    if (s <= noise * 1.5 && i > start + blk * 3) {
-      end = i;
+  for (let i = n - tailN - blk; i > peakIdx; i -= blk) {
+    if (meanRange(e, i, i + blk) > noise * 2) {
+      end = Math.min(n, i + blk);
       break;
     }
   }
-  return { end, noise };
+  return { end, noise, tail: 0 };
 }
 
 function linearFit(xs: number[], ys: number[]): { slope: number; intercept: number; r: number } {
@@ -157,13 +212,15 @@ export function analyseIR(ir: Float64Array, fs: number, centre = 0, label = 'Bro
       break;
     }
   }
-  const { end, noise } = truncation(e, fs, peakIdx);
-  // Schroeder backward integration with noise subtraction and compensation for the truncated tail
-  const decay = new Float64Array(end - start);
-  let acc = 0;
+  const { end, noise, tail } = truncation(e, fs, peakIdx, centre);
+  // Schroeder backward integration from the truncation point, with noise subtraction and compensation for
+  // the energy of the decay that is hidden below the noise floor
+  const decay = new Float64Array(Math.max(1, end - start));
+  let acc = tail;
+  const floor = tail > 0 ? tail * 1e-3 : 1e-30;
   for (let i = end - 1; i >= start; i--) {
-    acc += Math.max(e[i] - noise, 0);
-    decay[i - start] = acc;
+    acc += e[i] - noise;
+    decay[i - start] = Math.max(acc, floor);
   }
   const total = decay[0] || 1e-30;
   const decayDb = new Float64Array(decay.length);
@@ -186,6 +243,7 @@ export function analyseIR(ir: Float64Array, fs: number, centre = 0, label = 'Bro
     eAll += v;
     tSum += v * ((i - start) / fs);
   }
+  eAll += tail;
   const inr = 10 * Math.log10(peak / Math.max(noise, 1e-30));
   const stepN = Math.max(1, Math.round(decayStep * fs));
   const plot = new Float32Array(Math.ceil(decayDb.length / stepN));
@@ -208,7 +266,8 @@ export function analyseIR(ir: Float64Array, fs: number, centre = 0, label = 'Bro
 export function roomAcoustics(ir: Float64Array, fs: number, fraction: 1 | 3 = 1): AcousticsResult {
   const decayStep = 0.005;
   const broadband = analyseIR(ir, fs, 0, 'Broadband', decayStep);
-  const centres = bandCentres(fraction, fraction === 1 ? 60 : 45, Math.min(fs / 2.5, 17000));
+  // ISO 3382 range: 63 Hz – 8 kHz octaves (50 Hz – 10 kHz thirds), capped well below Nyquist
+  const centres = bandCentres(fraction, fraction === 1 ? 60 : 48, Math.min(fs / 4, fraction === 1 ? 8500 : 10500));
   const bands = centres.map((fc) => {
     const label = fc >= 1000 ? `${Math.round(fc / 100) / 10}k` : `${Math.round(fc)}`;
     return analyseIR(bandFilter(ir, fs, fc, fraction), fs, fc, label, decayStep);

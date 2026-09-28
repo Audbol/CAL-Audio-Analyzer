@@ -1,0 +1,157 @@
+import type { App, View } from '../app';
+import { Plot } from '../ui/plot';
+import { h, icon, select, clear } from '../ui/dom';
+import { autoEq, eqResponse, TARGETS, type AutoEqResult, type PeqFilter } from '../dsp/eq';
+import { smoothCurve } from '../dsp/freq';
+
+/**
+ * EQ Assistant: fits parametric EQ filters to bring a measurement (live or stored trace) to a target curve.
+ * Cuts are preferred and boosts limited, and low-coherence regions are ignored, following good practice for
+ * system tuning. Filters can be edited and exported to common formats.
+ */
+export class EqView implements View {
+  id = 'eq' as const;
+  title = 'EQ Assistant';
+  icon = 'sliders' as const;
+  el = h('div', { class: 'eq' });
+  private plot: Plot;
+  private source = 'live:0';
+  private target = TARGETS[0].id;
+  private opt = { fMin: 40, fMax: 12000, maxFilters: 8, maxBoost: 3, maxCut: 12, minCoherence: 0.6 };
+  private result: AutoEqResult | null = null;
+  private filters: PeqFilter[] = [];
+  private freqs: Float64Array | number[] = [];
+  private srcHost = h('span', {});
+  private list = h('div', { class: 'peq-list' });
+  private summary = h('div', { class: 'info-strip' });
+  private dirty = true;
+
+  constructor(private app: App) {
+    this.plot = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: -18, yMax: 18, yUnit: 'dB', yStep: 3, title: 'Deviation from target, EQ and predicted result', showNote: true, yLimits: [-60, 60] });
+    const num = (key: keyof typeof this.opt, label: string, step: string, unit = '') => {
+      const i = h('input', { type: 'number', class: 'num', value: String(this.opt[key]), step });
+      i.addEventListener('change', () => ((this.opt[key] as number) = +i.value));
+      return h('label', { class: 'inline' }, h('span', { class: 'tb-label' }, label), i, unit ? h('span', { class: 'unit' }, unit) : null);
+    };
+    this.el.append(
+      h(
+        'div',
+        { class: 'toolbar wrap' },
+        h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Source'), this.srcHost),
+        h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Target'), select(TARGETS.map((t) => ({ value: t.id, label: t.label })), this.target, (v) => { this.target = v; })),
+        h('div', { class: 'tb-group' }, num('fMin', 'From', '1', 'Hz'), num('fMax', 'to', '100', 'Hz')),
+        h('div', { class: 'tb-group' }, num('maxFilters', 'Filters', '1'), num('maxBoost', 'Max boost', '0.5', 'dB'), num('maxCut', 'Max cut', '0.5', 'dB')),
+        h('div', { class: 'spacer' }),
+        h('button', { class: 'btn accent', onclick: () => this.run() }, icon('sparkle', 15), 'Calculate EQ'),
+      ),
+      this.summary,
+      h('div', { class: 'eq-split' }, h('div', { class: 'pane fill' }, this.plot.el), h('div', { class: 'peq-side' }, h('h4', {}, 'Parametric EQ'), this.list, h('div', { class: 'row gap4' }, h('button', { class: 'btn small', onclick: () => this.copy('apo') }, 'Copy (Equalizer APO / REW)'), h('button', { class: 'btn small', onclick: () => this.copy('csv') }, 'Copy CSV')))),
+    );
+    this.summary.textContent = 'Choose a source measurement and press Calculate EQ. Use a spatially averaged trace for best results.';
+  }
+
+  show(): void {
+    const opts = [
+      ...this.app.measurements.map((m, i) => ({ value: `live:${i}`, label: `Live: ${m.cfg.name}` })),
+      ...this.app.traces.traces.filter((t) => t.kind !== 'rta').map((t) => ({ value: `trace:${t.id}`, label: `Trace: ${t.name}` })),
+    ];
+    if (!opts.length) opts.push({ value: 'live:0', label: 'Live: (start audio)' });
+    if (!opts.find((o) => o.value === this.source)) this.source = opts[0].value;
+    this.srcHost.replaceChildren(select(opts, this.source, (v) => (this.source = v)));
+    this.dirty = true;
+  }
+
+  private getSource(): { freqs: ArrayLike<number>; mag: ArrayLike<number>; coh: ArrayLike<number> | null; name: string } | null {
+    const [kind, id] = this.source.split(':');
+    if (kind === 'live') {
+      const m = this.app.measurements[+id];
+      if (!m || !m.tf.ready) return null;
+      return { freqs: this.app.grid, mag: m.mag, coh: m.result.coh, name: m.cfg.name };
+    }
+    const t = this.app.traces.traces.find((x) => x.id === id);
+    if (!t) return null;
+    return { freqs: t.freqs, mag: t.mag.map((v) => v + t.offset), coh: t.coh ?? null, name: t.name };
+  }
+
+  private run(): void {
+    const src = this.getSource();
+    if (!src) return this.app.toast('No data: start audio with the generator on, or pick a stored trace', 'warn');
+    const target = TARGETS.find((t) => t.id === this.target)!;
+    // Work on a 1/6-octave smoothed copy — narrower features are rarely position-independent
+    const lin = Array.from(src.mag, (v) => Math.pow(10, v / 20));
+    const sm = smoothCurve(src.freqs, lin, 6);
+    const magDb = Float64Array.from(sm, (v) => 20 * Math.log10(Math.max(v, 1e-9)));
+    this.freqs = Array.from(src.freqs);
+    this.result = autoEq(src.freqs, magDb, src.coh, target, this.opt);
+    this.filters = this.result.filters.map((f) => ({ ...f }));
+    this.summary.innerHTML = this.filters.length
+      ? `<b>${this.filters.length} filters</b> for “${src.name}” → ${target.label}. RMS deviation ${this.result.rmsBefore.toFixed(1)} dB → <b>${this.result.rmsAfter.toFixed(1)} dB</b>. Tip: verify with a new measurement, and prefer fixing large dips with placement/delay rather than boost.`
+      : 'The response is already within ±1 dB of the target in the selected range — no EQ needed.';
+    this.renderList();
+    this.dirty = true;
+  }
+
+  private renderList(): void {
+    clear(this.list);
+    if (!this.filters.length) {
+      this.list.append(h('div', { class: 'empty' }, 'No filters yet.'));
+      return;
+    }
+    this.filters.forEach((f, i) => {
+      const inp = (key: 'f' | 'gain' | 'q', step: string) => {
+        const el = h('input', { type: 'number', class: 'num', value: String(f[key]), step });
+        el.addEventListener('change', () => {
+          f[key] = +el.value;
+          this.dirty = true;
+        });
+        return el;
+      };
+      this.list.append(
+        h(
+          'div',
+          { class: 'peq' },
+          h('span', { class: 'idx' }, String(i + 1)),
+          h('label', {}, 'Fc', inp('f', '1')),
+          h('label', {}, 'Gain', inp('gain', '0.1')),
+          h('label', {}, 'Q', inp('q', '0.05')),
+          h('button', { class: 'btn tiny ghost', title: 'Remove', onclick: () => { this.filters.splice(i, 1); this.renderList(); this.dirty = true; } }, icon('x', 12)),
+        ),
+      );
+    });
+  }
+
+  private copy(fmt: 'apo' | 'csv'): void {
+    if (!this.filters.length) return;
+    const text =
+      fmt === 'apo'
+        ? this.filters.map((f, i) => `Filter ${i + 1}: ON PK Fc ${f.f.toFixed(1)} Hz Gain ${f.gain.toFixed(1)} dB Q ${f.q.toFixed(2)}`).join('\n')
+        : ['type,frequency_hz,gain_db,q', ...this.filters.map((f) => `${f.type},${f.f},${f.gain},${f.q}`)].join('\n');
+    navigator.clipboard?.writeText(text).then(
+      () => this.app.toast('Filters copied to clipboard', 'ok'),
+      () => this.app.toast('Clipboard not available', 'warn'),
+    );
+  }
+
+  tick(): void {
+    if (!this.dirty) return;
+    this.dirty = false;
+    const r = this.result;
+    if (r) {
+      const x = this.freqs;
+      const eq = eqResponse(this.filters, x);
+      const after = Float64Array.from(r.before, (v, i) => v + eq[i]);
+      const band = (arr: ArrayLike<number>) => Float64Array.from(arr, (v, i) => (x[i] < this.opt.fMin || x[i] > this.opt.fMax ? NaN : v));
+      this.plot.series = [
+        { id: 'before', label: 'Measured − target', x, y: r.before, color: 'rgba(148,163,184,0.9)', width: 1.4 },
+        { id: 'eq', label: 'EQ curve', x, y: eq, color: '#f59e0b', width: 2 },
+        { id: 'after', label: 'Predicted result', x, y: band(after), color: '#2dd4bf', width: 2 },
+      ];
+      this.plot.markers = this.filters.map((f, i) => ({ x: f.f, color: 'rgba(245,158,11,0.45)', label: `${i + 1}` }));
+      this.plot.shades = [
+        { x0: 20, x1: this.opt.fMin, color: 'rgba(255,255,255,0.03)' },
+        { x0: this.opt.fMax, x1: 20000, color: 'rgba(255,255,255,0.03)' },
+      ];
+    }
+    this.plot.draw();
+  }
+}
