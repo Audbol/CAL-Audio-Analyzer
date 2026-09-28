@@ -5,6 +5,20 @@ import { h, icon, select, clear } from '../ui/dom';
 import { autoEq, eqResponse, TARGETS, type AutoEqResult, type PeqFilter } from '../dsp/eq';
 import { smoothCurve } from '../dsp/freq';
 
+export interface EqSnapshot {
+  source: string;
+  target: string;
+  targetLabel: string;
+  opt: { fMin: number; fMax: number; maxFilters: number; maxBoost: number; maxCut: number; minCoherence: number };
+  freqs: number[];
+  before: (number | null)[];
+  offset: number;
+  rmsBefore: number;
+  rmsAfter: number;
+  filters: PeqFilter[];
+  summary: string;
+}
+
 /**
  * EQ Assistant: fits parametric EQ filters to bring a measurement (live or stored trace) to a target curve.
  * Cuts are preferred and boosts limited, and low-coherence regions are ignored, following good practice for
@@ -27,8 +41,11 @@ export class EqView implements View {
   private list = h('div', { class: 'peq-list' });
   private summary = h('div', { class: 'info-strip' });
   private dirty = true;
+  private sourceName = '';
 
   constructor(private app: App) {
+    // Start from the target chosen for the Spectrum / Transfer views, when it is a built-in one
+    if (TARGETS.some((t) => t.id === app.settings.targetCurve)) this.target = app.settings.targetCurve;
     this.plot = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: -18, yMax: 18, yUnit: 'dB', yStep: 3, title: 'Deviation from target, EQ and predicted result', showNote: true, yLimits: [-60, 60] });
     const num = (key: keyof typeof this.opt, label: string, step: string, unit = '') => {
       const i = h('input', { type: 'number', class: 'num', value: String(this.opt[key]), step });
@@ -86,6 +103,7 @@ export class EqView implements View {
     this.freqs = Array.from(src.freqs);
     this.result = autoEq(src.freqs, magDb, src.coh, target, this.opt);
     this.filters = this.result.filters.map((f) => ({ ...f }));
+    this.sourceName = src.name;
     this.summary.innerHTML = this.filters.length
       ? `<b>${this.filters.length} filters</b> for “${src.name}” → ${target.label}. RMS deviation ${this.result.rmsBefore.toFixed(1)} dB → <b>${this.result.rmsAfter.toFixed(1)} dB</b>. Tip: verify with a new measurement, and prefer fixing large dips with placement/delay rather than boost.`
       : 'The response is already within ±1 dB of the target in the selected range — no EQ needed.';
@@ -135,6 +153,46 @@ export class EqView implements View {
   }
 
   invalidate(): void {
+    this.dirty = true;
+  }
+
+  /** The current EQ (for sessions and reports), or null before Calculate EQ. */
+  snapshot(): EqSnapshot | null {
+    const r = this.result;
+    if (!r) return null;
+    return {
+      source: this.sourceName,
+      target: this.target,
+      targetLabel: TARGETS.find((t) => t.id === this.target)?.label ?? this.target,
+      opt: { ...this.opt },
+      freqs: Array.from(this.freqs),
+      before: Array.from(r.before, (v) => (Number.isFinite(v) ? +v.toFixed(3) : null)),
+      offset: r.offset,
+      rmsBefore: r.rmsBefore,
+      rmsAfter: r.rmsAfter,
+      filters: this.filters.map((f) => ({ ...f })),
+      summary: this.summary.textContent ?? '',
+    };
+  }
+
+  restore(snap: EqSnapshot | null): void {
+    if (!snap) {
+      this.result = null;
+      this.filters = [];
+      this.plot.series = [];
+      this.plot.markers = [];
+      this.summary.textContent = 'Choose a source measurement and press Calculate EQ. Use a spatially averaged trace for best results.';
+    } else {
+      if (TARGETS.some((t) => t.id === snap.target)) this.target = snap.target;
+      Object.assign(this.opt, snap.opt);
+      this.freqs = snap.freqs;
+      const before = Float64Array.from(snap.before, (v) => (v === null ? NaN : v));
+      this.result = { filters: snap.filters, offset: snap.offset, before, after: before, rmsBefore: snap.rmsBefore, rmsAfter: snap.rmsAfter };
+      this.filters = snap.filters.map((f) => ({ ...f }));
+      this.sourceName = snap.source;
+      this.summary.textContent = snap.summary;
+    }
+    this.renderList();
     this.dirty = true;
   }
 

@@ -126,7 +126,7 @@ export function showHelp(app: App): void {
     ['P', 'Toggle RTA peak hold'],
     ['B', 'Spectrum as line / bars'],
     ['F', 'Freeze / unfreeze display'],
-    ['1 – 8', 'Switch views'],
+    ['1 – 9', 'Switch views'],
     ['T', 'Day / night colour scheme'],
     ['F11', 'Fullscreen'],
     ['?', 'This help'],

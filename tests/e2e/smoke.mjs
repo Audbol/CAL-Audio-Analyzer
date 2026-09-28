@@ -45,7 +45,7 @@ await page.keyboard.press('c');
 await page.waitForTimeout(300);
 check(await page.evaluate(() => window.calApp.traces.traces.length === 1), 'capture trace with C');
 
-for (const [key, name] of [['1', 'spectrum'], ['3', 'spectrogram'], ['4', 'impulse'], ['7', 'spl'], ['8', 'tools']]) {
+for (const [key, name] of [['1', 'spectrum'], ['3', 'spectrogram'], ['4', 'impulse'], ['8', 'spl'], ['9', 'tools']]) {
   await page.keyboard.press(key);
   await page.waitForTimeout(1500);
   await page.screenshot({ path: `${out}/0${key}-${name}.png` });

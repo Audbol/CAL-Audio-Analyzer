@@ -5,6 +5,7 @@ import type { DockLayout } from '../ui/dock';
 import { SMOOTHING_OPTIONS, type Smoothing } from '../dsp/freq';
 import { AVG_OPTIONS, cohAlpha } from './meters';
 import { DockedView } from './docked';
+import { TargetOverlay } from './target-overlay';
 
 export function defaultTransferLayout(): DockLayout {
   return {
@@ -27,9 +28,11 @@ export class TransferView extends DockedView implements View {
   private mag: Plot;
   private phase: Plot;
   private alphas = new Map<string, Float64Array>();
+  readonly target: TargetOverlay;
 
   constructor(app: App) {
     super(app, 'transferLayout', defaultTransferLayout);
+    this.target = new TargetOverlay(app);
     const s = app.settings;
     this.mag = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: s.magRange[0], yMax: s.magRange[1], yUnit: 'dB', yStep: 6, secondaryLabel: 'Coherence', showNote: true, yLimits: [-120, 120] });
     this.phase = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: -180, yMax: 180, yUnit: 'deg', yStep: 45, yLimits: [-540, 540] });
@@ -60,6 +63,7 @@ export class TransferView extends DockedView implements View {
       h('div', { class: 'tb-group' }, this.settingChip('showCoherence', 'Coherence', 'Show coherence trace on the magnitude plot')),
       h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Smoothing'), select(SMOOTHING_OPTIONS.filter((o) => o.value !== 0), s.tfSmoothing, (v: Smoothing) => { s.tfSmoothing = v; app.save(); }), h('span', { class: 'tb-label' }, 'Avg'), select(AVG_OPTIONS, s.tfAveraging, (v) => { s.tfAveraging = v; app.applyAnalysisSettings(); }, { dataset: { setting: 'tfAveraging' } })),
       h('div', { class: 'tb-group' }, h('span', { class: 'tb-label', title: 'Fade data with coherence below this value' }, 'Blank <'), cohSlider, cohVal),
+      this.target.controls(),
       h('div', { class: 'spacer' }),
       ...this.layoutButtons(),
     );
@@ -85,7 +89,7 @@ export class TransferView extends DockedView implements View {
     const app = this.app;
     const s = app.settings;
     // Redraw only when what is shown changed
-    const key = `${app.traces.version}|${s.coherenceThreshold}|${s.showCoherence}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.tfReady}:${m.tfShown}`).join(',')}`;
+    const key = `${app.traces.version}|${s.targetCurve}|${s.targetTolerance}|${s.coherenceThreshold}|${s.showCoherence}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.tfReady}:${m.tfShown}`).join(',')}`;
     if (key === this.lastKey) return this.tickMeters();
     this.lastKey = key;
     const g = app.grid;
@@ -104,6 +108,9 @@ export class TransferView extends DockedView implements View {
       if (s.showCoherence) magS.push({ id: `${m.cfg.id}-coh`, label: `${m.cfg.name} coh`, x: g, y: m.result.coh, color: `${c}66`, width: 1, secondary: true, unit: '%' });
       phS.push({ id: m.cfg.id, label: m.cfg.name, x: g, y: m.phase, color: c, width: 1.6, alpha: a, wrap: 180 });
     }
+    // Target curve, levelled (coherence-weighted) to the first shown transfer function
+    const ref = app.measurements.find((m) => m.cfg.enabled && m.tfReady);
+    magS.unshift(...this.target.series(g, ref ? ref.mag : null, ref ? ref.result.coh : null));
     if (this.visible('mag')) {
       this.mag.series = magS;
       this.mag.draw();

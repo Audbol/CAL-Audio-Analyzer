@@ -20,6 +20,8 @@ export interface Trace {
   note?: string;
   /** RTA captured in the app: levels are dBFS and get the SPL calibration offset when shown in dB SPL. */
   dbfs?: boolean;
+  /** Transfer functions: the measurement's delay compensation when captured (ms), for alignment. */
+  delayMs?: number;
 }
 
 const KEY = 'cal-analyzer-traces-v1';
@@ -129,6 +131,16 @@ export class TraceStore {
   clear(): void {
     this.traces = [];
     this.emit({ op: 'clear' });
+  }
+
+  /** Replace every trace (opening a session), keeping their ids so references to them stay valid. */
+  replaceAll(list: Trace[]): void {
+    this.clear();
+    for (const t of list) {
+      const trace: Trace = { ...t, visible: t.visible ?? true, offset: t.offset ?? 0, created: t.created ?? Date.now() };
+      this.traces.push(trace);
+      this.emit({ op: 'add', trace });
+    }
   }
 
   /**

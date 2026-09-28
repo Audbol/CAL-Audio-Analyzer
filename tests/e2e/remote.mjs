@@ -239,7 +239,7 @@ await lateCtx.close();
 await phoneCtx.close();
 
 // --- Host: Tools → Remote access shows addresses, PIN, QR and clients
-await host.keyboard.press('8');
+await host.keyboard.press('9');
 await host.waitForTimeout(800);
 const card = await host.locator('.remote-card').textContent();
 check(card.includes('Remote access is on') && card.includes('482 913'), 'host shows server status and PIN');
@@ -256,7 +256,7 @@ await host.waitForTimeout(600);
 check((await host.evaluate(() => window.calApp.settings.generator.type)) === before, 'view-only: remote cannot change the generator');
 
 // --- Host audio stop/start: remote follows
-await rem.keyboard.press('8');
+await rem.keyboard.press('9');
 await rem.waitForTimeout(500);
 check((await rem.locator('.remote-card').textContent()).includes('Connected to the measurement host'), 'remote Tools shows its connection');
 await rem.screenshot({ path: `${out}/remote-04-client-tools.png` });

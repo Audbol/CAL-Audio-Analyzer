@@ -90,7 +90,7 @@ check((await page.locator('.dock-stack .dpanel[data-panel="mag"]').count()) === 
 }
 // Remote access: turn on the built-in server from Tools and connect a separate browser to it
 {
-  await page.keyboard.press('8');
+  await page.keyboard.press('9');
   await page.getByRole('button', { name: 'Turn on remote access' }).click();
   await page.waitForFunction(() => window.calApp.hostLink?.connected && window.calApp.hostLink.info, null, { timeout: 8000 });
   const srv = await page.evaluate(() => ({ port: window.calApp.settings.remoteServer.port, pin: window.calApp.hostLink.info.pin, urls: window.calApp.hostLink.info.urls.length }));

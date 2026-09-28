@@ -14,6 +14,7 @@ import { SpectrogramView } from './views/spectrogram';
 import { ImpulseView } from './views/impulse';
 import { RoomView } from './views/room';
 import { EqView } from './views/eq';
+import { AlignView } from './views/align';
 import { SplView } from './views/spl';
 import { ToolsView } from './views/tools';
 import { showWizard, showHelp, showRemoteConnect } from './ui/dialogs';
@@ -100,6 +101,8 @@ export class App {
   private lastMode: boolean | null = null;
   /** Set while a sweep measurement owns the generator; live analysis pauses so averages stay clean. */
   busy = false;
+  /** The last report created (tests and re-download). */
+  lastReport: string | null = null;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -375,7 +378,7 @@ export class App {
   }
 
   /** Set a toolbar control that mirrors a setting (after the value changed elsewhere, e.g. on the host). */
-  private syncSettingControls(): void {
+  syncSettingControls(): void {
     const s = this.settings as unknown as Record<string, unknown>;
     for (const el of this.root.querySelectorAll<HTMLSelectElement>('select[data-setting]')) {
       const v = String(s[el.dataset.setting!]);
@@ -454,6 +457,7 @@ export class App {
             mag: Array.from(m.mag, (v) => (Number.isFinite(v) ? +v.toFixed(3) : -200)),
             phase: Array.from(m.phase, (v) => (Number.isFinite(v) ? +v.toFixed(2) : 0)),
             coh: Array.from(m.result.coh, (v) => +v.toFixed(4)),
+            delayMs: +((m.cfg.delay / m.fs) * 1000).toFixed(4),
           })
         : this.traces.add({
             name: `${m.cfg.name} RTA ${stamp}`,
@@ -766,6 +770,7 @@ export class App {
       new ImpulseView(this),
       new RoomView(this),
       new EqView(this),
+      new AlignView(this),
       new SplView(this),
       new ToolsView(this),
     ];
@@ -1436,7 +1441,7 @@ export class App {
           this.toggleTheme();
           break;
         default:
-          if (/^[1-8]$/.test(e.key)) this.setView(this.views[+e.key - 1].id);
+          if (/^[1-9]$/.test(e.key)) this.setView(this.views[+e.key - 1].id);
       }
     });
   }

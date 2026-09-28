@@ -2465,3 +2465,52 @@ html.compact .toasts {
   border-color: var(--accent);
   background: rgba(127, 127, 127, 0.08);
 }
+
+/* Align ------------------------------------------------------------------ */
+.align {
+  display: flex;
+  flex-direction: column;
+}
+.align-panes {
+  min-height: 380px;
+}
+.align-manual {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.align-delay b {
+  color: var(--accent);
+}
+
+/* Session & report ------------------------------------------------------- */
+.session-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+label.field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--dim);
+}
+label.field input,
+label.field textarea {
+  width: 100%;
+  color: var(--text);
+}
+textarea.text {
+  font: inherit;
+  font-size: 13px;
+  background: var(--panel-3);
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  padding: 5px 7px;
+  outline: none;
+  resize: vertical;
+}
+textarea.text:focus {
+  border-color: var(--accent);
+}

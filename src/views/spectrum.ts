@@ -5,6 +5,7 @@ import type { DockLayout } from '../ui/dock';
 import { octaveBandCentres, sampleLogGrid, type Smoothing } from '../dsp/freq';
 import { AVG_OPTIONS } from './meters';
 import { DockedView } from './docked';
+import { TargetOverlay } from './target-overlay';
 
 export function defaultSpectrumLayout(): DockLayout {
   return {
@@ -27,6 +28,7 @@ export class SpectrumView extends DockedView implements View {
   private rta: Plot;
   private bands: number[] = [];
   private lastKey = '';
+  readonly target: TargetOverlay;
 
   invalidate(): void {
     this.lastKey = '';
@@ -37,6 +39,7 @@ export class SpectrumView extends DockedView implements View {
 
   constructor(app: App) {
     super(app, 'spectrumLayout', defaultSpectrumLayout);
+    this.target = new TargetOverlay(app);
     const s = app.settings;
     this.rta = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: s.rtaRange[0], yMax: s.rtaRange[1], yUnit: 'dBFS', yStep: 10, showNote: true, yLimits: [-200, 200], autoFit: true });
     this.rta.onRangeChange = (a, b) => {
@@ -129,6 +132,7 @@ export class SpectrumView extends DockedView implements View {
         ),
         h('button', { class: 'btn small', title: 'Start the average curve again (R restarts it together with all averaging)', onclick: () => app.measurements.forEach((m) => m.resetAverage()) }, icon('reset', 14), 'Restart'),
       ),
+      this.target.controls(),
       h('div', { class: 'spacer' }),
       ...this.layoutButtons(),
     );
@@ -140,7 +144,7 @@ export class SpectrumView extends DockedView implements View {
     const s = app.settings;
     if (this.visible('rta')) {
       // Redraw only when what is shown changed (new analysis data arrives ~6–12 times a second)
-      const key = `${app.traces.version}|${s.rtaStyle}|${s.rtaSmoothing}|${s.peakHold}|${s.rtaAverageCurve}|${s.theme}|${s.splCalibrated}|${s.splOffset}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.rtaShown}`).join(',')}`;
+      const key = `${app.traces.version}|${s.rtaStyle}|${s.rtaSmoothing}|${s.peakHold}|${s.rtaAverageCurve}|${s.targetCurve}|${s.targetTolerance}|${s.theme}|${s.splCalibrated}|${s.splOffset}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.rtaShown}`).join(',')}`;
       if (key === this.lastKey) return this.tickMeters();
       this.lastKey = key;
       const g = app.grid;
@@ -184,6 +188,12 @@ export class SpectrumView extends DockedView implements View {
         if (bars) series.push({ id: `${m.cfg.id}-avg`, label, x: this.bands, y: atBands(avg), color: day ? '#111111' : '#ffffff', width: 2, halo: day ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)' });
         else series.push({ id: `${m.cfg.id}-avg`, label, x: g, y: shift(avg), color: day ? '#111111' : '#ffffff', width: 2, halo: day ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)' });
       }
+      // Target curve, levelled to the first shown measurement (its average curve when there is one)
+      const ref = app.measurements.find((m) => m.cfg.enabled && m.rtaShown > 0);
+      if (ref) {
+        const data = ref.averageDb() ?? ref.rtaOut;
+        series.unshift(...this.target.series(g, shift(data)));
+      } else this.target.series(g, null);
       this.rta.cfg.yUnit = s.splCalibrated ? 'dB SPL' : 'dBFS';
       this.rta.series = series;
       this.rta.draw();

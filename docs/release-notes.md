@@ -19,6 +19,14 @@ The builds are not code-signed yet:
 
 On first launch, choose **Explore with the demo room** to try every feature without hardware.
 
+## What's new in 1.7
+
+- **Target curves:** choose a target (Flat, House, Tilt, X-curve or any stored trace) on the Spectrum or Transfer tab. It is drawn as a dashed line with a ±1–6 dB tolerance band and levels itself to the measurement, so you can see at a glance where the system is outside the target.
+- **Sub / main alignment assistant (new Align tab):** capture the mains alone and the sub alone, press *Calculate alignment*, and get the delay (which side, in ms and metres/feet) and polarity that make them add up best through the crossover. It shows summation before and after, the gain at the crossover, warnings about remaining cancellations, the predicted sum and whether the phase tracks. The predicted sum can be stored as a trace.
+- **Sessions:** *Tools → Session & report* saves everything for a job (traces, sweep, EQ, alignment, calibration, measurement setup, name, venue and notes) in one file, to continue later or on another computer.
+- **Reports:** *Create report* builds a clean printable report (print, save as PDF or download as HTML) with the setup, spectrum and transfer function against the target (RMS deviation and share within tolerance), sweep response and RT60 table, EQ filters, alignment and notes.
+- Tabs: Align is tab 7; the SPL meter and Tools move to 8 and 9.
+
 ## What's new in 1.6.1
 
 - **Average curve moved to the Spectrum:** the averaged curve for tuning is now a white line over the live RTA on the Spectrum tab (Average: 1 s, 3 s, 10 s, 30 s or everything since Restart; works with lines and bars). Hover to read it next to the live level. The spectrogram is back to its original layout (frequency up the side); frequency across remains an option under Layout.

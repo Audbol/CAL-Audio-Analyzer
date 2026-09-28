@@ -6,6 +6,7 @@ import { logSweep, deconvolve, linearIR, harmonicDistortion, spectrumOf, type Sw
 import { roomAcoustics, energyTimeCurve, schroederFrequency, type AcousticsResult, type BandAcoustics } from '../dsp/acoustics';
 import { LogSmoother, type Smoothing } from '../dsp/freq';
 import { nextPow2 } from '../dsp/fft';
+import type { SweepMeta } from '../remote/protocol';
 
 interface SweepResult {
   spec: SweepSpec;
@@ -174,6 +175,45 @@ export class RoomView implements View {
     this.renderResults();
     const bb = this.result.acoustics.broadband;
     this.showHostProgress(false, 1, `Measured on the host${meta.by ? ` (requested by ${meta.by})` : ''} at ${this.result.when.toLocaleTimeString()} · peak-to-noise ${this.result.peakDb.toFixed(0)} dB · T30 ${fmtS(bb.t30.rt)} · EDT ${fmtS(bb.edt.rt)}`);
+  }
+
+  /** The current sweep (for sessions): what applyShared() takes, or null. */
+  sweepState(): { meta: SweepMeta; ir: Float64Array } | null {
+    const r = this.result;
+    if (!r) return null;
+    return { meta: { spec: r.spec, peak: r.d.peak, fs: r.d.fs, channel: r.channel, when: r.when.getTime(), by: '' }, ir: r.d.ir };
+  }
+
+  /** Restore a sweep from a session (null clears it). */
+  restoreSweep(state: { meta: SweepMeta; ir: Float64Array } | null): void {
+    if (!state) {
+      this.result = null;
+      clear(this.cards);
+      this.table.innerHTML = '';
+      for (const p of [this.fr, this.irPlot, this.decay]) p.series = [];
+      this.setProgress(0, 'Ready.', false);
+      this.dirty = true;
+      return;
+    }
+    this.applyShared(state.meta, state.ir);
+    this.setProgress(1, `Loaded from the session · measured ${this.result!.when.toLocaleString()} · peak-to-noise ${this.result!.peakDb.toFixed(0)} dB`, false);
+    this.app.shareSweep(state.meta, state.ir);
+  }
+
+  /** Report data: the displayed (level-normalised) frequency response, the result cards and the RT table. */
+  reportData(): { fr: Float64Array; cards: { label: string; value: string; sub: string }[]; tableHtml: string; when: Date; spec: SweepSpec; window: number; smoothing: number } | null {
+    const r = this.result;
+    if (!r) return null;
+    const fr = this.fr.series.find((s) => s.id === 'fr');
+    return {
+      fr: Float64Array.from(fr ? (fr.y as ArrayLike<number>) : r.fr),
+      cards: [...this.cards.querySelectorAll('.card')].map((c) => ({ label: c.children[0].textContent ?? '', value: c.children[1].textContent ?? '', sub: c.children[2].textContent ?? '' })),
+      tableHtml: this.table.querySelector('table')?.outerHTML ?? '',
+      when: r.when,
+      spec: r.spec,
+      window: this.opts.window,
+      smoothing: this.opts.smoothing,
+    };
   }
 
   async measure(by = 'the host'): Promise<void> {

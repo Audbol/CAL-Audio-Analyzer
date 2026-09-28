@@ -13,6 +13,8 @@ import { filterDb, autoEq, TARGETS, eqResponse } from '../src/dsp/eq';
 import { parseMicCal, calCorrection } from '../src/dsp/calibration';
 import { SplMeter } from '../src/dsp/spl';
 import { PinkNoise } from '../src/audio/noise';
+import { alignSubMain } from '../src/dsp/align';
+import { targetShape, targetLevel, targetDeviation } from '../src/dsp/target';
 import { Biquad } from '../src/audio/biquad';
 
 const FS = 48000;
@@ -554,4 +556,74 @@ describe('other sample rates', () => {
       expect(pk).toBeGreaterThan(-6.02 - 1.45);
     });
   }
+});
+
+describe('sub / main alignment', () => {
+  const grid = Array.from(logGrid(20, 20000, 48));
+  /** Linkwitz-Riley crossover sections (order 2 or 4) with a delay, as a measured TF (mag dB, phase deg). */
+  const lr = (kind: 'lp' | 'hp', order: 2 | 4, fc: number, delayMs: number, gainDb = 0) => {
+    const mag: number[] = [];
+    const phase: number[] = [];
+    for (const f of grid) {
+      // s = j f / fc
+      const s = { re: 0, im: f / fc };
+      const mul = (a: { re: number; im: number }, b: { re: number; im: number }) => ({ re: a.re * b.re - a.im * b.im, im: a.re * b.im + a.im * b.re });
+      const div = (a: { re: number; im: number }, b: { re: number; im: number }) => { const d = b.re * b.re + b.im * b.im; return { re: (a.re * b.re + a.im * b.im) / d, im: (a.im * b.re - a.re * b.im) / d }; };
+      // Butterworth section: order-2 LR = two 1st-order, order-4 LR = two 2nd-order Butterworth
+      let h1: { re: number; im: number };
+      if (order === 2) h1 = kind === 'lp' ? div({ re: 1, im: 0 }, { re: 1, im: s.im }) : div(s, { re: 1, im: s.im });
+      else {
+        const den = { re: 1 - s.im * s.im, im: Math.SQRT2 * s.im };
+        h1 = kind === 'lp' ? div({ re: 1, im: 0 }, den) : div(mul(s, s), den);
+      }
+      let hh = mul(h1, h1);
+      const ph = -2 * Math.PI * f * delayMs / 1000;
+      hh = mul(hh, { re: Math.cos(ph), im: Math.sin(ph) });
+      mag.push(20 * Math.log10(Math.hypot(hh.re, hh.im)) + gainDb);
+      phase.push((Math.atan2(hh.im, hh.re) * 180) / Math.PI);
+    }
+    return { freqs: grid, mag, phase, delayMs: 0 };
+  };
+
+  it('finds the delay for an LR4 crossover where the sub arrives 3 ms late (delay the mains)', () => {
+    const r = alignSubMain(lr('hp', 4, 90, 10), lr('lp', 4, 90, 13));
+    expect(r.delayMs).toBeCloseTo(-3, 1);
+    expect(r.polarity).toBe(1);
+    expect(r.after).toBeGreaterThan(0.99);
+    expect(r.before).toBeLessThan(r.after);
+    expect(r.gainDb).toBeGreaterThan(5.5);
+    expect(r.cancellations.length).toBe(0);
+  });
+
+  it('asks for inverted polarity on an LR2 crossover', () => {
+    const r = alignSubMain(lr('hp', 2, 100, 5), lr('lp', 2, 100, 5));
+    expect(r.polarity).toBe(-1);
+    expect(Math.abs(r.delayMs)).toBeLessThan(0.1);
+    expect(r.after).toBeGreaterThan(0.99);
+  });
+
+  it('uses the delay compensation each trace was captured with', () => {
+    // Same acoustic situation as above, but the sub was captured with 3 ms of delay compensation set
+    const sub = { ...lr('lp', 4, 90, 10), delayMs: 3 };
+    const r = alignSubMain(lr('hp', 4, 90, 10), sub);
+    expect(r.delayMs).toBeCloseTo(-3, 1);
+  });
+
+  it('refuses responses that do not overlap', () => {
+    expect(() => alignSubMain(lr('hp', 4, 2000, 0), lr('lp', 4, 30, 0, -40))).toThrow(/overlap/);
+  });
+});
+
+describe('target curves', () => {
+  it('levels a target to the measurement and reports the deviation', () => {
+    const grid = logGrid(20, 20000, 48);
+    const shape = targetShape('house', grid)!;
+    const data = Float64Array.from(shape, (v) => v - 20 + 1); // the house curve, 20 dB down, plus 1 dB
+    const level = targetLevel(grid, data, shape)!;
+    expect(level).toBeCloseTo(-19, 6);
+    const dev = targetDeviation(grid, data, Float64Array.from(shape, (v) => v + level), 3)!;
+    expect(dev.rms).toBeLessThan(1e-9);
+    expect(dev.within).toBe(1);
+    expect(targetShape('off', grid)).toBeNull();
+  });
 });

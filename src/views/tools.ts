@@ -7,6 +7,9 @@ import { speedOfSound } from '../dsp/delay';
 import { parseMicCal } from '../dsp/calibration';
 import { weightingDb } from '../dsp/weighting';
 import { RemoteCard } from './remote-card';
+import { modal } from '../ui/dialogs';
+import { applySession, buildSession, downloadText, parseSession, sessionFileName, type SessionFile } from '../session';
+import { openReport } from '../report';
 
 /** Calibration, room-mode calculator and handy system-alignment calculators. */
 export class ToolsView implements View {
@@ -27,6 +30,92 @@ export class ToolsView implements View {
     this.remoteCard = new RemoteCard(app);
     this.modesPlot = new Plot({ xType: 'log', xMin: 15, xMax: 400, yMin: 0, yMax: 3.4, yUnit: '', title: 'Room modes (axial ▮ tangential ▮ oblique ▮)', yLimits: [0, 4] });
     this.build();
+  }
+
+  /** Session details, save / open a session file and the printable report. */
+  private sessionCard(): HTMLElement {
+    const app = this.app;
+    const sess = app.settings.session;
+    const field = (key: 'name' | 'venue', label: string, placeholder: string) => {
+      const i = h('input', { type: 'text', class: 'text', value: sess[key], placeholder, dataset: { session: key } });
+      i.addEventListener('input', () => {
+        app.settings.session[key] = i.value;
+        app.save();
+      });
+      return h('label', { class: 'field' }, h('span', {}, label), i);
+    };
+    const notes = h('textarea', { class: 'text', rows: '3', placeholder: 'System, positions, changes made…', dataset: { session: 'notes' } }) as HTMLTextAreaElement;
+    notes.value = sess.notes;
+    notes.addEventListener('input', () => {
+      app.settings.session.notes = notes.value;
+      app.save();
+    });
+    const file = h('input', { type: 'file', accept: '.json,application/json', style: 'display:none', dataset: { session: 'file' } });
+    file.addEventListener('change', async () => {
+      const f = file.files?.[0];
+      file.value = '';
+      if (!f) return;
+      try {
+        this.confirmOpen(parseSession(await f.text()));
+      } catch (e) {
+        app.toast((e as Error).message, 'warn');
+      }
+    });
+    this.sessionFields = () => {
+      for (const i of this.el.querySelectorAll<HTMLInputElement>('input[data-session="name"], input[data-session="venue"]')) i.value = app.settings.session[i.dataset.session as 'name' | 'venue'];
+      notes.value = app.settings.session.notes;
+    };
+    return h(
+      'section',
+      { class: 'tool-card session-card' },
+      h('h4', {}, icon('layers', 15), ' Session & report'),
+      h('p', { class: 'dim small' }, 'Save everything for this job in one file (traces, sweep, EQ, alignment, calibration and measurement setup) to continue later or on another computer, and create a printable report.'),
+      h('div', { class: 'session-fields' }, field('name', 'Session', 'e.g. Main PA tuning'), field('venue', 'Venue', 'e.g. City Hall')),
+      h('label', { class: 'field' }, h('span', {}, 'Notes'), notes),
+      h(
+        'div',
+        { class: 'row gap8 wrap' },
+        h('button', { class: 'btn small', onclick: () => this.saveSession() }, icon('download', 14), 'Save session'),
+        h('button', { class: 'btn small', onclick: () => (app.remote ? app.toast('Open sessions on the measurement host.', 'warn') : file.click()) }, icon('upload', 14), 'Open session…'),
+        h('button', { class: 'btn small accent', onclick: () => openReport(app) }, icon('list', 14), 'Create report'),
+      ),
+      file,
+    );
+  }
+
+  private sessionFields: () => void = () => {};
+
+  private saveSession(): void {
+    const app = this.app;
+    downloadText(sessionFileName(app.settings.session), JSON.stringify(buildSession(app)));
+    app.toast('Session saved', 'ok');
+  }
+
+  private confirmOpen(f: SessionFile): void {
+    const app = this.app;
+    const what = [`${f.traces.length} trace${f.traces.length === 1 ? '' : 's'}`, f.sweep ? 'a sweep' : '', f.eq ? 'EQ' : '', f.align ? 'a sub alignment' : ''].filter(Boolean);
+    const title = [f.session.name, f.session.venue].filter(Boolean).join(' · ') || 'Untitled session';
+    const open = h('button', { class: 'btn accent' }, 'Open session');
+    const cancel = h('button', { class: 'btn' }, 'Cancel');
+    const { close } = modal(
+      'Open session',
+      h(
+        'div',
+        {},
+        h('p', {}, h('b', {}, title), f.saved ? h('span', { class: 'dim' }, ` · saved ${new Date(f.saved).toLocaleString()}`) : null),
+        h('p', {}, `Contains ${what.join(', ')}, plus the calibration and measurement setup.`),
+        h('p', { class: 'warn-text small' }, 'This replaces the current traces, sweep, EQ and alignment. Save the current session first if you want to keep it.'),
+      ),
+      [cancel, open],
+    );
+    cancel.addEventListener('click', close);
+    open.addEventListener('click', () => {
+      close();
+      applySession(app, f);
+      this.sessionFields();
+      this.renderStatus();
+      app.toast(`Opened “${title}”`, 'ok');
+    });
   }
 
   private build(): void {
@@ -173,7 +262,7 @@ export class ToolsView implements View {
         ? h('p', { class: 'dim small' }, 'On the host: the measurement computer runs the FFTs and sends finished spectra, so every device shows the same result and slow devices only draw. Averaging and FFT size then follow the host. On this device: the full analysis runs here with its own averaging.')
         : null,
     );
-    this.el.append(h('div', { class: 'tool-grid' }, this.remoteCard.el, perfCard, calCard, micCard, delayCard, wCard, modesCard, dataCard));
+    this.el.append(h('div', { class: 'tool-grid' }, this.sessionCard(), this.remoteCard.el, perfCard, calCard, micCard, delayCard, wCard, modesCard, dataCard));
     this.renderStatus();
   }
 

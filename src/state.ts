@@ -14,7 +14,7 @@ export { PALETTE };
 /** Colours used by earlier versions; stored measurements using them are moved to the current palette. */
 const LEGACY_PALETTE = ['#2dd4bf', '#f59e0b', '#a78bfa', '#f472b6', '#60a5fa', '#a3e635', '#fb7185', '#fbbf24', '#22d3ee', '#e879f9'];
 
-export type ViewId = 'spectrum' | 'transfer' | 'spectrogram' | 'impulse' | 'room' | 'eq' | 'spl' | 'tools';
+export type ViewId = 'spectrum' | 'transfer' | 'spectrogram' | 'impulse' | 'room' | 'eq' | 'align' | 'spl' | 'tools';
 
 export type Theme = 'night' | 'day';
 
@@ -88,6 +88,12 @@ export interface Settings {
   spectrogramLayout: 'horizontal' | 'vertical';
   /** Spectrum average curve: averaging time in seconds (0 = off, -1 = everything since reset). */
   rtaAverageCurve: number;
+  /** Target curve on the Spectrum and Transfer views: 'off', a built-in target id or `trace:<id>`. */
+  targetCurve: string;
+  /** ± tolerance band around the target (dB, 0 = none). */
+  targetTolerance: number;
+  /** Session details used for saving and for reports. */
+  session: { name: string; venue: string; notes: string };
 }
 
 export function defaultSettings(): Settings {
@@ -127,6 +133,9 @@ export function defaultSettings(): Settings {
     spectrogramRange: [-110, -20],
     spectrogramLayout: 'vertical',
     rtaAverageCurve: 10,
+    targetCurve: 'off',
+    targetTolerance: 3,
+    session: { name: '', venue: '', notes: '' },
   };
 }
 
@@ -151,7 +160,7 @@ export function loadSettings(): Settings {
       const i = LEGACY_PALETTE.indexOf(m.color);
       if (i >= 0) m.color = PALETTE[i];
     }
-    return { ...d, ...s, generator: { ...d.generator, ...(s.generator ?? {}) }, remoteServer: { ...d.remoteServer, ...(s.remoteServer ?? {}) }, playlist: { ...d.playlist, ...(s.playlist ?? {}) } } as Settings;
+    return { ...d, ...s, generator: { ...d.generator, ...(s.generator ?? {}) }, remoteServer: { ...d.remoteServer, ...(s.remoteServer ?? {}) }, playlist: { ...d.playlist, ...(s.playlist ?? {}) }, session: { ...d.session, ...(s.session ?? {}) } } as Settings;
   } catch {
     return d;
   }

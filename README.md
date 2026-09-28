@@ -26,6 +26,9 @@ A professional, real-time **sound system and room acoustics analyzer** that runs
 | **Live impulse response** | Linear IR and energy-time curve from the averaged transfer function. One click sets the delay from the IR peak. Shows arrival time, distance and polarity. |
 | **Sweep & room acoustics** | Exponential sweep (Farina) with synchronous averaging. Frequency response with selectable time windows (5 ms gated up to full). Harmonic distortion (H2, H3, THD). **ISO 3382** parameters per octave or 1/3 octave: EDT, T20, T30, C50, C80, D50 and centre time, using Lundeby noise-floor truncation and compensation. Fit-quality and INR indicators. Impulse response export as WAV. |
 | **EQ Assistant** | Automatic parametric EQ against Flat, House, Tilt or X-curve targets. Prefers cuts, limits boosts and ignores low-coherence regions. Filters can be edited, the predicted result is shown, and filters export as parametric-EQ filter text or CSV. |
+| **Target curves** | Draw a target (Flat, House, Tilt, X-curve, or any stored trace) over the Spectrum and the transfer function, with a ±1/2/3/6 dB tolerance band. It levels itself to the measurement (coherence-weighted over 250 Hz–4 kHz), so you only tune the shape. |
+| **Sub / main alignment** | Measure the mains alone and the sub alone (**Capture mains**, **Capture sub**) and the **Align** tab finds the delay and polarity that make them add up best through the crossover. It shows which side to delay (ms and distance), summation before and after, gain at the crossover, remaining cancellations, and the predicted sum and phase tracking. The predicted sum can be stored as a trace. |
+| **Sessions & reports** | Save a whole job (traces, sweep, EQ, alignment, calibration, measurement setup, name, venue and notes) as one `.calsession.json` file and open it again later or on another computer. **Create report** builds a printable report (print or save as PDF, or download as HTML) with the setup, spectrum and transfer function against the target with deviation figures, sweep and RT60 table, EQ filters, alignment and notes. |
 | **SPL meter** | IEC 61672 A/C/Z weighting, Fast/Slow, Leq, Lmax, peak and a 2-minute history. Calibrates with a 94/114 dB calibrator or a reference meter. |
 | **Traces** | Capture, overlay, offset, rename, spatially average (power average), and import/export CSV, FRD and plain measurement text. Traces persist in the browser. |
 | **Tools** | Mic calibration file loader (TXT, CAL, FRD, CSV), room mode calculator with Schroeder frequency and critical distance, delay/distance/wavelength calculator, and a weighting table. |
@@ -86,7 +89,10 @@ On first launch, choose **Explore with the demo room** to try everything with th
 3. Press **Find** (or `D`) to time-align the reference. Coherence should rise toward 100 %.
 4. Capture traces (`C`) at several positions, select them and press **Avg** for a spatial average.
 5. Open the **EQ Assistant**, pick the averaged trace and a target, then apply and verify the suggested filters.
-6. For room acoustics, run a sweep in **Sweep & Room** to get RT60, EDT, clarity and definition per band.
+6. Pick a **Target** on the Spectrum or Transfer tab to see how far the system is from the response you want.
+7. For subwoofers, measure the mains alone and the sub alone from the **Align** tab and apply the suggested delay and polarity.
+8. For room acoustics, run a sweep in **Sweep & Room** to get RT60, EDT, clarity and definition per band.
+9. In **Tools → Session & report**, save the session and create the report for the client.
 
 ### Keyboard shortcuts
 
@@ -100,7 +106,7 @@ On first launch, choose **Explore with the demo room** to try everything with th
 | R | Reset averages |
 | P | Peak hold |
 | F | Freeze display |
-| 1–8 | Switch tabs |
+| 1–9 | Switch tabs |
 | T | Day / night colour scheme |
 | ? | Help |
 

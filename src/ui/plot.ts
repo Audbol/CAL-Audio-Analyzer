@@ -21,6 +21,8 @@ export interface Series {
   cap?: boolean;
   /** Outline colour drawn under the line (keeps it readable on top of other curves). */
   halo?: string;
+  /** Draw a shaded band between `y` (upper edge) and these values (lower edge) instead of a line. */
+  band?: ArrayLike<number>;
   /** Exclude from the hover readout. */
   quiet?: boolean;
   /** Secondary y axis (0..1 range drawn on the right), e.g. coherence. */
@@ -102,6 +104,9 @@ export class Plot {
   private hgt = 0;
   private dpr = 1;
   private readonly pad = { l: 46, r: 14, t: 8, b: 22 };
+  /** Fixed pixel ratio (off-screen rendering for reports); null = the screen's. */
+  forceDpr: number | null = null;
+  private readonly observer: ResizeObserver;
   onRangeChange?: (yMin: number, yMax: number) => void;
   onClick?: (x: number) => void;
 
@@ -129,7 +134,8 @@ export class Plot {
     this.el.append(this.zoomBar());
     this.ctx = this.canvas.getContext('2d')!;
     Plot.instances.add(this);
-    new ResizeObserver(() => this.resize()).observe(this.el);
+    this.observer = new ResizeObserver(() => this.resize());
+    this.observer.observe(this.el);
     this.bindEvents();
   }
 
@@ -343,11 +349,17 @@ export class Plot {
     this.cfg.xMax = Math.min(xMax, hi);
   }
 
+  /** Stop tracking a plot that is no longer used (temporary plots). */
+  dispose(): void {
+    this.observer.disconnect();
+    Plot.instances.delete(this);
+  }
+
   /** Re-measure the plot (runs automatically; the panel dock also calls it when a panel changes window). */
   resize(): void {
     const r = this.el.getBoundingClientRect();
     // Beyond 2× the extra pixels are invisible on a graph but cost a lot of drawing time on phones
-    this.dpr = Math.min(Plot.maxDpr, this.el.ownerDocument.defaultView?.devicePixelRatio || window.devicePixelRatio || 1);
+    this.dpr = this.forceDpr ?? Math.min(Plot.maxDpr, this.el.ownerDocument.defaultView?.devicePixelRatio || window.devicePixelRatio || 1);
     this.w = Math.max(10, r.width);
     // Narrow plots (phones) get a tighter left margin
     this.pad.l = this.w < 520 ? 36 : 46;
@@ -513,6 +525,26 @@ export class Plot {
     const xMin = this.cfg.xMin;
     const xMax = this.cfg.xMax;
     const bottom = this.hgt - this.pad.b;
+    if (s.band) {
+      // Shaded band (e.g. a target's tolerance): upper edge left → right, lower edge back
+      const lo = s.band;
+      const path = new Path2D();
+      let started = false;
+      for (let i = 0; i < n; i++) {
+        if (!Number.isFinite(s.y[i])) continue;
+        const px = this.xToPx(s.x[i]);
+        const py = this.yToPx(s.y[i], s.secondary);
+        if (!started) path.moveTo(px, py);
+        else path.lineTo(px, py);
+        started = true;
+      }
+      for (let i = n - 1; i >= 0; i--) if (Number.isFinite(lo[i])) path.lineTo(this.xToPx(s.x[i]), this.yToPx(lo[i], s.secondary));
+      path.closePath();
+      ctx.globalAlpha = 0.14;
+      ctx.fill(path);
+      ctx.globalAlpha = 1;
+      return;
+    }
     if (s.bars) {
       const half = Math.pow(2, 1 / (2 * s.bars));
       const cap = Math.max(1.5, 2 * COLORS.lineScale);
