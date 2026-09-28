@@ -69,22 +69,29 @@ await page.keyboard.press('p');
 await page.keyboard.press('b');
 check(await page.evaluate(() => window.calApp.settings.rtaStyle === 'line'), 'B switches back to a line');
 
-// Spectrogram average curve (for tuning): follows the averaged spectrum; horizontal layout by default
-await page.keyboard.press('3');
+// Spectrum average curve (for tuning): a long-term average drawn over the live RTA
+await page.keyboard.press('1');
 await page.waitForTimeout(4000);
-const sgAvg = await page.evaluate(() => {
-  const sg = window.calApp.views.find((v) => v.id === 'spectrogram').sg;
-  const c = sg.averageDb();
-  return c && { layout: sg.orientation, low: sg.averageAt(80, c), mid: sg.averageAt(1000, c), high: sg.averageAt(12000, c) };
+const avgC = await page.evaluate(() => {
+  const a = window.calApp;
+  const m = a.measurements[0];
+  const avg = m.averageDb();
+  const at = (y, f) => y[a.grid.findIndex((g) => g >= f)];
+  const series = a.views.find((v) => v.id === 'spectrum').rta.series.find((s) => s.id.endsWith('-avg'));
+  return avg && { low: at(avg, 60), mid: at(avg, 1000), high: at(avg, 12000), liveMid: at(m.rtaOut, 1000), shown: !!series, label: series?.label };
 });
-console.log(JSON.stringify(sgAvg));
-check(sgAvg && sgAvg.layout === 'horizontal', 'spectrogram shows frequency horizontally by default');
-check(sgAvg && sgAvg.low > sgAvg.mid && sgAvg.mid > sgAvg.high, 'average curve follows the averaged spectrum (demo room: bass boost, falling top end)');
-await page.locator('.view:visible').getByRole('button', { name: 'Reset' }).click();
-check(await page.evaluate(() => window.calApp.views.find((v) => v.id === 'spectrogram').sg.averageDb() === null), 'Reset starts the average again');
-await page.locator('.view:visible select').filter({ hasText: 'Frequency →' }).selectOption('vertical');
-check(await page.evaluate(() => window.calApp.settings.spectrogramLayout === 'vertical'), 'layout switch to frequency vertical');
-await page.locator('.view:visible select').filter({ hasText: 'Frequency ↑' }).selectOption('horizontal');
+console.log(JSON.stringify(avgC));
+check(avgC && avgC.shown && /average \(10 s\)/.test(avgC.label), 'spectrum shows the average curve (10 s by default)');
+check(avgC && avgC.low > avgC.mid && avgC.mid > avgC.high && Math.abs(avgC.mid - avgC.liveMid) < 3, 'average curve follows the RTA (demo room: bass boost, falling top end)');
+const framesBefore = await page.evaluate(() => window.calApp.measurements[0].averageFrames);
+await page.locator('.view:visible').getByRole('button', { name: 'Restart' }).click();
+const framesAfter = await page.evaluate(() => window.calApp.measurements[0].averageFrames);
+check(framesBefore > 10 && framesAfter < 3, `Reset starts the average again (${framesBefore} → ${framesAfter} updates)`);
+await page.locator('.view:visible select[data-setting="rtaAverageCurve"]').selectOption('0');
+await page.waitForTimeout(300);
+check(await page.evaluate(() => !window.calApp.views.find((v) => v.id === 'spectrum').rta.series.some((s) => s.id.endsWith('-avg'))), 'Average Off hides the curve');
+await page.locator('.view:visible select[data-setting="rtaAverageCurve"]').selectOption('10');
+check(await page.evaluate(() => window.calApp.settings.spectrogramLayout === 'vertical'), 'spectrogram keeps frequency up the side by default');
 
 // Captured RTA traces line up with the live RTA when calibrated in dB SPL
 await page.keyboard.press('1');

@@ -57,15 +57,7 @@ export class Spectrogram {
   private rowBins: { key: string; b0: Int32Array; b1: Int32Array } | null = null;
   private readonly padL = 46;
   /** Frequency horizontal (newest at the top, like a waterfall) or vertical (newest at the right). */
-  orientation: 'horizontal' | 'vertical' = 'horizontal';
-  /** Average curve: averaging time in seconds (0 = off, Infinity = everything since the last clear). */
-  avgSeconds = 10;
-  /** Seconds between columns (set by the owner from the FFT hop). */
-  columnSeconds = 0.05;
-  /** Average power per image row (the mean of the FFT bins in that row). */
-  private avg = new Float64Array(this.rows);
-  private avgCount = 0;
-  private avgOffset = 0;
+  orientation: 'horizontal' | 'vertical' = 'vertical';
 
   constructor() {
     this.el = document.createElement('div');
@@ -130,20 +122,9 @@ export class Spectrogram {
     }
     const { b0, b1 } = this.rowBins;
     const scale = 255 / range;
-    // Average curve: exponential average of each row's mean power (cumulative for "all")
-    this.avgCount++;
-    const alpha = Math.max(1 / this.avgCount, Number.isFinite(this.avgSeconds) && this.avgSeconds > 0 ? 1 - Math.exp(-this.columnSeconds / this.avgSeconds) : 0);
-    this.avgOffset = offsetDb;
-    const avg = this.avg;
     for (let r = 0; r < this.rows; r++) {
       let m = 0;
-      let sum = 0;
-      for (let b = b0[r]; b <= b1[r]; b++) {
-        const p = power[b];
-        if (p > m) m = p;
-        sum += p;
-      }
-      avg[r] += alpha * (sum / (b1[r] - b0[r] + 1) - avg[r]);
+      for (let b = b0[r]; b <= b1[r]; b++) if (power[b] > m) m = power[b];
       const db = 10 * Math.log10(Math.max(m, 1e-30)) + offsetDb;
       const v = Math.max(0, Math.min(255, Math.round((db - this.dbMin) * scale)));
       const o = r * 4;
@@ -160,39 +141,7 @@ export class Spectrogram {
   clear(): void {
     this.imgCtx.fillStyle = '#000';
     this.imgCtx.fillRect(0, 0, this.cols, this.rows);
-    this.resetAverage();
-  }
-
-  /** Start the average curve again. */
-  resetAverage(): void {
-    this.avg.fill(0);
-    this.avgCount = 0;
     this.dirty = true;
-  }
-
-  /** The average curve in dB (display units), smoothed to 1/6 octave; null before any data. */
-  averageDb(): Float64Array | null {
-    if (!this.avgCount) return null;
-    const rows = this.rows;
-    const half = Math.max(1, Math.round(rows / Math.log2(this.fMax / this.fMin) / 12));
-    const out = new Float64Array(rows);
-    for (let r = 0; r < rows; r++) {
-      let s = 0;
-      let n = 0;
-      for (let k = Math.max(0, r - half); k <= Math.min(rows - 1, r + half); k++) {
-        s += this.avg[k];
-        n++;
-      }
-      out[r] = 10 * Math.log10(Math.max(s / n, 1e-30)) + this.avgOffset;
-    }
-    return out;
-  }
-
-  /** Average level at a frequency (dB), for the readout. */
-  averageAt(f: number, curve: Float64Array): number {
-    const t = Math.log(f / this.fMin) / Math.log(this.fMax / this.fMin);
-    const r = Math.min(this.rows - 1, Math.max(0, Math.round((1 - t) * this.rows - 0.5)));
-    return curve[r];
   }
 
   /** Redraw on the next frame (colour scheme or range changed). */
@@ -251,57 +200,6 @@ export class Spectrogram {
         ctx.fillText(label, padL - 6, Math.min(Math.max(y, 6), ph - 4));
       }
     }
-    // Average curve: level mapped onto the colour range (floor … top) across the other axis
-    const curve = this.avgSeconds > 0 ? this.averageDb() : null;
-    const range = this.dbMax - this.dbMin || 1;
-    const lvl = (db: number) => Math.max(0, Math.min(1, (db - this.dbMin) / range));
-    if (curve) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(x0, y0, pw, ph);
-      ctx.clip();
-      const path = new Path2D();
-      for (let r = this.rows - 1; r >= 0; r--) {
-        const fp = 1 - (r + 0.5) / this.rows;
-        const px = horiz ? x0 + fp * pw : x0 + lvl(curve[r]) * pw;
-        const py = horiz ? y0 + (1 - lvl(curve[r])) * ph : (1 - fp) * ph;
-        if (r === this.rows - 1) path.moveTo(px, py);
-        else path.lineTo(px, py);
-      }
-      ctx.lineJoin = 'round';
-      ctx.strokeStyle = 'rgba(0,0,0,0.65)';
-      ctx.lineWidth = 4.5;
-      ctx.stroke(path);
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2;
-      ctx.stroke(path);
-      ctx.restore();
-      // Level scale of the curve (same units as the colours): left axis (horizontal) or top edge (vertical)
-      ctx.fillStyle = CHART.text;
-      const step = range > 60 ? 20 : range > 30 ? 10 : 5;
-      for (let v = Math.ceil(this.dbMin / step) * step; v <= this.dbMax; v += step) {
-        if (horiz) {
-          ctx.textAlign = 'right';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(`${v}`, padL - 6, Math.min(Math.max(y0 + (1 - lvl(v)) * ph, 6), ph - 4));
-        } else {
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'top';
-          const x = x0 + lvl(v) * pw;
-          if (x > x0 + 12 && x < x0 + pw - 12) ctx.fillText(`${v}`, x, 3);
-        }
-      }
-      const tag = `Average ${Number.isFinite(this.avgSeconds) ? `${this.avgSeconds} s` : '(all)'}`;
-      ctx.font = '600 11px Inter, system-ui, sans-serif';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
-      const tagW = ctx.measureText(tag).width + 12;
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(x0 + 6, horiz ? 6 : 18, tagW, 17);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(tag, x0 + 12, horiz ? 9 : 21);
-      ctx.font = '10px Inter, system-ui, sans-serif';
-    }
     // Colour bar legend at the bottom right (sized to fit narrow screens), time label at the bottom left
     ctx.textBaseline = 'top';
     const legendY = horiz ? ph + 20 : ph + 5;
@@ -333,8 +231,7 @@ export class Spectrogram {
     if (m && m.x > x0 && m.x < x0 + pw && m.y < ph) {
       const t = horiz ? (m.x - x0) / pw : 1 - m.y / ph;
       const f = this.fMin * Math.pow(this.fMax / this.fMin, t);
-      const avgTxt = curve ? `<div>Average <b>${this.averageAt(f, curve).toFixed(1)} dB</b></div>` : '';
-      this.tip.innerHTML = `<div class="tip-head">${formatFreq(f)} <span class="dim">${noteName(f)}</span></div>${avgTxt}`;
+      this.tip.innerHTML = `<div class="tip-head">${formatFreq(f)} <span class="dim">${noteName(f)}</span></div>`;
       this.tip.style.display = 'block';
       this.tip.style.left = `${Math.min(m.x + 14, w - 150)}px`;
       this.tip.style.top = `${m.y}px`;

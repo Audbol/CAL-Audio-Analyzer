@@ -19,6 +19,10 @@ The builds are not code-signed yet:
 
 On first launch, choose **Explore with the demo room** to try every feature without hardware.
 
+## What's new in 1.6.1
+
+- **Average curve moved to the Spectrum:** the averaged curve for tuning is now a white line over the live RTA on the Spectrum tab (Average: 1 s, 3 s, 10 s, 30 s or everything since Restart; works with lines and bars). Hover to read it next to the live level. The spectrogram is back to its original layout (frequency up the side); frequency across remains an option under Layout.
+
 ## What's new in 1.6
 
 - **Average curve on the spectrogram:** a white averaged-spectrum line across the spectrogram shows the long-term tonal balance while you tune (Average: 1 s, 3 s, 10 s, 30 s or everything since Reset). Hover to read its level at any frequency.

@@ -1,6 +1,6 @@
 import type { App, View } from '../app';
 import { Plot, type Series } from '../ui/plot';
-import { h, select } from '../ui/dom';
+import { h, icon, select } from '../ui/dom';
 import type { DockLayout } from '../ui/dock';
 import { octaveBandCentres, sampleLogGrid, type Smoothing } from '../dsp/freq';
 import { AVG_OPTIONS } from './meters';
@@ -106,6 +106,29 @@ export class SpectrumView extends DockedView implements View {
         select(AVG_OPTIONS, s.rtaAveraging, (v) => { s.rtaAveraging = v; app.applyAnalysisSettings(); }, { dataset: { setting: 'rtaAveraging' } }),
         this.settingChip('peakHold', 'Peak hold', 'Peak hold (P)'),
       ),
+      h(
+        'div',
+        { class: 'tb-group' },
+        h('span', { class: 'tb-label' }, 'Average'),
+        select(
+          [
+            { value: 0, label: 'Off' },
+            { value: 1, label: '1 s' },
+            { value: 3, label: '3 s' },
+            { value: 10, label: '10 s' },
+            { value: 30, label: '30 s' },
+            { value: -1, label: 'All (since reset)' },
+          ],
+          s.rtaAverageCurve,
+          (v) => {
+            s.rtaAverageCurve = v;
+            for (const m of app.measurements) m.resetAverage();
+            app.save();
+          },
+          { title: 'Average curve over the live RTA, for tuning', dataset: { setting: 'rtaAverageCurve' } },
+        ),
+        h('button', { class: 'btn small', title: 'Start the average curve again (R restarts it together with all averaging)', onclick: () => app.measurements.forEach((m) => m.resetAverage()) }, icon('reset', 14), 'Restart'),
+      ),
       h('div', { class: 'spacer' }),
       ...this.layoutButtons(),
     );
@@ -117,7 +140,7 @@ export class SpectrumView extends DockedView implements View {
     const s = app.settings;
     if (this.visible('rta')) {
       // Redraw only when what is shown changed (new analysis data arrives ~6–12 times a second)
-      const key = `${app.traces.version}|${s.rtaStyle}|${s.rtaSmoothing}|${s.peakHold}|${s.splCalibrated}|${s.splOffset}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.rtaShown}`).join(',')}`;
+      const key = `${app.traces.version}|${s.rtaStyle}|${s.rtaSmoothing}|${s.peakHold}|${s.rtaAverageCurve}|${s.theme}|${s.splCalibrated}|${s.splOffset}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.rtaShown}`).join(',')}`;
       if (key === this.lastKey) return this.tickMeters();
       this.lastKey = key;
       const g = app.grid;
@@ -151,6 +174,15 @@ export class SpectrumView extends DockedView implements View {
         }
         if (s.peakHold) series.push({ id: `${m.cfg.id}-pk`, label: `${m.cfg.name} peak`, x: g, y: shift(m.rtaPeakOut), color: m.cfg.color, width: 1, dash: [2, 2] });
         series.push({ id: m.cfg.id, label: m.cfg.name, x: g, y: shift(m.rtaOut), color: m.cfg.color, width: 1.6, fill: true });
+      }
+      // Average curves (for tuning) on top of everything: the long-term balance behind the live RTA
+      const day = s.theme === 'day';
+      for (const m of app.measurements) {
+        const avg = m.cfg.enabled ? m.averageDb() : null;
+        if (!avg) continue;
+        const label = `${m.cfg.name} average${s.rtaAverageCurve > 0 ? ` (${s.rtaAverageCurve} s)` : ''}`;
+        if (bars) series.push({ id: `${m.cfg.id}-avg`, label, x: this.bands, y: atBands(avg), color: day ? '#111111' : '#ffffff', width: 2, halo: day ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)' });
+        else series.push({ id: `${m.cfg.id}-avg`, label, x: g, y: shift(avg), color: day ? '#111111' : '#ffffff', width: 2, halo: day ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)' });
       }
       this.rta.cfg.yUnit = s.splCalibrated ? 'dB SPL' : 'dBFS';
       this.rta.series = series;

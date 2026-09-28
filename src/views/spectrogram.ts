@@ -52,34 +52,11 @@ export class SpectrogramView implements View {
         h(
           'div',
           { class: 'tb-group' },
-          h('span', { class: 'tb-label' }, 'Average'),
-          select(
-            [
-              { value: 0, label: 'Off' },
-              { value: 1, label: '1 s' },
-              { value: 3, label: '3 s' },
-              { value: 10, label: '10 s' },
-              { value: 30, label: '30 s' },
-              { value: -1, label: 'All (since reset)' },
-            ],
-            s.spectrogramAverage,
-            (v) => {
-              s.spectrogramAverage = v;
-              this.applyAverage();
-              app.save();
-            },
-            { title: 'Averaged spectrum drawn over the spectrogram, for tuning' },
-          ),
-          h('button', { class: 'btn small', title: 'Start the average again', onclick: () => this.sg.resetAverage() }, icon('reset', 14), 'Reset'),
-        ),
-        h(
-          'div',
-          { class: 'tb-group' },
           h('span', { class: 'tb-label' }, 'Layout'),
           select(
             [
-              { value: 'horizontal' as const, label: 'Frequency →' },
               { value: 'vertical' as const, label: 'Frequency ↑' },
+              { value: 'horizontal' as const, label: 'Frequency →' },
             ],
             s.spectrogramLayout,
             (v) => {
@@ -99,13 +76,6 @@ export class SpectrogramView implements View {
     );
     this.applyRange();
     this.sg.orientation = s.spectrogramLayout;
-    this.applyAverage();
-  }
-
-  private applyAverage(): void {
-    const v = this.app.settings.spectrogramAverage;
-    this.sg.avgSeconds = v < 0 ? Infinity : v;
-    this.sg.invalidate();
   }
 
   invalidate(): void {
@@ -161,7 +131,6 @@ export class SpectrogramView implements View {
         }
         // One column per processed frame
         for (let i = 0; i < 8 && this.sa.process(ring, 1) > 0; i++) {
-          this.sg.columnSeconds = this.sa.hop / e.sampleRate;
           this.sg.push(this.sa.instantaneous, e.sampleRate / this.fft, offset);
           this.sample(this.sa.instantaneous, e.sampleRate / this.fft, offset);
         }

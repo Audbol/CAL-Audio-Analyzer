@@ -38,6 +38,12 @@ export class Measurement {
   /** Increase whenever the displayed TF / RTA arrays change (views redraw only then). */
   tfShown = 0;
   rtaShown = 0;
+  /** Long-term average of the RTA (power per grid point) for the average curve, and its bookkeeping. */
+  private avgPow: Float64Array | null = null;
+  private avgDb: Float64Array | null = null;
+  private avgCount = 0;
+  private avgAt = 0;
+  private avgKey = '';
 
   constructor(
     public cfg: MeasurementConfig,
@@ -74,6 +80,7 @@ export class Measurement {
     this.tfReady = false;
     this.tfKey = '';
     this.rtaKey = '';
+    this.resetAverage();
   }
 
   process(engine: AudioEngine, needs: AnalysisNeeds = { rta: true, tf: true }): void {
@@ -125,6 +132,8 @@ export class Measurement {
           this.rtaPeakOut[i] += cal[i];
         }
         this.rtaShown++;
+    this.updateAverage(s, cal);
+        this.updateAverage(s, cal);
       }
     }
   }
@@ -138,6 +147,53 @@ export class Measurement {
       if (p > 180) p -= 360;
       this.phase[i] = p;
     }
+  }
+
+  /**
+   * Average curve: exponential average (in power) of the displayed RTA with the time constant set in the
+   * settings, or cumulative for "all". Restarts when the resolution or the mic calibration changes.
+   */
+  private updateAverage(s: Settings, cal: Float64Array | null): void {
+    const secs = s.rtaAverageCurve;
+    if (!secs) {
+      this.avgPow = null;
+      return;
+    }
+    const key = `${s.rtaSmoothing}|${calId(cal)}`;
+    if (!this.avgPow || key !== this.avgKey) {
+      this.avgPow = new Float64Array(this.grid.length);
+      this.avgCount = 0;
+      this.avgKey = key;
+    }
+    const now = performance.now();
+    const dt = this.avgCount ? (now - this.avgAt) / 1000 : 0;
+    this.avgAt = now;
+    this.avgCount++;
+    const a = Math.max(1 / this.avgCount, secs > 0 ? 1 - Math.exp(-dt / secs) : 0);
+    const p = this.avgPow;
+    const y = this.rtaOut;
+    for (let i = 0; i < p.length; i++) p[i] += a * (Math.pow(10, y[i] / 10) - p[i]);
+    this.avgDb = null;
+  }
+
+  /** The average curve in dB (same units as rtaOut), or null when off / no data yet. */
+  averageDb(): Float64Array | null {
+    if (!this.avgPow || !this.avgCount) return null;
+    if (!this.avgDb) this.avgDb = Float64Array.from(this.avgPow, (v) => 10 * Math.log10(Math.max(v, 1e-30)));
+    return this.avgDb;
+  }
+
+  /** RTA updates in the current average (0 after a reset). */
+  get averageFrames(): number {
+    return this.avgPow ? this.avgCount : 0;
+  }
+
+  /** Start the average curve again. */
+  resetAverage(): void {
+    this.avgPow = null;
+    this.avgDb = null;
+    this.avgCount = 0;
+    this.rtaShown++;
   }
 
   /** Remote devices: build the display arrays from the host's analysis frame, at this device's smoothing. */

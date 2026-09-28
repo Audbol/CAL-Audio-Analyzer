@@ -86,8 +86,8 @@ export interface Settings {
   spectrogramRange: [number, number];
   /** Spectrogram layout: frequency horizontal (waterfall) or vertical. */
   spectrogramLayout: 'horizontal' | 'vertical';
-  /** Spectrogram average curve: averaging time in seconds (0 = off, -1 = everything since clear). */
-  spectrogramAverage: number;
+  /** Spectrum average curve: averaging time in seconds (0 = off, -1 = everything since reset). */
+  rtaAverageCurve: number;
 }
 
 export function defaultSettings(): Settings {
@@ -125,8 +125,8 @@ export function defaultSettings(): Settings {
     rtaRange: [-110, 0],
     splChannel: 0,
     spectrogramRange: [-110, -20],
-    spectrogramLayout: 'horizontal',
-    spectrogramAverage: 10,
+    spectrogramLayout: 'vertical',
+    rtaAverageCurve: 10,
   };
 }
 
@@ -141,6 +141,12 @@ export function loadSettings(): Settings {
     // Before v1.1 the Spectrum and Transfer views were a single "Live" view
     if (s.view === 'live' || !s.view) s.view = 'transfer';
     delete s.liveLayout;
+    // 1.6.0 put an average curve on the spectrogram (and turned its layout for it); it lives on the spectrum now
+    const legacy = s as { spectrogramAverage?: number; spectrogramLayout?: string };
+    if (legacy.spectrogramAverage !== undefined) {
+      delete legacy.spectrogramAverage;
+      legacy.spectrogramLayout = 'vertical';
+    }
     for (const m of s.measurements ?? []) {
       const i = LEGACY_PALETTE.indexOf(m.color);
       if (i >= 0) m.color = PALETTE[i];

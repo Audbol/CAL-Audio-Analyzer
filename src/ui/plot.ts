@@ -19,6 +19,8 @@ export interface Series {
   bars?: number;
   /** With `bars`: draw only a marker line at each bar's level (e.g. peak hold). */
   cap?: boolean;
+  /** Outline colour drawn under the line (keeps it readable on top of other curves). */
+  halo?: string;
   /** Exclude from the hover readout. */
   quiet?: boolean;
   /** Secondary y axis (0..1 range drawn on the right), e.g. coherence. */
@@ -624,6 +626,14 @@ export class Plot {
       lastX = px;
     }
     if (dense) flush();
+    if (s.halo) {
+      ctx.save();
+      ctx.strokeStyle = s.halo;
+      ctx.lineWidth += 3;
+      ctx.setLineDash([]);
+      ctx.stroke();
+      ctx.restore();
+    }
     ctx.stroke();
     if (s.fill) {
       ctx.lineTo(lastX, bottom);
