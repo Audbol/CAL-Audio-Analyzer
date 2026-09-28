@@ -134,6 +134,16 @@ export class Dock {
     meta.content = 'dark';
     doc.head.append(meta);
     doc.body.className = 'popout-body';
+    // Follow the main window's colour scheme (day / night), now and when it changes
+    const syncTheme = () => {
+      const t = document.documentElement.dataset.theme;
+      if (t) doc.documentElement.dataset.theme = t;
+      else delete doc.documentElement.dataset.theme;
+    };
+    syncTheme();
+    const themeObserver = new MutationObserver(syncTheme);
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    win.addEventListener('pagehide', () => themeObserver.disconnect());
     frame.classList.remove('floating');
     frame.classList.add('popped');
     frame.style.cssText = '';

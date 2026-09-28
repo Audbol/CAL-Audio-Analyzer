@@ -1,4 +1,4 @@
-import { CHART } from './theme';
+import { CHART, seriesColor } from './theme';
 import { formatFreq, noteName } from '../dsp/freq';
 
 export interface Series {
@@ -268,7 +268,7 @@ export class Plot {
     for (const s of this.series) this.drawSeries(s);
     for (const m of this.markers) {
       const x = this.xToPx(m.x);
-      ctx.strokeStyle = m.color;
+      ctx.strokeStyle = seriesColor(m.color);
       ctx.setLineDash([4, 3]);
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -277,7 +277,7 @@ export class Plot {
       ctx.stroke();
       ctx.setLineDash([]);
       if (m.label) {
-        ctx.fillStyle = m.color;
+        ctx.fillStyle = seriesColor(m.color);
         ctx.font = '10px Inter, system-ui, sans-serif';
         ctx.fillText(m.label, x + 3, H - pad.b - 5);
       }
@@ -358,9 +358,10 @@ export class Plot {
     const ctx = this.ctx;
     const n = Math.min(s.x.length, s.y.length);
     if (!n) return;
-    ctx.strokeStyle = s.color;
-    ctx.fillStyle = s.color;
-    ctx.lineWidth = s.width ?? 1.5;
+    const color = seriesColor(s.color);
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = (s.width ?? 1.5) * COLORS.lineScale;
     ctx.lineJoin = 'round';
     ctx.setLineDash(s.dash ?? []);
     const xMin = this.cfg.xMin;
@@ -427,7 +428,7 @@ export class Plot {
       ctx.lineTo(lastX, bottom);
       ctx.lineTo(firstX, bottom);
       ctx.closePath();
-      ctx.globalAlpha = 0.12;
+      ctx.globalAlpha = COLORS.fillAlpha;
       ctx.fill();
       ctx.globalAlpha = 1;
     }
@@ -459,7 +460,7 @@ export class Plot {
       if (v === null) continue;
       const unit = s.unit ?? this.cfg.yUnit;
       const val = s.secondary ? `${(v * 100).toFixed(0)}%` : `${v.toFixed(1)} ${unit}`;
-      rows.push(`<div><i style="background:${s.color}"></i>${escapeHtml(s.label)} <b>${val}</b></div>`);
+      rows.push(`<div><i style="background:${seriesColor(s.color)}"></i>${escapeHtml(s.label)} <b>${val}</b></div>`);
     }
     if (rows.length === 1) rows.push(`<div class="dim">${this.yFromPx(m.y).toFixed(1)} ${this.cfg.yUnit}</div>`);
     this.tip.innerHTML = rows.join('');

@@ -282,7 +282,7 @@ export class RoomView implements View {
       color: colors[Math.round((i / Math.max(1, ac.bands.length - 1)) * (colors.length - 1))],
       width: 1,
     }));
-    decaySeries.push({ id: 'bb', label: 'Broadband', x: Float64Array.from(ac.broadband.decay, (_, k) => k * ac.decayStep * 1000), y: ac.broadband.decay, color: CHART.white, width: 2 });
+    decaySeries.push({ id: 'bb', label: 'Broadband', x: Float64Array.from(ac.broadband.decay, (_, k) => k * ac.decayStep * 1000), y: ac.broadband.decay, color: CHART.fg, width: 2 });
     this.decay.series = decaySeries;
     this.renderCards(r);
     this.renderTable(ac);
@@ -354,6 +354,10 @@ export class RoomView implements View {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  invalidate(): void {
+    this.dirty = true;
   }
 
   tick(): void {

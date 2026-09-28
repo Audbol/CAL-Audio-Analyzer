@@ -144,6 +144,10 @@ export class ToolsView implements View {
     this.dirty = true;
   }
 
+  invalidate(): void {
+    this.dirty = true;
+  }
+
   tick(): void {
     if (!this.dirty) return;
     this.dirty = false;

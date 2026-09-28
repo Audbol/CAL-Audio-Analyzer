@@ -133,6 +133,10 @@ export class EqView implements View {
     );
   }
 
+  invalidate(): void {
+    this.dirty = true;
+  }
+
   tick(): void {
     if (!this.dirty) return;
     this.dirty = false;

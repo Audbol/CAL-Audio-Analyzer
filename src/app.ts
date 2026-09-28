@@ -17,6 +17,7 @@ import { EqView } from './views/eq';
 import { SplView } from './views/spl';
 import { ToolsView } from './views/tools';
 import { showWizard, showHelp } from './ui/dialogs';
+import { applyChartTheme } from './ui/theme';
 
 export interface View {
   id: ViewId;
@@ -26,6 +27,8 @@ export interface View {
   tick(): void;
   show?(): void;
   hide?(): void;
+  /** Force a redraw on the next tick (e.g. after a theme change). */
+  invalidate?(): void;
 }
 
 export interface Hint {
@@ -62,12 +65,14 @@ export class App {
   private lastHints = '';
   private frameTimes: number[] = [];
   private starting = false;
+  private themeBtn = h('button', { class: 'btn icon-btn theme-btn', onclick: () => this.toggleTheme() });
   private lastMode: boolean | null = null;
   /** Set while a sweep measurement owns the generator; live analysis pauses so averages stay clean. */
   busy = false;
 
   constructor(root: HTMLElement) {
     this.root = root;
+    this.applyTheme();
     this.updateCal();
     this.build();
     this.traces.onChange(() => this.renderTraces());
@@ -227,6 +232,26 @@ export class App {
   }
 
   // ---------------------------------------------------------------------------------------------------------
+  // Theme
+
+  /** Apply the saved colour scheme to the document, canvases and the toggle button. */
+  applyTheme(): void {
+    const day = this.settings.theme === 'day';
+    document.documentElement.dataset.theme = this.settings.theme;
+    applyChartTheme(this.settings.theme);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', day ? '#ffffff' : '#000000');
+    this.themeBtn.replaceChildren(icon(day ? 'moon' : 'sun', 18));
+    this.themeBtn.title = day ? 'Switch to night mode (OLED black) — T' : 'Switch to day mode (high contrast for sunlight) — T';
+    for (const v of this.views) v.invalidate?.();
+  }
+
+  toggleTheme(): void {
+    this.settings.theme = this.settings.theme === 'day' ? 'night' : 'day';
+    this.save();
+    this.applyTheme();
+  }
+
+  // ---------------------------------------------------------------------------------------------------------
   // Layout
 
   private build(): void {
@@ -252,6 +277,7 @@ export class App {
       h('div', { class: 'group gen' }, h('span', { class: 'label' }, 'Generator'), this.genBtn, this.genControls),
       h('div', { class: 'spacer' }),
       this.splMini,
+      this.themeBtn,
       h('button', { class: 'btn icon-btn', title: 'Help & shortcuts (?)', onclick: () => showHelp(this) }, icon('help', 18)),
       h('button', { class: 'btn icon-btn', title: 'Setup assistant', onclick: () => showWizard(this) }, icon('sparkle', 18)),
     );
@@ -733,6 +759,10 @@ export class App {
           break;
         case '?':
           showHelp(this);
+          break;
+        case 't':
+        case 'T':
+          this.toggleTheme();
           break;
         default:
           if (/^[1-8]$/.test(e.key)) this.setView(this.views[+e.key - 1].id);

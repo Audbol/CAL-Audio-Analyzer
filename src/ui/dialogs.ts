@@ -126,6 +126,7 @@ export function showHelp(app: App): void {
     ['P', 'Toggle RTA peak hold'],
     ['F', 'Freeze / unfreeze display'],
     ['1 – 8', 'Switch views'],
+    ['T', 'Day / night colour scheme'],
     ['?', 'This help'],
   ];
   const body = h(

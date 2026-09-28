@@ -21,10 +21,90 @@
   --danger-rgb: 255, 77, 94;
   --ok: #3ddc97;
   --info: #8ab4ff;
+  --plot-bg: #000000;
+  --swatch-ring: rgba(255, 255, 255, 0.15);
+  --clip-off: #1a0b0d;
+  --meter-lo: #0c1611;
+  --meter-mid: #1b170b;
+  --meter-hi: #1f0e0f;
+  --meter-hold: #ffffff;
+  --overlay: rgba(var(--shadow-rgb), 0.72);
+  --scrim: rgba(var(--shadow-rgb), 0.78);
+  --shadow-rgb: 0, 0, 0;
+  --start-on: #ff8a96;
+  --gen-on: #ffc857;
   --radius: 6px;
   --font: Inter, 'Segoe UI', system-ui, -apple-system, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   color-scheme: dark;
+}
+
+/* Day mode: maximum-contrast light scheme for use in direct sunlight.
+   Pure white background, black text, darker saturated colours and heavier strokes. */
+:root[data-theme='day'] {
+  --bg: #ffffff;
+  --panel: #f2f3f5;
+  --panel-2: #e8eaee;
+  --panel-3: #ffffff;
+  --hover: #d9dde3;
+  --border: #aab0b9;
+  --border-2: #8a919c;
+  --border-3: #5b626d;
+  --text: #000000;
+  --text-2: #0b0f17;
+  --dim: #2f3642;
+  --accent: #0047c2;
+  --accent-hi: #0a5ce6;
+  --accent-rgb: 0, 71, 194;
+  --accent-ink: #ffffff;
+  --warn: #a64b00;
+  --warn-rgb: 166, 75, 0;
+  --danger: #c1121f;
+  --danger-rgb: 193, 18, 31;
+  --ok: #046c4e;
+  --info: #1d4ed8;
+  --plot-bg: #ffffff;
+  --swatch-ring: rgba(0, 0, 0, 0.35);
+  --clip-off: #f4dada;
+  --meter-lo: #d9efe3;
+  --meter-mid: #f6e6c4;
+  --meter-hi: #f5d0d0;
+  --meter-hold: #000000;
+  --overlay: rgba(255, 255, 255, 0.85);
+  --scrim: rgba(40, 44, 52, 0.55);
+  --shadow-rgb: 30, 35, 45;
+  --start-on: #b00020;
+  --gen-on: #7a3a00;
+  color-scheme: light;
+}
+:root[data-theme='day'] body {
+  font-weight: 500;
+}
+:root[data-theme='day'] .tab.active,
+:root[data-theme='day'] .chip.on,
+:root[data-theme='day'] .dp-title,
+:root[data-theme='day'] .sec-head h3 {
+  font-weight: 700;
+}
+:root[data-theme='day'] .chip.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+:root[data-theme='day'] .btn-gen.on {
+  background: #ffe2b8;
+  border-color: var(--warn);
+}
+:root[data-theme='day'] .btn-start.on {
+  background: #ffd9dd;
+  border-color: var(--danger);
+}
+:root[data-theme='day'] .lv-peak {
+  opacity: 0.35;
+}
+:root[data-theme='day'] .dp-btn,
+:root[data-theme='day'] .dp-grip {
+  opacity: 1;
 }
 
 * {
@@ -115,7 +195,7 @@ input.swatch::-webkit-color-swatch-wrapper {
   padding: 0;
 }
 input.swatch::-webkit-color-swatch {
-  border: 2px solid rgba(255, 255, 255, 0.15);
+  border: 2px solid var(--swatch-ring);
   border-radius: 50%;
 }
 kbd {
@@ -262,7 +342,7 @@ kbd {
 .btn-start.on {
   background: rgba(var(--danger-rgb), 0.15);
   border-color: rgba(var(--danger-rgb), 0.5);
-  color: #ff8a96;
+  color: var(--start-on);
 }
 .btn-start:not(.on) {
   background: var(--accent);
@@ -275,7 +355,7 @@ kbd {
 .btn-gen.on {
   background: rgba(var(--warn-rgb), 0.16);
   border-color: rgba(var(--warn-rgb), 0.6);
-  color: #ffc857;
+  color: var(--gen-on);
   animation: pulse 1.6s ease-in-out infinite;
 }
 @keyframes pulse {
@@ -692,7 +772,7 @@ label.inline {
   flex: 1;
   min-height: 140px;
   position: relative;
-  background: #000000;
+  background: var(--plot-bg);
 }
 .pane.big {
   flex: 1.5;
@@ -784,7 +864,7 @@ label.inline {
   flex-direction: column;
   min-height: 0;
   min-width: 0;
-  background: #000000;
+  background: var(--plot-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
@@ -793,12 +873,12 @@ label.inline {
   z-index: 30;
   opacity: 0.85;
   border-color: var(--accent);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 16px 40px rgba(var(--shadow-rgb), 0.7);
 }
 .dpanel.floating {
   position: absolute;
   border-color: var(--border-3);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  box-shadow: 0 18px 50px rgba(var(--shadow-rgb), 0.75), 0 0 0 1px rgba(255, 255, 255, 0.03);
 }
 .dp-head {
   display: flex;
@@ -883,7 +963,7 @@ label.inline {
 }
 body.popout-body {
   margin: 0;
-  background: #000000;
+  background: var(--plot-bg);
   overflow: hidden;
 }
 
@@ -966,7 +1046,7 @@ body.popout-body {
   line-height: 11px;
   text-align: center;
   color: transparent;
-  background: #1a0b0d;
+  background: var(--clip-off);
 }
 .lv-col.clip .lv-clip {
   background: var(--danger);
@@ -977,7 +1057,7 @@ body.popout-body {
   flex: 1;
   border-radius: 2px;
   overflow: hidden;
-  background: linear-gradient(0deg, #0c1611 0%, #0c1611 80%, #1b170b 80%, #1b170b 90%, #1f0e0f 90%);
+  background: linear-gradient(0deg, var(--meter-lo) 0%, var(--meter-lo) 80%, var(--meter-mid) 80%, var(--meter-mid) 90%, var(--meter-hi) 90%);
 }
 .lv-bar i {
   position: absolute;
@@ -996,7 +1076,7 @@ body.popout-body {
 }
 .lv-hold {
   height: 2px;
-  background: #ffffff;
+  background: var(--meter-hold);
   z-index: 2;
 }
 .lv-col.gen .lv-rms {
@@ -1040,7 +1120,7 @@ body.popout-body {
   font-weight: 600;
   color: rgba(236, 236, 238, 0.7);
   pointer-events: none;
-  background: rgba(0, 0, 0, 0.72);
+  background: var(--overlay);
   padding: 1px 6px;
   border-radius: 4px;
 }
@@ -1065,7 +1145,7 @@ body.popout-body {
   padding: 6px 9px;
   font-size: 11.5px;
   white-space: nowrap;
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 6px 22px rgba(var(--shadow-rgb), 0.45);
   z-index: 3;
 }
 .plot-tip .tip-head {
@@ -1445,7 +1525,7 @@ body.popout-body {
   width: 90px;
   height: 7px;
   border-radius: 2px;
-  background: linear-gradient(90deg, #0f1a14 0%, #0f1a14 75%, #1f1a0c 75%, #1f1a0c 92%, #22100f 92%);
+  background: linear-gradient(90deg, var(--meter-lo) 0%, var(--meter-lo) 75%, var(--meter-mid) 75%, var(--meter-mid) 92%, var(--meter-hi) 92%);
   overflow: hidden;
 }
 .meter .bar i {
@@ -1459,7 +1539,7 @@ body.popout-body {
   top: 0;
   bottom: 0;
   width: 2px;
-  background: #ffffff;
+  background: var(--meter-hold);
 }
 .meter em {
   font-style: normal;
@@ -1505,7 +1585,7 @@ body.popout-body {
   border: 1px solid var(--border-2);
   border-radius: 8px;
   padding: 10px 13px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 10px 30px rgba(var(--shadow-rgb), 0.5);
   animation: toast-in 0.18s ease-out;
   transition:
     opacity 0.3s,
@@ -1542,7 +1622,7 @@ body.popout-body {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.78);
+  background: var(--scrim);
   backdrop-filter: blur(3px);
   display: grid;
   place-items: center;
@@ -1567,7 +1647,7 @@ body.popout-body {
   background: var(--panel);
   border: 1px solid var(--border-2);
   border-radius: 14px;
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 30px 80px rgba(var(--shadow-rgb), 0.6);
 }
 .modal-head {
   display: flex;
