@@ -144,22 +144,29 @@ export class Spectrogram {
       ctx.fillRect(padL, y, w - padL - 8, 1);
       ctx.fillStyle = CHART.text;
     }
-    ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText('time →   (newest at right)', padL + (w - padL) / 2, h - padB + 5);
-    // Colour bar legend
-    const lg = ctx.createLinearGradient(0, 0, 120, 0);
+    // Colour bar legend at the bottom right (sized to fit narrow screens), time label at the bottom left
+    const minTxt = `${Math.round(this.dbMin)}`;
+    const maxTxt = `${Math.round(this.dbMax)} dB`;
+    const barW = Math.round(Math.max(50, Math.min(120, (w - padL) * 0.3)));
+    const maxW = ctx.measureText(maxTxt).width;
+    const minW = ctx.measureText(minTxt).width;
+    const barX = w - 8 - maxW - 4 - barW;
+    const lg = ctx.createLinearGradient(barX, 0, barX + barW, 0);
     for (let i = 0; i <= 8; i++) {
       const v = Math.round((i / 8) * 255);
       lg.addColorStop(i / 8, `rgb(${LUT[v * 3]},${LUT[v * 3 + 1]},${LUT[v * 3 + 2]})`);
     }
     ctx.fillStyle = lg;
-    ctx.fillRect(w - 138, h - padB + 6, 120, 8);
+    ctx.fillRect(barX, h - padB + 6, barW, 8);
     ctx.fillStyle = CHART.text;
     ctx.textAlign = 'right';
-    ctx.fillText(`${this.dbMin}`, w - 142, h - padB + 5);
+    ctx.fillText(minTxt, barX - 4, h - padB + 5);
     ctx.textAlign = 'left';
-    ctx.fillText(`${this.dbMax} dB`, w - 14, h - padB + 5);
+    ctx.fillText(maxTxt, barX + barW + 4, h - padB + 5);
+    const room = barX - 4 - minW - 12 - padL;
+    const timeTxt = room > ctx.measureText('time →   (newest at right)').width ? 'time →   (newest at right)' : room > ctx.measureText('time →').width ? 'time →' : '';
+    if (timeTxt) ctx.fillText(timeTxt, padL, h - padB + 5);
     if (this.mouse && this.mouse.x > padL && this.mouse.y < h - padB) {
       const t = 1 - this.mouse.y / (h - padB);
       const f = this.fMin * Math.pow(this.fMax / this.fMin, t);

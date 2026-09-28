@@ -146,6 +146,25 @@ const sp3 = await phone.evaluate(inView);
 check(sp3.med > sp3.lo && sp3.med < sp3.hi, 'Fit brings the data back into view');
 await phone.screenshot({ path: `${out}/remote-05-phone-spectrum.png` });
 check(sp.unit === 'dB SPL', 'remote spectrum adopts the host calibration');
+// Spectrogram with the calibrated host: the colour range follows the calibration (no solid colour)
+await phone.keyboard.press('3');
+await phone.waitForTimeout(3000);
+const sgr = await phone.evaluate(() => {
+  const v = window.calApp.views.find((x) => x.id === 'spectrogram');
+  const sorted = [...v.recent].sort((a, b) => a - b);
+  const med = sorted[sorted.length >> 1];
+  const c = document.querySelector('.view:not([hidden]) canvas, .spectrogram canvas');
+  const cv = v.sg.el.querySelector('canvas');
+  const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+  const colours = new Set();
+  for (let i = 0; i < d.length; i += 4 * 211) colours.add(`${d[i] >> 4},${d[i + 1] >> 4},${d[i + 2] >> 4}`);
+  return { med, lo: v.sg.dbMin, hi: v.sg.dbMax, colours: colours.size, unit: v.unit.textContent };
+});
+console.log(JSON.stringify(sgr));
+check(sgr.unit === 'dB SPL' && sgr.med > sgr.lo && sgr.med < sgr.hi, `spectrogram colour range follows the calibration (${sgr.med.toFixed(0)} dB in ${sgr.lo}…${sgr.hi} ${sgr.unit})`);
+check(sgr.colours > 12, `spectrogram shows a range of colours, not a solid fill (${sgr.colours})`);
+await phone.screenshot({ path: `${out}/remote-06-phone-spectrogram.png` });
+await phone.keyboard.press('1');
 
 // --- Remote runs a sweep: it runs on the host and the result appears on every device
 await rem.keyboard.press('5');

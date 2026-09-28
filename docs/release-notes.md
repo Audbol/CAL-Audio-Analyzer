@@ -19,6 +19,11 @@ The builds are not code-signed yet:
 
 On first launch, choose **Explore with the demo room** to try every feature without hardware.
 
+## What's new in 1.4.2
+
+- **Spectrogram fixed with SPL calibration:** with a calibrated microphone (or on a remote device using the host's calibration) the spectrogram showed a solid beige colour. The colour range now follows the calibration, the Floor/Top fields show dB SPL when calibrated, a new **Auto** button fits the range to the signal, and the range fits itself once when the signal is entirely outside it.
+- The spectrogram's colour-scale legend shows the full colour scale again and fits on phone screens.
+
 ## What's new in 1.4.1
 
 - **Smoother, more accurate low end:** the longer bass windows now blend into the regular ones over a third of an octave instead of switching at a fixed frequency, so the spectrum and transfer function no longer show small steps at 45, 80, 90 or 160 Hz. The bass windows also update as often as the rest of the analysis, so the low end keeps up with changes (about 40% faster to settle than in 1.4.0).
