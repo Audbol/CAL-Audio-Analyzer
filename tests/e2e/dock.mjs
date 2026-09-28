@@ -17,30 +17,32 @@ const check = (ok, msg) => {
   console.log(`${ok ? 'PASS' : 'FAIL'} ${msg}`);
   if (!ok) failed = true;
 };
-const layout = () => page.evaluate(() => JSON.parse(JSON.stringify(window.calApp.settings.liveLayout)));
-const docked = () => page.$$eval('.dock-stack > .dpanel', (els) => els.map((e) => e.dataset.panel));
-const head = (id) => page.locator(`.dpanel[data-panel="${id}"] .dp-head`);
-const box = async (sel) => (await page.locator(sel).first().boundingBox());
+const layout = () => page.evaluate(() => JSON.parse(JSON.stringify(window.calApp.settings.transferLayout)));
+// Docked panels of the visible (Transfer or Spectrum) view
+const docked = () => page.$$eval('.view:not([style*="none"]) .dock-stack > .dpanel', (els) => els.map((e) => e.dataset.panel));
+const vis = (sel) => page.locator('.view:visible').locator(sel);
+const head = (id) => vis(`.dpanel[data-panel="${id}"] .dp-head`);
+const box = async (sel) => (await vis(sel).first().boundingBox());
 
 await page.goto('http://localhost:4181/');
 await page.getByText('Explore with the demo room').click();
 await page.getByRole('button', { name: 'Start demo' }).click();
 await page.waitForTimeout(2500);
 
-check(JSON.stringify(await docked()) === '["rta","mag","phase"]', `default docked order ${JSON.stringify(await docked())}`);
-check((await page.locator('.dpanel.floating').count()) === 2, 'SPL and level meters float by default');
+check(JSON.stringify(await docked()) === '["mag","phase"]', `Transfer tab: default docked order ${JSON.stringify(await docked())}`);
+check((await vis('.dpanel[data-panel="levels"].floating:visible').count()) === 1, 'level meters float by default');
 await page.screenshot({ path: `${out}/dock-01-default.png` });
 
-// 1. Rearrange: drag the phase panel's title bar above the RTA panel
+// 1. Rearrange: drag the phase panel's title bar above the magnitude panel
 {
   const from = await head('phase').boundingBox();
-  const to = await box('.dpanel[data-panel="rta"]');
+  const to = await box('.dpanel[data-panel="mag"]');
   await page.mouse.move(from.x + 200, from.y + 12);
   await page.mouse.down();
   await page.mouse.move(from.x + 200, to.y + 20, { steps: 12 });
-  check(await page.locator('.dock-drop').isVisible(), 'drop indicator shown while dragging');
+  check(await vis('.dock-drop').isVisible(), 'drop indicator shown while dragging');
   await page.mouse.up();
-  check(JSON.stringify(await docked()) === '["phase","rta","mag"]', `reordered by dragging → ${JSON.stringify(await docked())}`);
+  check(JSON.stringify(await docked()) === '["phase","mag"]', `reordered by dragging → ${JSON.stringify(await docked())}`);
 }
 
 // 2. Resize: drag the splitter between the first two panels down
@@ -57,8 +59,8 @@ await page.screenshot({ path: `${out}/dock-01-default.png` });
 
 // 3. Float the magnitude panel, move it, resize it, then dock it back
 {
-  await page.locator('.dpanel[data-panel="mag"] [data-act="float"]').click();
-  check(await page.locator('.dpanel[data-panel="mag"].floating').isVisible(), 'magnitude panel floats');
+  await vis('.dpanel[data-panel="mag"] [data-act="float"]').click();
+  check(await vis('.dpanel[data-panel="mag"].floating').isVisible(), 'magnitude panel floats');
   const h0 = await head('mag').boundingBox();
   await page.mouse.move(h0.x + 60, h0.y + 12);
   await page.mouse.down();
@@ -89,30 +91,33 @@ await page.screenshot({ path: `${out}/dock-01-default.png` });
   const canvas = await box('.dpanel[data-panel="mag"] canvas');
   check(Math.abs(canvas.width - size1.width + 2) < 4, 'plot re-renders at the new size');
   await page.screenshot({ path: `${out}/dock-02-floating.png` });
-  await page.locator('.dpanel[data-panel="mag"] [data-act="float"]').click();
+  await vis('.dpanel[data-panel="mag"] [data-act="float"]').click();
   check((await docked()).includes('mag'), 'floating panel docks back');
 }
 
 // 4. Drag a docked panel out of the stack → it floats where dropped
 {
-  await page.locator('.chip', { hasText: 'Levels' }).click(); // hide meters so the drop area is clear
-  await page.locator('.chip', { hasText: 'SPL' }).click();
-  const hd = await head('rta').boundingBox();
+  await page.locator('.view:visible .chip', { hasText: 'Levels' }).click(); // hide the meter so the drop area is clear
+  const hd = await head('phase').boundingBox();
   await page.mouse.move(hd.x + 100, hd.y + 12);
   await page.mouse.down();
   await page.mouse.move(40, 40, { steps: 10 }); // over the sidebar, outside the dock
   await page.mouse.up();
-  check(await page.locator('.dpanel[data-panel="rta"].floating').isVisible(), 'dropping outside the stack floats the panel');
+  check(await vis('.dpanel[data-panel="phase"].floating').isVisible(), 'dropping outside the stack floats the panel');
   const lay = await layout();
   check(lay.hidden.includes('spl') && lay.hidden.includes('levels'), 'panels hidden from the toolbar chips');
-  await page.locator('.dpanel[data-panel="rta"] [data-act="float"]').click();
-  await page.locator('.chip', { hasText: 'SPL' }).click();
-  await page.locator('.chip', { hasText: 'Levels' }).click();
+  await vis('.dpanel[data-panel="phase"] [data-act="float"]').click();
+  await page.locator('.view:visible .chip', { hasText: 'SPL' }).click();
+  await page.locator('.view:visible .chip', { hasText: 'Levels' }).click();
+  check(JSON.stringify(await docked()) === '["phase","mag"]', 'docking back restores the panel to its place in the order');
 }
 
-// 5. Detach into a separate window, check it renders live data, then close it to re-dock
+// 5. Spectrum tab: detach the RTA into a separate window, check it renders live data, then close it to re-dock
+await page.keyboard.press('1');
+await page.waitForTimeout(500);
+check(JSON.stringify(await docked()) === '["rta"]', `Spectrum tab has its own layout ${JSON.stringify(await docked())}`);
 {
-  const [popup] = await Promise.all([context.waitForEvent('page'), page.locator('.dpanel[data-panel="rta"] [data-act="popout"]').click()]);
+  const [popup] = await Promise.all([context.waitForEvent('page'), vis('.dpanel[data-panel="rta"] [data-act="popout"]').click()]);
   await popup.waitForTimeout(1500);
   check((await popup.locator('.dpanel[data-panel="rta"].popped canvas').count()) === 1, 'RTA panel moved into its own window');
   check(!(await docked()).includes('rta'), 'detached panel removed from the main window');
@@ -133,19 +138,21 @@ await page.screenshot({ path: `${out}/dock-01-default.png` });
   await page.waitForTimeout(300);
   check((await docked()).includes('rta'), 'closing the detached window re-docks the panel');
 }
+await page.keyboard.press('2');
+await page.waitForTimeout(300);
 
 // 6. Meters show data and the arrangement persists across reloads
 {
-  const spl = await page.locator('.spl-val').textContent();
+  const spl = await page.locator('.view:visible .spl-val').textContent();
   check(/-?\d+\.\d/.test(spl), `SPL meter panel shows a reading (${spl})`);
-  check((await page.locator('.lv-col').count()) === 3, 'level meter panel shows In 1, In 2 and Gen');
+  check((await page.locator('.view:visible .lv-col').count()) === 3, 'level meter panel shows In 1, In 2 and Gen');
   const before = await layout();
   await page.reload();
-  await page.waitForSelector('.dock');
+  await page.waitForSelector('.view:visible .dock');
   const after = await layout();
-  check(JSON.stringify(before.order) === JSON.stringify(after.order) && JSON.stringify(await docked()) === '["phase","rta","mag"]', 'layout persists across reloads');
-  await page.getByRole('button', { name: 'Reset layout' }).click();
-  check(JSON.stringify(await docked()) === '["rta","mag","phase"]', 'Reset layout restores the default arrangement');
+  check(JSON.stringify(before.order) === JSON.stringify(after.order) && JSON.stringify(await docked()) === '["phase","mag"]', 'layout persists across reloads');
+  await page.locator('.view:visible').getByRole('button', { name: 'Reset layout' }).click();
+  check(JSON.stringify(await docked()) === '["mag","phase"]', 'Reset layout restores the default arrangement');
 }
 await page.screenshot({ path: `${out}/dock-04-final.png` });
 

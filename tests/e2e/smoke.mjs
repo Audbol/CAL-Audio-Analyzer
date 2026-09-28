@@ -39,35 +39,35 @@ check(state.running, 'engine running in demo mode');
 check(Math.abs(state.delay - Math.round((4.3 / 343) * state.fs)) < 4, `delay finder found ~12.5 ms (got ${(state.delay / state.fs * 1000).toFixed(2)} ms)`);
 check(state.coh > 0.7, `coherence high after delay found (${state.coh.toFixed(2)})`);
 check(state.mag47 > state.mag1k + 3, 'room mode at 47 Hz visible in transfer function');
-await page.screenshot({ path: `${out}/01-live.png` });
+await page.screenshot({ path: `${out}/02-transfer.png` });
 
 await page.keyboard.press('c');
 await page.waitForTimeout(300);
 check(await page.evaluate(() => window.calApp.traces.traces.length === 1), 'capture trace with C');
 
-for (const [key, name] of [['2', 'spectrogram'], ['3', 'impulse'], ['6', 'spl'], ['7', 'tools']]) {
+for (const [key, name] of [['1', 'spectrum'], ['3', 'spectrogram'], ['4', 'impulse'], ['7', 'spl'], ['8', 'tools']]) {
   await page.keyboard.press(key);
   await page.waitForTimeout(1500);
   await page.screenshot({ path: `${out}/0${key}-${name}.png` });
 }
-const peak = await page.evaluate(() => window.calApp.views[2].lastPeakMs);
+const peak = await page.evaluate(() => window.calApp.views.find((v) => v.id === 'impulse').lastPeakMs);
 check(Math.abs(peak) < 1, `impulse peak at ~0 ms relative to delay (${peak.toFixed(2)})`);
 
 // EQ assistant on live data
-await page.keyboard.press('5');
+await page.keyboard.press('6');
 await page.getByRole('button', { name: 'Calculate EQ' }).click();
 await page.waitForTimeout(500);
-const eq = await page.evaluate(() => window.calApp.views[4].filters.length);
+const eq = await page.evaluate(() => window.calApp.views.find((v) => v.id === 'eq').filters.length);
 check(eq > 0, `EQ assistant produced ${eq} filters`);
 await page.screenshot({ path: `${out}/05-eq.png` });
 
 // Sweep measurement
-await page.keyboard.press('4');
+await page.keyboard.press('5');
 await page.getByRole('button', { name: 'Measure sweep' }).click();
-await page.waitForFunction(() => window.calApp.views[3].result !== null, null, { timeout: 30000 });
+await page.waitForFunction(() => window.calApp.views.find((v) => v.id === 'room').result !== null, null, { timeout: 30000 });
 await page.waitForTimeout(500);
 const room = await page.evaluate(() => {
-  const r = window.calApp.views[3].result;
+  const r = window.calApp.views.find((v) => v.id === 'room').result;
   const bb = r.acoustics.broadband;
   return { t30: bb.t30.rt, t20: bb.t20.rt, edt: bb.edt.rt, c80: bb.c80, pnr: r.peakDb, bands: r.acoustics.bands.map((b) => [b.label, +b.t20.rt.toFixed(2)]) };
 });

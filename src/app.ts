@@ -8,7 +8,8 @@ import { Measurement } from './measurement';
 import { loadSettings, saveSettings, PALETTE, refLabel, type Settings, type ViewId, type MeasurementConfig } from './state';
 import { TraceStore, traceToCsv, parseTraceText, download, type Trace } from './traces';
 import { h, clear, icon, select } from './ui/dom';
-import { LiveView } from './views/live';
+import { SpectrumView } from './views/spectrum';
+import { TransferView } from './views/transfer';
 import { SpectrogramView } from './views/spectrogram';
 import { ImpulseView } from './views/impulse';
 import { RoomView } from './views/room';
@@ -256,7 +257,8 @@ export class App {
     );
 
     this.views = [
-      new LiveView(this),
+      new SpectrumView(this),
+      new TransferView(this),
       new SpectrogramView(this),
       new ImpulseView(this),
       new RoomView(this),
@@ -639,7 +641,7 @@ export class App {
     const clipped = e.levels.findIndex((l) => l.clipped);
     if (clipped >= 0) out.push({ level: 'warn', text: `Input ${clipped + 1} clipped. Lower the preamp gain or the generator level. (Click its meter to reset.)` });
     const g = this.settings.generator;
-    const needsExcitation = ['live', 'impulse', 'eq'].includes(this.settings.view);
+    const needsExcitation = ['transfer', 'impulse', 'eq'].includes(this.settings.view);
     if (g.type === 'off' && needsExcitation) {
       out.push({ level: 'info', text: 'The generator is off. Transfer-function measurements need an excitation signal — pink noise is the usual choice.', action: { label: 'Pink noise on', run: () => { this.setGenerator({ type: 'pink' }); this.renderGenControls(); } } });
     }
@@ -733,7 +735,7 @@ export class App {
           showHelp(this);
           break;
         default:
-          if (/^[1-7]$/.test(e.key)) this.setView(this.views[+e.key - 1].id);
+          if (/^[1-8]$/.test(e.key)) this.setView(this.views[+e.key - 1].id);
       }
     });
   }

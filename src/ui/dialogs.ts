@@ -100,7 +100,7 @@ export function showWizard(app: App): void {
     await app.start();
     app.renderGenControls();
     app.renderTopState();
-    app.setView('live');
+    app.setView('transfer');
     if (mode === 'demo') setTimeout(() => app.measurements[0] && app.findDelay(app.measurements[0]), 1600);
     else app.toast('Turn on the generator (Space), raise the level carefully, then press Find delay.', 'info');
   });
@@ -125,7 +125,7 @@ export function showHelp(app: App): void {
     ['R', 'Reset averages'],
     ['P', 'Toggle RTA peak hold'],
     ['F', 'Freeze / unfreeze display'],
-    ['1 – 7', 'Switch views'],
+    ['1 – 8', 'Switch views'],
     ['?', 'This help'],
   ];
   const body = h(
@@ -150,7 +150,7 @@ export function showHelp(app: App): void {
         ),
         h('h4', {}, 'Mouse'),
         h('p', { class: 'dim small' }, 'Hover for cursor readout (value, note name, wavelength). Scroll to zoom the level axis, Shift/Ctrl+scroll to zoom frequency, drag to pan (Shift+drag pans frequency), double-click to reset.'),
-        h('h4', {}, 'Panels (Live view)'),
+        h('h4', {}, 'Panels (Spectrum & Transfer views)'),
         h('p', { class: 'dim small' }, 'Drag a panel title bar to rearrange; drop it outside the stack (or double-click the title) to float it. Drag splitters to resize docked panels and the corner to resize floating ones. The window button detaches a panel into its own window, e.g. for a second monitor; close that window to dock it again. Toolbar chips show/hide panels; Reset layout restores the default.'),
       ),
       h('div', {}, h('h4', {}, 'Keyboard'), h('table', { class: 'keys' }, ...keys.map(([k, d]) => h('tr', {}, h('td', {}, h('kbd', {}, k)), h('td', {}, d))))),

@@ -12,7 +12,17 @@ export { PALETTE };
 /** Colours used by earlier versions; stored measurements using them are moved to the current palette. */
 const LEGACY_PALETTE = ['#2dd4bf', '#f59e0b', '#a78bfa', '#f472b6', '#60a5fa', '#a3e635', '#fb7185', '#fbbf24', '#22d3ee', '#e879f9'];
 
-export type ViewId = 'live' | 'spectrogram' | 'impulse' | 'room' | 'eq' | 'spl' | 'tools';
+export type ViewId = 'spectrum' | 'transfer' | 'spectrogram' | 'impulse' | 'room' | 'eq' | 'spl' | 'tools';
+
+export type Theme = 'night' | 'day';
+
+export interface RemoteServerSettings {
+  port: number;
+  /** Access PIN remote browsers must enter. Empty = no PIN (not recommended). */
+  pin: string;
+  /** Whether remote clients may drive the generator, sweeps and audio start. */
+  allowControl: boolean;
+}
 
 export interface MeasurementConfig {
   id: string;
@@ -30,6 +40,8 @@ export interface MeasurementConfig {
 
 export interface Settings {
   view: ViewId;
+  /** Night = OLED black; Day = high-contrast light scheme for use in direct sunlight. */
+  theme: Theme;
   simulate: boolean;
   deviceId: string;
   generator: GeneratorConfig;
@@ -40,12 +52,10 @@ export interface Settings {
   rtaFft: number;
   coherenceThreshold: number;
   showCoherence: boolean;
-  /** Legacy visibility flags (before the panel dock); only used to seed `liveLayout`. */
-  showRta?: boolean;
-  showMag?: boolean;
-  showPhase?: boolean;
-  /** Arrangement of the Live view's panels (order, sizes, floating, hidden). */
-  liveLayout: DockLayout | null;
+  /** Panel arrangements (order, sizes, floating, hidden) of the Spectrum and Transfer views. */
+  spectrumLayout: DockLayout | null;
+  transferLayout: DockLayout | null;
+  remoteServer: RemoteServerSettings;
   peakHold: boolean;
   splWeighting: Weighting;
   splTime: 'fast' | 'slow';
@@ -64,7 +74,8 @@ export interface Settings {
 
 export function defaultSettings(): Settings {
   return {
-    view: 'live',
+    view: 'transfer',
+    theme: 'night',
     simulate: true,
     deviceId: '',
     generator: { type: 'off', level: -18, freq: 1000, outputs: [0, 1], polarity: 1 },
@@ -75,7 +86,9 @@ export function defaultSettings(): Settings {
     rtaFft: 16384,
     coherenceThreshold: 0.5,
     showCoherence: true,
-    liveLayout: null,
+    spectrumLayout: null,
+    transferLayout: null,
+    remoteServer: { port: 8520, pin: randomPin(), allowControl: true },
     peakHold: false,
     splWeighting: 'A',
     splTime: 'fast',
@@ -99,12 +112,15 @@ export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return d;
-    const s = JSON.parse(raw) as Partial<Settings>;
+    const s = JSON.parse(raw) as Omit<Partial<Settings>, 'view'> & { view?: string; liveLayout?: unknown };
+    // Before v1.1 the Spectrum and Transfer views were a single "Live" view
+    if (s.view === 'live' || !s.view) s.view = 'transfer';
+    delete s.liveLayout;
     for (const m of s.measurements ?? []) {
       const i = LEGACY_PALETTE.indexOf(m.color);
       if (i >= 0) m.color = PALETTE[i];
     }
-    return { ...d, ...s, generator: { ...d.generator, ...(s.generator ?? {}) } };
+    return { ...d, ...s, generator: { ...d.generator, ...(s.generator ?? {}) }, remoteServer: { ...d.remoteServer, ...(s.remoteServer ?? {}) } } as Settings;
   } catch {
     return d;
   }
@@ -124,4 +140,11 @@ export function saveSettings(s: Settings): void {
 
 export function refLabel(ref: number): string {
   return ref === GEN_CHANNEL ? 'Generator (internal)' : `In ${ref + 1}`;
+}
+
+/** Six-digit access PIN for remote clients. */
+export function randomPin(): string {
+  const a = new Uint32Array(1);
+  crypto.getRandomValues(a);
+  return String(a[0] % 1000000).padStart(6, '0');
 }

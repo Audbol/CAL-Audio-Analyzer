@@ -46,12 +46,12 @@ const perm = await page.evaluate(async () => {
 // In CI/containers there is no audio input device; the permission itself must not be denied
 check(perm !== 'NotAllowedError', `microphone permission not blocked (${perm})`);
 // Detach a panel into its own desktop window
-const [popup] = await Promise.all([app.waitForEvent('window'), page.locator('.dpanel[data-panel="rta"] [data-act="popout"]').click()]);
+const [popup] = await Promise.all([app.waitForEvent('window'), page.locator('.dpanel[data-panel="mag"] [data-act="popout"]').click()]);
 await popup.waitForTimeout(1200);
 check((await popup.locator('.dpanel.popped canvas').count()) === 1, 'panel detaches into a separate desktop window');
 await popup.close();
 await page.waitForTimeout(300);
-check((await page.locator('.dock-stack .dpanel[data-panel="rta"]').count()) === 1, 'closing the window re-docks the panel');
+check((await page.locator('.dock-stack .dpanel[data-panel="mag"]').count()) === 1, 'closing the window re-docks the panel');
 await page.reload();
 await page.waitForSelector('.topbar');
 const persisted = await page.evaluate(() => window.calApp.settings.wizardDone);
