@@ -1,7 +1,8 @@
 name: Desktop app
 
-# Builds the standalone desktop program for Windows (installer + portable .exe), macOS and Linux.
-# Every push produces downloadable artifacts; pushing a tag like v1.0.0 also publishes a GitHub Release.
+# Builds the standalone desktop program for Windows (installer + portable .exe), macOS (Intel + Apple Silicon)
+# and Linux (x64 + ARM64). Every push produces downloadable artifacts; pushing a tag like v1.1.0 also
+# publishes all of them as a GitHub Release.
 on:
   push:
     branches: ['**']
@@ -19,10 +20,13 @@ jobs:
         include:
           - os: windows-latest
             target: --win
+            name: Windows
           - os: macos-latest
             target: --mac
+            name: macOS
           - os: ubuntu-latest
             target: --linux
+            name: Linux
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -38,17 +42,28 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
       - uses: actions/upload-artifact@v4
         with:
-          name: CAL-Audio-Analyzer-${{ runner.os }}
+          name: CAL-Audio-Analyzer-${{ matrix.name }}
           path: |
             release/*.exe
             release/*.dmg
             release/*.AppImage
           if-no-files-found: error
-      - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+
+  release:
+    # Publish once, after every platform built successfully
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          files: |
-            release/*.exe
-            release/*.dmg
-            release/*.AppImage
+          path: dist-release
+          merge-multiple: true
+      - run: ls -la dist-release
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: CAL Audio Analyzer ${{ github.ref_name }}
+          body_path: docs/release-notes.md
+          files: dist-release/*
+          fail_on_unmatched_files: true
