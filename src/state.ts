@@ -17,6 +17,8 @@ export type ViewId = 'spectrum' | 'transfer' | 'spectrogram' | 'impulse' | 'room
 export type Theme = 'night' | 'day';
 
 export interface RemoteServerSettings {
+  /** Start the server automatically when the desktop app launches. */
+  enabled: boolean;
   port: number;
   /** Access PIN remote browsers must enter. Empty = no PIN (not recommended). */
   pin: string;
@@ -88,7 +90,7 @@ export function defaultSettings(): Settings {
     showCoherence: true,
     spectrumLayout: null,
     transferLayout: null,
-    remoteServer: { port: 8520, pin: randomPin(), allowControl: true },
+    remoteServer: { enabled: false, port: 8520, pin: randomPin(), allowControl: true },
     peakHold: false,
     splWeighting: 'A',
     splTime: 'fast',

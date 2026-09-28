@@ -6,6 +6,7 @@ import { roomModes, schroederFrequency, criticalDistance, type RoomMode } from '
 import { speedOfSound } from '../dsp/delay';
 import { parseMicCal } from '../dsp/calibration';
 import { weightingDb } from '../dsp/weighting';
+import { RemoteCard } from './remote-card';
 
 /** Calibration, room-mode calculator and handy system-alignment calculators. */
 export class ToolsView implements View {
@@ -20,8 +21,10 @@ export class ToolsView implements View {
   private micStatus = h('div', { class: 'dim small' });
   private delayOut = h('div', { class: 'calc-out' });
   private dirty = true;
+  private remoteCard: RemoteCard;
 
   constructor(private app: App) {
+    this.remoteCard = new RemoteCard(app);
     this.modesPlot = new Plot({ xType: 'log', xMin: 15, xMax: 400, yMin: 0, yMax: 3.4, yUnit: '', title: 'Room modes (axial ▮ tangential ▮ oblique ▮)', yLimits: [0, 4] });
     this.build();
   }
@@ -109,7 +112,7 @@ export class ToolsView implements View {
       h('p', { class: 'dim small' }, 'Settings and traces are stored locally in this browser only.'),
       h('div', { class: 'row gap8' }, h('button', { class: 'btn small ghost', onclick: () => { if (confirm('Delete all stored traces?')) this.app.traces.clear(); } }, 'Delete all traces'), h('button', { class: 'btn small ghost', onclick: () => { if (confirm('Reset all settings to defaults?')) { localStorage.removeItem('cal-analyzer-settings-v1'); location.reload(); } } }, 'Reset settings')),
     );
-    this.el.append(h('div', { class: 'tool-grid' }, calCard, micCard, delayCard, wCard, modesCard, dataCard));
+    this.el.append(h('div', { class: 'tool-grid' }, this.remoteCard.el, calCard, micCard, delayCard, wCard, modesCard, dataCard));
     this.renderStatus();
   }
 
@@ -151,6 +154,7 @@ export class ToolsView implements View {
   tick(): void {
     if (!this.dirty) return;
     this.dirty = false;
+    this.remoteCard.render();
     const { L, W, H, rt } = this.room;
     const c = speedOfSound(this.app.settings.tempC);
     const modes = roomModes(L, W, H, c, 400);

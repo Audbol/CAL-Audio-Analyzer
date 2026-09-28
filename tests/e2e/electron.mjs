@@ -52,6 +52,25 @@ check((await popup.locator('.dpanel.popped canvas').count()) === 1, 'panel detac
 await popup.close();
 await page.waitForTimeout(300);
 check((await page.locator('.dock-stack .dpanel[data-panel="mag"]').count()) === 1, 'closing the window re-docks the panel');
+// Remote access: turn on the built-in server from Tools and connect a separate browser to it
+{
+  await page.keyboard.press('8');
+  await page.getByRole('button', { name: 'Turn on remote access' }).click();
+  await page.waitForFunction(() => window.calApp.hostLink?.connected && window.calApp.hostLink.info, null, { timeout: 8000 });
+  const srv = await page.evaluate(() => ({ port: window.calApp.settings.remoteServer.port, pin: window.calApp.hostLink.info.pin, urls: window.calApp.hostLink.info.urls.length }));
+  check(srv.port > 0 && srv.pin.length === 6, `desktop app runs the remote-access server (port ${srv.port}, ${srv.urls} network address${srv.urls === 1 ? '' : 'es'})`);
+  const { chromium } = await import('playwright');
+  const browser = await chromium.launch();
+  const rem = await browser.newPage();
+  await rem.goto(`http://127.0.0.1:${srv.port}/?pin=${srv.pin}`);
+  await rem.waitForFunction(() => window.calApp?.engine.running === true, null, { timeout: 15000 }).catch(() => undefined);
+  check(await rem.evaluate(() => window.calApp.engine.running), 'a browser connects to the desktop app and receives live audio');
+  await browser.close();
+  await page.waitForTimeout(500);
+  await page.getByRole('button', { name: 'Turn off' }).click();
+  await page.waitForTimeout(300);
+  check(!(await page.evaluate(() => window.calApp.hostLink)), 'remote access turns off');
+}
 await page.reload();
 await page.waitForSelector('.topbar');
 const persisted = await page.evaluate(() => window.calApp.settings.wizardDone);

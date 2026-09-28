@@ -19,10 +19,15 @@ A professional, real-time **sound system and room acoustics analyzer** that runs
 | **SPL meter** | IEC 61672 A/C/Z weighting, Fast/Slow, Leq, Lmax, peak and a 2-minute history. Calibrates with a 94/114 dB calibrator or a reference meter. |
 | **Traces** | Capture, overlay, offset, rename, spatially average (power average), and import/export CSV, REW and FRD text. Traces persist in the browser. |
 | **Tools** | Mic calibration file loader (miniDSP/UMIK, Dayton, FRD), room mode calculator with Schroeder frequency and critical distance, delay/distance/wavelength calculator, and a weighting table. |
-| **Flexible workspace** | Every Live display is a panel: the RTA, magnitude and phase graphs, the SPL meter, and the input level meters (peak, RMS, peak hold and clip). Drag a title bar to rearrange panels and drag the splitters to resize them. Float a panel over the view, where you can move it and resize it from the corner, or detach it into its own window, for example on a second monitor. Closing a detached window docks the panel again. The layout is saved automatically, and *Reset layout* restores the default. |
+| **Spectrum & Transfer tabs** | Separate tabs for single-channel spectrum analysis (RTA/FFT) and the dual-channel transfer function (magnitude, coherence, phase). Each tab has its own panel layout, SPL meter and input level meters. |
+| **Flexible workspace** | Every display on the Spectrum and Transfer tabs is a panel: the graphs, the SPL meter, and the input level meters (peak, RMS, peak hold and clip). Drag a title bar to rearrange panels and drag the splitters to resize them. Float a panel over the view, where you can move it and resize it from the corner, or detach it into its own window, for example on a second monitor. Closing a detached window docks the panel again. The layout is saved automatically, and *Reset layout* restores the default. |
+| **Day / night modes** | Night mode is OLED black for dark venues. Day mode is a high-contrast light scheme for use in direct sunlight: a white background, black text, darker and more saturated traces, and thicker lines. Toggle it with the sun/moon button or **T**. |
+| **Remote access** | The desktop app can host itself on your network. Phones, tablets and other computers open the app in any browser (scan the QR code, enter the PIN) and get **every tab, meter and function** with live data, including generator control and sweeps, while the audio interface stays on the host. |
 | **Usability** | Setup wizard, a context-aware assistant (clipping, missing excitation, unset delay, low coherence, and so on), hover readouts with note name and wavelength, zoom and pan, keyboard shortcuts, and input/generator meters with clip indicators. |
 
 ![Sweep & Room: ISO 3382 parameters per octave band](docs/screenshot-room.png)
+
+![Day mode for use in direct sunlight](docs/screenshot-day.png)
 
 ## Desktop app (Windows, macOS, Linux)
 
@@ -81,8 +86,26 @@ On first launch, choose **Explore with the demo room** to try everything with th
 | R | Reset averages |
 | P | Peak hold |
 | F | Freeze display |
-| 1–7 | Switch views |
+| 1–8 | Switch tabs |
+| T | Day / night colour scheme |
 | ? | Help |
+
+## Remote access (tablet / phone / second computer)
+
+Walk the room with a tablet while the analyzer and audio interface stay at the mix position.
+
+![Tools → Remote access on the host: address, PIN, QR code and connected devices](docs/screenshot-remote-host.png)
+
+1. On the computer with the audio interface, open the desktop app → **Tools → Remote access → Turn on remote access**.
+2. Connect the remote device to **the same network**: the same Wi-Fi, or a hotspot from the host computer.
+3. On the remote device, scan the QR code shown on the host, or open the address it lists (for example `http://192.168.1.20:8520/`) in Chrome, Safari, Edge or Firefox.
+4. Enter the 6-digit **PIN** if asked. The QR link already includes it.
+
+How it works: the host streams its live, sample-aligned audio (about 0.2 MB/s per input channel) to each remote device. The remote device runs the complete analyzer on that stream, so every tab, meter, trace and EQ calculation works there. Generator changes and sweeps are sent back to the host and play through its interface. Calibration, the mic correction and the measurement channel setup come from the host. Other settings (views, smoothing, traces, colour scheme) stay on each device.
+
+- **PIN and control:** you can change the PIN at any time, remove it for open access, or turn off *Allow remote control* for view-only clients.
+- **Firewall:** on Windows, allow CAL Audio Analyzer on *Private networks* when the firewall asks. Guest or venue Wi-Fi often isolates devices from each other; use a private network, a travel router or the laptop's hotspot instead.
+- **Without the desktop app:** run `npm run build && npm run serve`, open `http://localhost:8520/host` on the host computer, and open the printed network address on the remote devices.
 
 ## Architecture
 
@@ -103,7 +126,10 @@ src/
     processor.ts    AudioWorklet: generator + sample-accurate multichannel capture
     simulator.ts    virtual loudspeaker + room for demo mode
     engine.ts       AudioContext, device handling, per-channel ring buffers
-  views/          Live, Spectrogram, Impulse, Sweep & Room, EQ, SPL, Tools
+  views/          Spectrum, Transfer, Spectrogram, Impulse, Sweep & Room, EQ, SPL, Tools
+  remote/         remote-access host link, remote engine and wire protocol
+electron/         desktop main process, preload bridge and the remote-access hub (hub.cjs)
+server/cli.mjs    standalone remote-access server for browser hosts
   ui/             canvas plot, spectrogram, dialogs, DOM helpers
 ```
 

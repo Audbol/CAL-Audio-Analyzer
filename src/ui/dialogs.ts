@@ -151,6 +151,8 @@ export function showHelp(app: App): void {
         ),
         h('h4', {}, 'Mouse'),
         h('p', { class: 'dim small' }, 'Hover for cursor readout (value, note name, wavelength). Scroll to zoom the level axis, Shift/Ctrl+scroll to zoom frequency, drag to pan (Shift+drag pans frequency), double-click to reset.'),
+        h('h4', {}, 'Remote access'),
+        h('p', { class: 'dim small' }, 'Use a phone, tablet or second computer on the same network: Tools → Remote access → Turn on, then scan the QR code or open the address shown and enter the PIN. Remote devices get every tab and meter live and can control the generator and sweeps.'),
         h('h4', {}, 'Panels (Spectrum & Transfer views)'),
         h('p', { class: 'dim small' }, 'Drag a panel title bar to rearrange; drop it outside the stack (or double-click the title) to float it. Drag splitters to resize docked panels and the corner to resize floating ones. The window button detaches a panel into its own window, e.g. for a second monitor; close that window to dock it again. Toolbar chips show/hide panels; Reset layout restores the default.'),
       ),
@@ -159,4 +161,29 @@ export function showHelp(app: App): void {
     h('p', { class: 'dim small' }, `CAL Audio Analyzer runs entirely in your browser. Audio never leaves this device. ${app.engine.running ? `Running at ${app.fs} Hz.` : ''}`),
   );
   modal('Help', body);
+}
+
+/** Remote client: enter the host's access PIN. */
+export function showRemoteConnect(app: App, error?: string): void {
+  if (document.querySelector('.modal.remote-connect')) return;
+  const pin = h('input', { class: 'pin-input', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '12', placeholder: '••••••', value: app.remotePin });
+  const errEl = h('p', { class: 'warn-text small', style: error ? '' : 'display:none' }, error ?? '');
+  const go = h('button', { class: 'btn accent' }, icon('wifi', 15), 'Connect');
+  const body = h(
+    'div',
+    { class: 'remote-connect-body' },
+    h('p', { class: 'lead' }, `Connect to the CAL Audio Analyzer measurement host at ${location.host}.`),
+    h('label', { class: 'pin-label' }, 'Access PIN', pin),
+    errEl,
+    h('p', { class: 'dim small' }, 'The PIN is shown on the host computer under Tools → Remote access (and in the QR code link). Audio stays on the host; this device receives the live measurement stream and can control the generator and sweeps if the host allows it.'),
+  );
+  const { close, el } = modal('Connect to measurement host', body, [h('div', { class: 'spacer' }), go]);
+  el.classList.add('remote-connect');
+  const submit = () => {
+    close();
+    app.connectRemote(pin.value);
+  };
+  go.addEventListener('click', submit);
+  pin.addEventListener('keydown', (e) => e.key === 'Enter' && submit());
+  setTimeout(() => pin.focus(), 50);
 }

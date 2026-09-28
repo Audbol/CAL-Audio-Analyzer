@@ -1,9 +1,10 @@
 // Electron main process: runs CAL Audio Analyzer as a standalone desktop application.
 'use strict';
 
-const { app, BrowserWindow, Menu, protocol, session, shell, net } = require('electron');
+const { app, BrowserWindow, Menu, protocol, session, shell, net, ipcMain } = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
+const { createHub } = require('./hub.cjs');
 
 const SCHEME = 'app';
 const HOST = 'cal';
@@ -26,6 +27,40 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 let win = null;
+/** Remote-access server (created on demand from the app's Tools → Remote access). */
+let hub = null;
+
+function registerServerIpc() {
+  // Only the main app window may control the server
+  const fromApp = (e) => win && e.sender === win.webContents;
+  ipcMain.handle('server:start', async (e, opts = {}) => {
+    if (!fromApp(e)) throw new Error('Not allowed');
+    if (hub) await hub.stop();
+    hub = createHub({
+      distDir: DIST,
+      pin: typeof opts.pin === 'string' ? opts.pin : '',
+      allowControl: opts.allowControl !== false,
+      version: app.getVersion(),
+      log: (m) => console.log(`[remote] ${m}`),
+    });
+    try {
+      return await hub.start(Number(opts.port) || 8520);
+    } catch (err) {
+      hub = null;
+      throw new Error(err && err.code === 'EADDRINUSE' ? `Port ${opts.port} is already in use. Choose another port.` : String(err && err.message ? err.message : err));
+    }
+  });
+  ipcMain.handle('server:stop', async (e) => {
+    if (!fromApp(e)) throw new Error('Not allowed');
+    if (hub) await hub.stop();
+    hub = null;
+    return true;
+  });
+  ipcMain.handle('server:info', (e) => {
+    if (!fromApp(e)) throw new Error('Not allowed');
+    return hub ? hub.info() : { running: false };
+  });
+}
 
 function serveDist() {
   protocol.handle(SCHEME, (request) => {
@@ -55,6 +90,7 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: true,
       backgroundThrottling: false,
+      preload: path.join(__dirname, 'preload.cjs'),
     },
   });
   win.once('ready-to-show', () => win.show());
@@ -128,12 +164,17 @@ app.whenReady().then(() => {
   session.defaultSession.setPermissionCheckHandler((_wc, permission, origin) => trusted(origin || '') && ['media', 'audioCapture', 'speaker-selection', 'clipboard-sanitized-write'].includes(permission));
 
   serveDist();
+  registerServerIpc();
   buildMenu();
   createWindow();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+app.on('before-quit', () => {
+  if (hub) hub.stop();
 });
 
 app.on('window-all-closed', () => {

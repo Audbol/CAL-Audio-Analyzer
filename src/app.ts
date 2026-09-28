@@ -16,8 +16,11 @@ import { RoomView } from './views/room';
 import { EqView } from './views/eq';
 import { SplView } from './views/spl';
 import { ToolsView } from './views/tools';
-import { showWizard, showHelp } from './ui/dialogs';
+import { showWizard, showHelp, showRemoteConnect } from './ui/dialogs';
 import { applyChartTheme } from './ui/theme';
+import { RemoteEngine } from './remote/client';
+import { HostLink, desktopBridge, hubPageInfo } from './remote/host';
+import type { HostStatus } from './remote/protocol';
 
 export interface View {
   id: ViewId;
@@ -39,7 +42,17 @@ export interface Hint {
 
 export class App {
   settings: Settings = loadSettings();
-  engine = new AudioEngine();
+  /** Set when this page was served by the remote-access hub (see electron/hub.cjs). */
+  readonly hubPage = hubPageInfo();
+  /** Remote client: analyses audio streamed from a measurement host instead of a local audio device. */
+  readonly remote = this.hubPage?.role === 'remote';
+  engine: AudioEngine = this.remote ? new RemoteEngine(() => this.remotePin, () => remoteClientName()) : new AudioEngine();
+  /** Host side of remote access (present while the server is running). */
+  hostLink: HostLink | null = null;
+  remotePin = new URLSearchParams(location.search).get('pin') ?? sessionStorage.getItem('cal-remote-pin') ?? '';
+  private splUnsub: (() => void) | null = null;
+  private sharedApplied = '';
+  private remoteBadge = h('button', { class: 'remote-badge', style: 'display:none' });
   traces = new TraceStore();
   grid = logGrid(20, 20000, 48);
   measurements: Measurement[] = [];
@@ -79,7 +92,11 @@ export class App {
     this.loop();
     setInterval(() => this.updateHints(), 700);
     this.bindKeys();
-    if (!this.settings.wizardDone) setTimeout(() => showWizard(this), 200);
+    if (this.remote) this.initRemoteClient();
+    else {
+      if (!this.settings.wizardDone) setTimeout(() => showWizard(this), 200);
+      this.initRemoteHost();
+    }
   }
 
   get fs(): number {
@@ -97,10 +114,14 @@ export class App {
     if (this.starting) return;
     this.starting = true;
     this.startBtn.disabled = true;
-    const modeChanged = this.lastMode !== null && this.lastMode !== this.settings.simulate;
+    const modeChanged = !this.remote && this.lastMode !== null && this.lastMode !== this.settings.simulate;
     try {
       await this.engine.start({ simulate: this.settings.simulate, deviceId: this.settings.deviceId || undefined });
       this.lastMode = this.settings.simulate;
+      if (this.remote) {
+        const st = (this.engine as RemoteEngine).status;
+        if (st) this.adoptHost(st, true);
+      }
       const nCh = this.engine.channelCount;
       if (modeChanged) {
         // The demo room provides a loopback on In 2; real setups most often start with the internal reference
@@ -120,17 +141,24 @@ export class App {
       this.rebuildMeasurements();
       this.spl = new SplMeter(this.fs, this.settings.splWeighting);
       this.spl.offsetDb = this.settings.splOffset;
-      this.engine.onData((blocks) => {
+      this.splUnsub?.();
+      this.splUnsub = this.engine.onData((blocks) => {
         const b = blocks[this.settings.splChannel];
         if (b) this.spl.process(b);
       });
-      this.engine.setGenerator(this.settings.generator);
-      this.toast(`Audio running · ${this.engine.deviceLabel} · ${this.fs / 1000} kHz · ${nCh} input channel${nCh > 1 ? 's' : ''}`, 'ok');
+      if (this.remote) {
+        this.toast(this.engine.running ? `Connected to the measurement host · ${this.fs / 1000} kHz · ${nCh} input channel${nCh > 1 ? 's' : ''}` : 'Connected. Audio on the measurement host is stopped.', 'ok');
+      } else {
+        this.engine.setGenerator(this.settings.generator);
+        this.toast(`Audio running · ${this.engine.deviceLabel} · ${this.fs / 1000} kHz · ${nCh} input channel${nCh > 1 ? 's' : ''}`, 'ok');
+      }
       this.refreshDevices();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      this.toast(`Could not start audio: ${msg}`, 'warn');
       await this.engine.stop();
+      if (this.remote) {
+        showRemoteConnect(this, msg === 'Wrong PIN' ? 'Wrong PIN. Check the PIN shown on the host (Tools → Remote access).' : msg);
+      } else this.toast(`Could not start audio: ${msg}`, 'warn');
     } finally {
       this.starting = false;
       this.startBtn.disabled = false;
@@ -145,6 +173,12 @@ export class App {
   }
 
   async toggleEngine(): Promise<void> {
+    if (this.remote) {
+      // Remote: the button connects / disconnects from the host (the host's audio keeps running)
+      if ((this.engine as RemoteEngine).state === 'connected') await this.stop();
+      else await this.start();
+      return;
+    }
     if (this.engine.running) await this.stop();
     else await this.start();
   }
@@ -169,6 +203,11 @@ export class App {
   }
 
   setGenerator(patch: Partial<Settings['generator']>): void {
+    if (this.remote && !(this.engine as RemoteEngine).allowControl) {
+      this.toast('The host has disabled remote control of the generator.', 'warn');
+      this.renderGenControls();
+      return;
+    }
     Object.assign(this.settings.generator, patch);
     this.engine.setGenerator(this.settings.generator);
     this.save();
@@ -232,6 +271,129 @@ export class App {
   }
 
   // ---------------------------------------------------------------------------------------------------------
+  // Remote access
+
+  /** Remote client: ask for the PIN if needed, then connect to the host. */
+  private async initRemoteClient(): Promise<void> {
+    const eng = this.engine as RemoteEngine;
+    eng.onStatus = (st) => this.adoptHost(st);
+    eng.onChange = () => this.renderTopState();
+    this.refreshDevices();
+    const info = await fetch('/api/info', { cache: 'no-store' }).then((r) => r.json()).catch(() => null);
+    if (info?.pinRequired && !this.remotePin) showRemoteConnect(this);
+    else this.start();
+  }
+
+  /** Called by the PIN dialog. */
+  connectRemote(pin: string): void {
+    this.remotePin = pin.trim();
+    sessionStorage.setItem('cal-remote-pin', this.remotePin);
+    this.start();
+  }
+
+  /** Apply the host's generator state and (when they change on the host) its calibration and channel setup. */
+  adoptHost(st: HostStatus, force = false): void {
+    const s = this.settings;
+    s.generator = { ...st.generator };
+    const shared = JSON.stringify(st.shared);
+    if (force || shared !== this.sharedApplied) {
+      this.sharedApplied = shared;
+      s.splOffset = st.shared.splOffset;
+      s.splCalibrated = st.shared.splCalibrated;
+      s.micCal = st.shared.micCal;
+      s.tempC = st.shared.tempC;
+      s.measurements = JSON.parse(JSON.stringify(st.shared.measurements));
+      this.spl.offsetDb = s.splOffset;
+      this.updateCal();
+      if (this.engine.running) this.rebuildMeasurements();
+      this.renderMeasurements();
+    }
+    this.save();
+    this.renderGenControls();
+    this.renderTopState();
+    this.refreshDevices();
+  }
+
+  /** How this page can host remote clients: the desktop app's built-in server, the CLI server, or not at all. */
+  get serverMode(): 'desktop' | 'cli' | null {
+    if (this.remote) return null;
+    if (desktopBridge()) return 'desktop';
+    if (this.hubPage?.role === 'host') return 'cli';
+    return null;
+  }
+
+  private async initRemoteHost(): Promise<void> {
+    if (this.serverMode === 'cli' && this.hubPage?.port && this.hubPage.token) {
+      this.hostLink = new HostLink(this);
+      this.hostLink.onChange = () => this.onRemoteChange();
+      await this.hostLink.connect(this.hubPage.port, this.hubPage.token).catch(() => this.toast('Could not connect to the remote-access server', 'warn'));
+    } else if (this.serverMode === 'desktop' && this.settings.remoteServer.enabled) {
+      await this.startServer().catch(() => undefined);
+    }
+  }
+
+  /** Start the desktop app's built-in remote-access server. */
+  async startServer(): Promise<void> {
+    const bridge = desktopBridge();
+    if (!bridge) throw new Error('Remote access needs the desktop app');
+    const rs = this.settings.remoteServer;
+    try {
+      const r = await bridge.server.start({ port: rs.port, pin: rs.pin, allowControl: rs.allowControl });
+      this.hostLink ??= new HostLink(this);
+      this.hostLink.onChange = () => this.onRemoteChange();
+      await this.hostLink.connect(r.port, r.token);
+      rs.enabled = true;
+      this.save();
+      this.toast(`Remote access on · port ${r.port}`, 'ok');
+    } catch (e) {
+      rs.enabled = false;
+      this.save();
+      this.toast(`Could not start remote access: ${(e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`, 'warn');
+      throw e;
+    } finally {
+      this.onRemoteChange();
+    }
+  }
+
+  async stopServer(): Promise<void> {
+    this.hostLink?.disconnect();
+    this.hostLink = null;
+    await desktopBridge()?.server.stop();
+    this.settings.remoteServer.enabled = false;
+    this.save();
+    this.onRemoteChange();
+  }
+
+  private onRemoteChange(): void {
+    this.renderRemoteBadge();
+    for (const v of this.views) v.invalidate?.();
+  }
+
+  private renderRemoteBadge(): void {
+    const b = this.remoteBadge;
+    if (this.remote) {
+      const eng = this.engine as RemoteEngine;
+      b.style.display = '';
+      b.className = `remote-badge ${eng.state === 'connected' ? 'on' : 'off'}`;
+      b.replaceChildren(icon('wifi', 14), h('span', {}, eng.state === 'connected' ? 'Remote' : eng.state === 'connecting' ? 'Connecting…' : 'Offline'));
+      b.title = eng.state === 'connected' ? `Connected to the measurement host at ${location.host}` : 'Not connected to the measurement host · click to connect';
+      b.onclick = () => (eng.state === 'connected' ? this.setView('tools') : this.start());
+      return;
+    }
+    const link = this.hostLink;
+    if (!link?.connected) {
+      b.style.display = 'none';
+      return;
+    }
+    const n = link.clients.length;
+    b.style.display = '';
+    b.className = `remote-badge on${n ? ' busy' : ''}`;
+    b.replaceChildren(icon('wifi', 14), h('span', {}, n ? `${n} remote${n > 1 ? 's' : ''}` : 'Remote on'));
+    b.title = 'Remote access is on · click for connection details';
+    b.onclick = () => this.setView('tools');
+  }
+
+  // ---------------------------------------------------------------------------------------------------------
   // Theme
 
   /** Apply the saved colour scheme to the document, canvases and the toggle button. */
@@ -276,10 +438,11 @@ export class App {
       h('div', { class: 'group' }, this.startBtn, this.sourceSel),
       h('div', { class: 'group gen' }, h('span', { class: 'label' }, 'Generator'), this.genBtn, this.genControls),
       h('div', { class: 'spacer' }),
+      this.remoteBadge,
       this.splMini,
       this.themeBtn,
       h('button', { class: 'btn icon-btn', title: 'Help & shortcuts (?)', onclick: () => showHelp(this) }, icon('help', 18)),
-      h('button', { class: 'btn icon-btn', title: 'Setup assistant', onclick: () => showWizard(this) }, icon('sparkle', 18)),
+      this.remote ? null : h('button', { class: 'btn icon-btn', title: 'Setup assistant', onclick: () => showWizard(this) }, icon('sparkle', 18)),
     );
 
     this.views = [
@@ -380,6 +543,13 @@ export class App {
   }
 
   async refreshDevices(): Promise<void> {
+    if (this.remote) {
+      const st = (this.engine as RemoteEngine).status;
+      clear(this.sourceSel);
+      this.sourceSel.append(h('option', { value: '' }, `📡 Remote host: ${st ? st.deviceLabel : location.host}`));
+      this.sourceSel.disabled = true;
+      return;
+    }
     const devices = await AudioEngine.listDevices().catch(() => []);
     const cur = this.settings.simulate ? '__demo' : this.settings.deviceId || '__default';
     clear(this.sourceSel);
@@ -395,8 +565,16 @@ export class App {
   renderTopState(): void {
     const running = this.engine.running;
     clear(this.startBtn);
-    this.startBtn.append(icon(running ? 'stop' : 'power', 16), h('span', {}, running ? 'Stop' : 'Start'));
-    this.startBtn.classList.toggle('on', running);
+    if (this.remote) {
+      const connected = (this.engine as RemoteEngine).state === 'connected';
+      this.startBtn.append(icon(connected ? 'stop' : 'wifi', 16), h('span', {}, connected ? 'Disconnect' : 'Connect'));
+      this.startBtn.classList.toggle('on', connected);
+      this.startBtn.title = connected ? 'Disconnect from the measurement host' : 'Connect to the measurement host';
+    } else {
+      this.startBtn.append(icon(running ? 'stop' : 'power', 16), h('span', {}, running ? 'Stop' : 'Start'));
+      this.startBtn.classList.toggle('on', running);
+    }
+    this.renderRemoteBadge();
     const g = this.settings.generator;
     clear(this.genBtn);
     this.genBtn.append(icon(g.type === 'off' ? 'play' : 'pause', 14), h('span', {}, g.type === 'off' ? 'Off' : 'On'));
@@ -649,9 +827,14 @@ export class App {
       el.classList.toggle('hot', pkDb > -6);
     });
     const avg = this.frameTimes.reduce((a, b) => a + b, 0) / Math.max(1, this.frameTimes.length);
+    const remoteInfo = this.remote ? ' · remote client' : this.hostLink?.connected ? ` · remote access on (${this.hostLink.clients.length} connected)` : '';
     this.statusEl.textContent = e.running
-      ? `${e.deviceLabel} · ${(e.sampleRate / 1000).toFixed(1)} kHz · ${e.channelCount} in · DSP ${avg.toFixed(1)} ms/frame`
-      : 'Audio stopped';
+      ? `${e.deviceLabel} · ${(e.sampleRate / 1000).toFixed(1)} kHz · ${e.channelCount} in · DSP ${avg.toFixed(1)} ms/frame${remoteInfo}`
+      : this.remote
+        ? (this.engine as RemoteEngine).state === 'connected'
+          ? 'Connected · audio on the measurement host is stopped'
+          : 'Not connected to the measurement host'
+        : `Audio stopped${remoteInfo}`;
   }
 
   // ---------------------------------------------------------------------------------------------------------
@@ -660,6 +843,21 @@ export class App {
   hints(): Hint[] {
     const e = this.engine;
     const out: Hint[] = [];
+    if (this.remote) {
+      const r = e as RemoteEngine;
+      if (r.state !== 'connected') {
+        out.push({ level: 'warn', text: r.lastError ? `Not connected: ${r.lastError}` : 'Not connected to the measurement host.', action: { label: 'Connect', run: () => this.start() } });
+        return out;
+      }
+      if (!r.hostConnected) out.push({ level: 'warn', text: 'The measurement host app is not connected to its server. Check the host computer.' });
+      else if (!e.running) out.push({ level: 'info', text: 'Audio on the measurement host is stopped.', action: r.allowControl ? { label: 'Start host audio', run: () => this.start() } : undefined });
+      if (r.droppedBlocks > 0) {
+        out.push({ level: 'warn', text: 'The network is too slow for the live audio stream, so some audio was dropped. Move closer to the Wi-Fi access point or use 5 GHz Wi-Fi / Ethernet.' });
+        r.droppedBlocks = 0;
+      }
+      if (!r.allowControl) out.push({ level: 'info', text: 'View-only: the host has disabled remote control of the generator and sweeps.' });
+      if (!e.running) return out;
+    }
     if (!e.running) {
       out.push({ level: 'info', text: 'Audio is stopped. Press Start. No hardware? The demo room lets you try every feature.', action: { label: 'Start', run: () => this.start() } });
       return out;
@@ -696,6 +894,7 @@ export class App {
         }
       }
     }
+    if (this.hostLink?.connected && this.hostLink.clients.length) out.push({ level: 'ok', text: `${this.hostLink.clients.length} remote client${this.hostLink.clients.length > 1 ? 's are' : ' is'} connected and receiving live audio.` });
     if (e.simulate) out.push({ level: 'info', text: 'Demo mode: a virtual loudspeaker in a reverberant room with modes at 47, 94 and 142 Hz. Nothing is played through your speakers.' });
     if (!this.settings.splCalibrated && this.settings.view === 'spl') out.push({ level: 'info', text: 'SPL readings are in dBFS until you calibrate with a 94 dB or 114 dB calibrator (Tools → SPL calibration).' });
     return out;
@@ -772,3 +971,11 @@ export class App {
 }
 
 export { SMOOTHING_OPTIONS, refLabel };
+
+/** A friendly name for this remote device, shown on the host. */
+function remoteClientName(): string {
+  const ua = navigator.userAgent;
+  const device = /iPad/.test(ua) ? 'iPad' : /iPhone/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android' : /Mac/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'Browser';
+  const browser = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : '';
+  return browser ? `${device} · ${browser}` : device;
+}

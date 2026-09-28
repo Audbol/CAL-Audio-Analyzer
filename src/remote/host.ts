@@ -1,0 +1,191 @@
+import type { App } from '../app';
+import { encodeAudio, type HostStatus, type HubInfo, type HubMessage } from './protocol';
+
+/** Desktop bridge exposed by electron/preload.cjs. */
+export interface DesktopBridge {
+  platform: string;
+  server: {
+    start(opts: { port: number; pin: string; allowControl: boolean }): Promise<{ port: number; token: string }>;
+    stop(): Promise<boolean>;
+    info(): Promise<unknown>;
+  };
+}
+
+/** Injected into index.html by the hub when the page is served by it. */
+export interface HubPageInfo {
+  role: 'host' | 'remote';
+  port?: number;
+  token?: string;
+}
+
+export function desktopBridge(): DesktopBridge | null {
+  return (window as unknown as { calDesktop?: DesktopBridge }).calDesktop ?? null;
+}
+
+export function hubPageInfo(): HubPageInfo | null {
+  return (window as unknown as { CAL_HUB?: HubPageInfo }).CAL_HUB ?? null;
+}
+
+/**
+ * The measurement host's link to the remote-access hub: streams live audio and status to connected remotes
+ * and executes their commands (generator, sweep playback, starting audio) through the normal app paths.
+ */
+export class HostLink {
+  private ws: WebSocket | null = null;
+  info: HubInfo | null = null;
+  connected = false;
+  private lastStatus = '';
+  private statusTimer = 0;
+  private unsubscribe: (() => void) | null = null;
+  private closing = false;
+  onChange?: () => void;
+
+  constructor(private app: App) {}
+
+  get clients(): HubInfo['clients'] {
+    return this.info?.clients ?? [];
+  }
+
+  connect(port: number, token: string): Promise<void> {
+    this.disconnect();
+    this.closing = false;
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/ws?role=host&token=${encodeURIComponent(token)}`);
+      ws.binaryType = 'arraybuffer';
+      this.ws = ws;
+      ws.onopen = () => {
+        this.connected = true;
+        this.lastStatus = '';
+        this.sendStatus();
+        this.statusTimer = window.setInterval(() => this.sendStatus(), 400);
+        this.unsubscribe = this.app.engine.onData((blocks, gen) => this.sendAudio(blocks, gen));
+        this.onChange?.();
+        resolve();
+      };
+      ws.onerror = () => reject(new Error('Could not connect to the remote-access server'));
+      ws.onclose = () => {
+        this.cleanup();
+        if (!this.closing) this.app.toast('Remote-access server connection closed', 'warn');
+        this.onChange?.();
+      };
+      ws.onmessage = (e) => {
+        if (typeof e.data === 'string') this.onMessage(JSON.parse(e.data) as HubMessage);
+        else this.onPlayRequest(e.data as ArrayBuffer);
+      };
+    });
+  }
+
+  disconnect(): void {
+    this.closing = true;
+    this.ws?.close(1000);
+    this.cleanup();
+  }
+
+  private cleanup(): void {
+    clearInterval(this.statusTimer);
+    this.unsubscribe?.();
+    this.unsubscribe = null;
+    this.ws = null;
+    this.connected = false;
+    this.info = null;
+  }
+
+  /** Change PIN / control permission on the running server. */
+  configure(opts: { pin?: string; allowControl?: boolean }): void {
+    this.send({ t: 'config', ...opts });
+  }
+
+  private send(msg: object): void {
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));
+  }
+
+  private status(): HostStatus {
+    const a = this.app;
+    const s = a.settings;
+    return {
+      t: 'status',
+      running: a.engine.running,
+      sampleRate: a.engine.sampleRate,
+      channels: a.engine.channelCount,
+      outputChannels: a.engine.outputChannels,
+      deviceLabel: a.engine.deviceLabel,
+      simulate: a.engine.simulate,
+      generator: s.generator,
+      shared: { splOffset: s.splOffset, splCalibrated: s.splCalibrated, micCal: s.micCal, tempC: s.tempC, measurements: s.measurements },
+      busy: a.busy,
+    };
+  }
+
+  private sendStatus(): void {
+    const json = JSON.stringify(this.status());
+    if (json === this.lastStatus) return;
+    this.lastStatus = json;
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(json);
+  }
+
+  private sendAudio(blocks: Float32Array[], gen: Float32Array): void {
+    // Only stream while someone is listening (and keep the socket from backing up)
+    if (!this.clients.length || !this.ws || this.ws.readyState !== WebSocket.OPEN || this.ws.bufferedAmount > 8 * 1024 * 1024) return;
+    const frame = this.app.engine.gen.written - gen.length;
+    const inputs = Array.from({ length: this.app.engine.channelCount }, (_, c) => blocks[c] ?? new Float32Array(gen.length));
+    this.ws.send(encodeAudio(frame, inputs, gen));
+  }
+
+  private onMessage(msg: HubMessage): void {
+    switch (msg.t) {
+      case 'hub': {
+        const before = this.info?.clients.length ?? 0;
+        this.info = msg;
+        if (msg.clients.length > before) this.app.toast(`Remote client connected (${msg.clients[msg.clients.length - 1].address})`, 'ok');
+        this.lastStatus = '';
+        this.sendStatus();
+        this.onChange?.();
+        break;
+      }
+      case 'cmd':
+        this.onCommand(msg);
+        break;
+    }
+  }
+
+  private onCommand(msg: Extract<HubMessage, { t: 'cmd' }>): void {
+    const app = this.app;
+    switch (msg.cmd) {
+      case 'hello':
+        this.lastStatus = '';
+        this.sendStatus();
+        break;
+      case 'setGenerator':
+        app.setGenerator(msg.config);
+        app.renderGenControls();
+        break;
+      case 'start':
+        if (!app.engine.running) app.start();
+        break;
+      case 'stopPlay':
+        app.engine.stopPlayback();
+        break;
+    }
+  }
+
+  /** Sweep playback requested by a remote: [uint32 client][uint32 request id][float32 samples]. */
+  private async onPlayRequest(buf: ArrayBuffer): Promise<void> {
+    const dv = new DataView(buf);
+    const from = dv.getUint32(0, true);
+    const id = dv.getUint32(4, true);
+    const data = new Float32Array(buf.slice(8));
+    const app = this.app;
+    if (!app.engine.running) await app.start();
+    const wasGen = app.settings.generator.type;
+    if (wasGen !== 'off') app.engine.setGenerator({ ...app.settings.generator, type: 'off' });
+    app.busy = true;
+    app.toast('Playing a sweep requested by a remote client', 'info');
+    try {
+      const r = await app.engine.play(data);
+      this.send({ t: 'event', to: from, ev: { type: 'played', id, start: r.start, end: r.end } });
+    } finally {
+      app.busy = false;
+      if (wasGen !== 'off') app.engine.setGenerator(app.settings.generator);
+    }
+  }
+}

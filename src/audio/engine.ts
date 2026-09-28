@@ -34,12 +34,22 @@ export class AudioEngine {
   genLevel: ChannelLevel = { peak: 0, rms: 0, clipped: false };
   simulate = false;
   deviceLabel = '';
-  private listeners = new Set<(blocks: Float32Array[], gen: Float32Array) => void>();
-  private playWaiters = new Map<number, { start?: number; resolve: (r: { start: number; end: number }) => void }>();
-  private playId = 1;
+  protected listeners = new Set<(blocks: Float32Array[], gen: Float32Array) => void>();
+  protected playWaiters = new Map<number, { start?: number; resolve: (r: { start: number; end: number }) => void }>();
+  protected playId = 1;
 
   get running(): boolean {
     return !!this.ctx && this.ctx.state === 'running';
+  }
+
+  /** True for a remote client that analyses audio streamed from a measurement host. */
+  get isRemote(): boolean {
+    return false;
+  }
+
+  /** Whether capture is active (audio keeps arriving). */
+  protected get active(): boolean {
+    return !!this.ctx;
   }
 
   get sampleRate(): number {
@@ -124,16 +134,7 @@ export class AudioEngine {
 
   private onEvent(ev: ProcessorEvent): void {
     if (ev.type === 'data') {
-      // Every ring must advance by exactly one block per event so all channels stay sample-aligned
-      // (the worklet can briefly deliver fewer channels, e.g. right after a configuration change)
-      for (let c = 0; c < this.inputs.length; c++) {
-        const block = ev.inputs[c] ?? new Float32Array(ev.gen.length);
-        this.inputs[c].push(block);
-        this.updateLevel(this.levels[c], block);
-      }
-      this.gen.push(ev.gen);
-      this.updateLevel(this.genLevel, ev.gen);
-      for (const l of this.listeners) l(ev.inputs, ev.gen);
+      this.ingest(ev.inputs, ev.gen);
       return;
     }
     const w = this.playWaiters.get(ev.id);
@@ -145,7 +146,21 @@ export class AudioEngine {
     }
   }
 
-  private updateLevel(l: ChannelLevel, block: Float32Array): void {
+  /** Append one block per channel to the ring buffers, update levels and notify listeners. */
+  protected ingest(inputs: Float32Array[], gen: Float32Array): void {
+    // Every ring must advance by exactly one block per event so all channels stay sample-aligned
+    // (the worklet can briefly deliver fewer channels, e.g. right after a configuration change)
+    for (let c = 0; c < this.inputs.length; c++) {
+      const block = inputs[c] ?? new Float32Array(gen.length);
+      this.inputs[c].push(block);
+      this.updateLevel(this.levels[c], block);
+    }
+    this.gen.push(gen);
+    this.updateLevel(this.genLevel, gen);
+    for (const l of this.listeners) l(inputs, gen);
+  }
+
+  protected updateLevel(l: ChannelLevel, block: Float32Array): void {
     let pk = 0;
     let ss = 0;
     for (let i = 0; i < block.length; i++) {
@@ -184,7 +199,7 @@ export class AudioEngine {
   /** Wait until the given absolute frame has been captured. */
   async waitForFrame(frame: number, signal?: { cancelled: boolean }): Promise<void> {
     while (this.gen.written < frame) {
-      if (signal?.cancelled || !this.ctx) throw new Error('cancelled');
+      if (signal?.cancelled || !this.active) throw new Error('cancelled');
       await new Promise((r) => setTimeout(r, 30));
     }
   }

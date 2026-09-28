@@ -1,6 +1,6 @@
 {
   "name": "cal-audio-analyzer",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "CAL Audio Analyzer: professional real-time sound system and room acoustics analyzer in the browser",
   "type": "module",
@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:e2e": "vite build && node tests/e2e/smoke.mjs && node tests/e2e/dock.mjs",
+    "test:e2e": "vite build && node tests/e2e/smoke.mjs && node tests/e2e/dock.mjs && node tests/e2e/remote.mjs",
     "check": "tsc --noEmit && vitest run",
     "app": "vite build && electron .",
     "app:dev": "node electron/dev.mjs",
@@ -18,12 +18,15 @@
     "dist:win": "vite build && electron-builder --win",
     "dist:mac": "vite build && electron-builder --mac",
     "dist:linux": "vite build && electron-builder --linux",
-    "test:electron": "vite build && xvfb-run -a node tests/e2e/electron.mjs"
+    "test:electron": "vite build && xvfb-run -a node tests/e2e/electron.mjs",
+    "serve": "node server/cli.mjs"
   },
   "devDependencies": {
+    "@types/qrcode": "^1.5.6",
     "electron": "^44.4.5",
     "electron-builder": "^26.15.3",
     "playwright": "1.56",
+    "qrcode": "^1.5.4",
     "typescript": "^5.9.3",
     "vite": "^8.3.1",
     "vitest": "^5.0.2"
@@ -42,6 +45,8 @@
     "files": [
       "dist/**/*",
       "electron/main.cjs",
+      "electron/preload.cjs",
+      "electron/hub.cjs",
       "build/icon.png",
       "package.json"
     ],
@@ -91,5 +96,8 @@
       "category": "Audio",
       "icon": "build/icon.png"
     }
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
   }
 }
