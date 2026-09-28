@@ -5,7 +5,11 @@ import type { GeneratorConfig } from './audio/protocol';
 import type { MicCalibration } from './dsp/calibration';
 import { GEN_CHANNEL } from './audio/engine';
 
-export const PALETTE = ['#2dd4bf', '#f59e0b', '#a78bfa', '#f472b6', '#60a5fa', '#a3e635', '#fb7185', '#fbbf24', '#22d3ee', '#e879f9'];
+import { PALETTE } from './ui/theme';
+export { PALETTE };
+
+/** Colours used by earlier versions; stored measurements using them are moved to the current palette. */
+const LEGACY_PALETTE = ['#2dd4bf', '#f59e0b', '#a78bfa', '#f472b6', '#60a5fa', '#a3e635', '#fb7185', '#fbbf24', '#22d3ee', '#e879f9'];
 
 export type ViewId = 'live' | 'spectrogram' | 'impulse' | 'room' | 'eq' | 'spl' | 'tools';
 
@@ -94,6 +98,10 @@ export function loadSettings(): Settings {
     const raw = localStorage.getItem(KEY);
     if (!raw) return d;
     const s = JSON.parse(raw) as Partial<Settings>;
+    for (const m of s.measurements ?? []) {
+      const i = LEGACY_PALETTE.indexOf(m.color);
+      if (i >= 0) m.color = PALETTE[i];
+    }
     return { ...d, ...s, generator: { ...d.generator, ...(s.generator ?? {}) } };
   } catch {
     return d;

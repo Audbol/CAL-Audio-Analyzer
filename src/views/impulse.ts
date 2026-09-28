@@ -1,3 +1,4 @@
+import { CHART } from '../ui/theme';
 import type { App, View } from '../app';
 import { Plot } from '../ui/plot';
 import { h, icon, select } from '../ui/dom';
@@ -76,7 +77,7 @@ export class ImpulseView implements View {
       this.lastPeakMs = t[pkIdx];
       this.lin.series = [{ id: 'ir', label: m.cfg.name, x: t, y: norm, color: m.cfg.color, width: 1.3 }];
       this.etc.series = [{ id: 'etc', label: m.cfg.name, x: t, y: etc, color: m.cfg.color, width: 1.3, fill: true }];
-      this.lin.markers = [{ x: this.lastPeakMs, color: 'rgba(255,255,255,0.5)', label: `peak ${this.lastPeakMs.toFixed(2)} ms` }];
+      this.lin.markers = [{ x: this.lastPeakMs, color: CHART.marker, label: `peak ${this.lastPeakMs.toFixed(2)} ms` }];
       this.etc.markers = this.lin.markers;
       const total = (m.cfg.delay / m.fs) * 1000 + this.lastPeakMs;
       const dist = (total / 1000) * speedOfSound(this.app.settings.tempC);

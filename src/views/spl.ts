@@ -1,3 +1,4 @@
+import { CHART } from '../ui/theme';
 import type { App, View } from '../app';
 import { Plot } from '../ui/plot';
 import { h, icon, select } from '../ui/dom';
@@ -70,8 +71,8 @@ export class SplView implements View {
     }
     const x = this.hist.map((p) => p.t - now);
     this.history.series = [
-      { id: 'lf', label: `L${s.splWeighting}F`, x, y: this.hist.map((p) => p.fast), color: '#2dd4bf', width: 1.4, fill: true },
-      { id: 'leq', label: `L${s.splWeighting}eq`, x, y: this.hist.map((p) => p.leq), color: '#f59e0b', width: 1.6 },
+      { id: 'lf', label: `L${s.splWeighting}F`, x, y: this.hist.map((p) => p.fast), color: CHART.accent, width: 1.4, fill: true },
+      { id: 'leq', label: `L${s.splWeighting}eq`, x, y: this.hist.map((p) => p.leq), color: CHART.warn, width: 1.6 },
     ];
     if (!s.splCalibrated && this.history.cfg.yMin > -20) this.history.setDefaults({ yMin: -100, yMax: 0 });
     if (s.splCalibrated && this.history.cfg.yMax < 60) this.history.setDefaults({ yMin: 20, yMax: 120 });

@@ -1,3 +1,4 @@
+import { CHART, BAND_COLORS } from '../ui/theme';
 import type { App, View } from '../app';
 import { Plot, escapeHtml } from '../ui/plot';
 import { h, icon, select, clear } from '../ui/dom';
@@ -264,15 +265,15 @@ export class RoomView implements View {
     // THD drawn as a level on the same scale as the response and harmonics
     const thdDb = Float64Array.from(r.thd, (v, i) => fr[i] + 20 * Math.log10(Math.max(v / 100, 1e-6)));
     this.fr.series = [
-      { id: 'fr', label: 'Response', x: grid, y: fr, color: '#2dd4bf', width: 2 },
-      { id: 'h2', label: 'H2', x: grid, y: smoothDb(hdOffset(r.h2)), color: '#f59e0b', width: 1.2 },
-      { id: 'h3', label: 'H3', x: grid, y: smoothDb(hdOffset(r.h3)), color: '#f472b6', width: 1.2 },
-      { id: 'thd', label: 'THD', unit: 'dB', x: grid, y: smoothDb(Float64Array.from(thdDb, (v, i) => (valid(i) ? v : NaN))), color: '#a78bfa', width: 1.2, dash: [4, 3] },
+      { id: 'fr', label: 'Response', x: grid, y: fr, color: CHART.accent, width: 2 },
+      { id: 'h2', label: 'H2', x: grid, y: smoothDb(hdOffset(r.h2)), color: CHART.warn, width: 1.2 },
+      { id: 'h3', label: 'H3', x: grid, y: smoothDb(hdOffset(r.h3)), color: '#ff5c7a', width: 1.2 },
+      { id: 'thd', label: 'THD', unit: 'dB', x: grid, y: smoothDb(Float64Array.from(thdDb, (v, i) => (valid(i) ? v : NaN))), color: '#b18cff', width: 1.2, dash: [4, 3] },
     ];
     const t = Float64Array.from(r.etc, (_, i) => ((i - r.t0) / r.d.fs) * 1000);
-    this.irPlot.series = [{ id: 'etc', label: 'ETC', x: t, y: r.etc, color: '#2dd4bf', width: 1.2, fill: true }];
+    this.irPlot.series = [{ id: 'etc', label: 'ETC', x: t, y: r.etc, color: CHART.accent, width: 1.2, fill: true }];
     const ac = r.acoustics;
-    const colors = ['#60a5fa', '#22d3ee', '#2dd4bf', '#a3e635', '#fbbf24', '#f59e0b', '#fb7185', '#f472b6', '#a78bfa', '#e879f9'];
+    const colors = BAND_COLORS;
     const decaySeries = ac.bands.map((b, i) => ({
       id: `d${i}`,
       label: `${b.label} Hz`,
@@ -281,7 +282,7 @@ export class RoomView implements View {
       color: colors[Math.round((i / Math.max(1, ac.bands.length - 1)) * (colors.length - 1))],
       width: 1,
     }));
-    decaySeries.push({ id: 'bb', label: 'Broadband', x: Float64Array.from(ac.broadband.decay, (_, k) => k * ac.decayStep * 1000), y: ac.broadband.decay, color: '#ffffff', width: 2 });
+    decaySeries.push({ id: 'bb', label: 'Broadband', x: Float64Array.from(ac.broadband.decay, (_, k) => k * ac.decayStep * 1000), y: ac.broadband.decay, color: CHART.white, width: 2 });
     this.decay.series = decaySeries;
     this.renderCards(r);
     this.renderTable(ac);

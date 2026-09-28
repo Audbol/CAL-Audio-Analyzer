@@ -1,3 +1,4 @@
+import { CHART } from '../ui/theme';
 import type { App, View } from '../app';
 import { Plot } from '../ui/plot';
 import { h, icon, select, clear } from '../ui/dom';
@@ -142,14 +143,14 @@ export class EqView implements View {
       const after = Float64Array.from(r.before, (v, i) => v + eq[i]);
       const band = (arr: ArrayLike<number>) => Float64Array.from(arr, (v, i) => (x[i] < this.opt.fMin || x[i] > this.opt.fMax ? NaN : v));
       this.plot.series = [
-        { id: 'before', label: 'Measured − target', x, y: r.before, color: 'rgba(148,163,184,0.9)', width: 1.4 },
-        { id: 'eq', label: 'EQ curve', x, y: eq, color: '#f59e0b', width: 2 },
-        { id: 'after', label: 'Predicted result', x, y: band(after), color: '#2dd4bf', width: 2 },
+        { id: 'before', label: 'Measured − target', x, y: r.before, color: CHART.neutral, width: 1.4 },
+        { id: 'eq', label: 'EQ curve', x, y: eq, color: CHART.warn, width: 2 },
+        { id: 'after', label: 'Predicted result', x, y: band(after), color: CHART.accent, width: 2 },
       ];
-      this.plot.markers = this.filters.map((f, i) => ({ x: f.f, color: 'rgba(245,158,11,0.45)', label: `${i + 1}` }));
+      this.plot.markers = this.filters.map((f, i) => ({ x: f.f, color: CHART.warnSoft, label: `${i + 1}` }));
       this.plot.shades = [
-        { x0: 20, x1: this.opt.fMin, color: 'rgba(255,255,255,0.03)' },
-        { x0: this.opt.fMax, x1: 20000, color: 'rgba(255,255,255,0.03)' },
+        { x0: 20, x1: this.opt.fMin, color: CHART.shade },
+        { x0: this.opt.fMax, x1: 20000, color: CHART.shade },
       ];
     }
     this.plot.draw();

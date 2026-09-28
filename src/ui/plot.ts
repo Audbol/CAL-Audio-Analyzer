@@ -1,3 +1,4 @@
+import { CHART } from './theme';
 import { formatFreq, noteName } from '../dsp/freq';
 
 export interface Series {
@@ -46,13 +47,7 @@ export interface PlotConfig {
   showNote?: boolean;
 }
 
-const COLORS = {
-  bg: '#0f1318',
-  grid: 'rgba(255,255,255,0.06)',
-  gridMajor: 'rgba(255,255,255,0.13)',
-  text: 'rgba(220,228,236,0.62)',
-  cursor: 'rgba(255,255,255,0.35)',
-};
+const COLORS = CHART;
 
 /** Fast canvas line plot with log/linear x-axis, hover readout, y zoom/pan and markers. */
 export class Plot {

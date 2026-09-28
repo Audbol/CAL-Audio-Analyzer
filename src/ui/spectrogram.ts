@@ -1,4 +1,5 @@
 import { formatFreq, noteName } from '../dsp/freq';
+import { CHART } from './theme';
 
 /** Perceptually ordered colour map (inferno-like), 256 entries. */
 function buildLut(): Uint8ClampedArray {
@@ -127,21 +128,21 @@ export class Spectrogram {
     const ctx = this.ctx;
     const { w, h, padL, padB } = this;
     if (!w || !h) return;
-    ctx.fillStyle = '#0f1318';
+    ctx.fillStyle = CHART.bg;
     ctx.fillRect(0, 0, w, h);
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(this.img, padL, 0, w - padL - 8, h - padB);
     ctx.font = '10px Inter, system-ui, sans-serif';
-    ctx.fillStyle = 'rgba(220,228,236,0.62)';
+    ctx.fillStyle = CHART.text;
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     for (const f of [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]) {
       if (f < this.fMin || f > this.fMax) continue;
       const y = (1 - Math.log(f / this.fMin) / Math.log(this.fMax / this.fMin)) * (h - padB);
       ctx.fillText(f >= 1000 ? `${f / 1000}k` : `${f}`, padL - 6, Math.min(Math.max(y, 6), h - padB - 4));
-      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.fillStyle = CHART.grid;
       ctx.fillRect(padL, y, w - padL - 8, 1);
-      ctx.fillStyle = 'rgba(220,228,236,0.62)';
+      ctx.fillStyle = CHART.text;
     }
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
@@ -154,7 +155,7 @@ export class Spectrogram {
     }
     ctx.fillStyle = lg;
     ctx.fillRect(w - 138, h - padB + 6, 120, 8);
-    ctx.fillStyle = 'rgba(220,228,236,0.62)';
+    ctx.fillStyle = CHART.text;
     ctx.textAlign = 'right';
     ctx.fillText(`${this.dbMin}`, w - 142, h - padB + 5);
     ctx.textAlign = 'left';

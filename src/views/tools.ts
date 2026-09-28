@@ -1,3 +1,4 @@
+import { CHART } from '../ui/theme';
 import type { App, View } from '../app';
 import { Plot } from '../ui/plot';
 import { h, icon, numberInput, clear } from '../ui/dom';
@@ -151,7 +152,7 @@ export class ToolsView implements View {
     const modes = roomModes(L, W, H, c, 400);
     const V = L * W * H;
     const fs = schroederFrequency(rt, V);
-    const color = (m: RoomMode) => (m.kind === 'axial' ? '#f59e0b' : m.kind === 'tangential' ? '#2dd4bf' : '#a78bfa');
+    const color = (m: RoomMode) => (m.kind === 'axial' ? CHART.warn : m.kind === 'tangential' ? CHART.accent : '#b18cff');
     const height = (m: RoomMode) => (m.kind === 'axial' ? 3 : m.kind === 'tangential' ? 2 : 1);
     this.modesPlot.series = modes.map((m, i) => ({
       id: `m${i}`,
@@ -162,7 +163,7 @@ export class ToolsView implements View {
       width: 1.5,
       quiet: true,
     }));
-    this.modesPlot.markers = [{ x: fs, color: 'rgba(255,255,255,0.6)', label: `Schroeder ${fs.toFixed(0)} Hz` }];
+    this.modesPlot.markers = [{ x: fs, color: CHART.marker, label: `Schroeder ${fs.toFixed(0)} Hz` }];
     // Highlight clusters / gaps of axial modes (Bonello-style quick check)
     const axial = modes.filter((m) => m.kind === 'axial' && m.f < fs * 1.2);
     const rows = axial
