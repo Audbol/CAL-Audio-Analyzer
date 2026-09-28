@@ -58,10 +58,15 @@ export class SpectrogramView implements View {
     this.applyRange();
   }
 
+  invalidate(): void {
+    this.sg.invalidate();
+  }
+
   private applyRange(): void {
     const r = this.app.settings.spectrogramRange;
     this.sg.dbMin = r[0] + this.appliedCal;
     this.sg.dbMax = r[1] + this.appliedCal;
+    this.sg.invalidate();
     this.inputs.forEach((el, i) => (el.value = String(Math.round(r[i] + this.appliedCal))));
     this.unit.textContent = this.app.settings.splCalibrated ? 'dB SPL' : 'dBFS';
   }

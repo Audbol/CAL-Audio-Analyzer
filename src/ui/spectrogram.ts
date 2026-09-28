@@ -1,5 +1,6 @@
 import { formatFreq, noteName } from '../dsp/freq';
 import { CHART } from './theme';
+import { Plot } from './plot';
 
 /** Perceptually ordered colour map (inferno-like), 256 entries. */
 function buildLut(): Uint8ClampedArray {
@@ -48,6 +49,12 @@ export class Spectrogram {
   private w = 0;
   private h = 0;
   private mouse: { x: number; y: number } | null = null;
+  /** Column the next spectrum is written to (the image is a circular buffer: no scrolling copies). */
+  private writeX = 0;
+  /** Needs a redraw (new column, resize, range, hover). */
+  private dirty = true;
+  /** Per image row: the FFT bin range it covers, for the bin spacing / bin count it was built for. */
+  private rowBins: { key: string; b0: Int32Array; b1: Int32Array } | null = null;
   private readonly padL = 46;
   private readonly padB = 22;
 
@@ -71,16 +78,18 @@ export class Spectrogram {
     this.canvas.addEventListener('mousemove', (e) => {
       const r = this.canvas.getBoundingClientRect();
       this.mouse = { x: e.clientX - r.left, y: e.clientY - r.top };
+      this.dirty = true;
     });
     this.canvas.addEventListener('mouseleave', () => {
       this.mouse = null;
       this.tip.style.display = 'none';
+      this.dirty = true;
     });
   }
 
   private resize(): void {
     const r = this.el.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = Math.min(Plot.maxDpr, this.el.ownerDocument.defaultView?.devicePixelRatio || window.devicePixelRatio || 1);
     this.w = r.width;
     this.h = r.height;
     this.canvas.width = Math.round(r.width * dpr);
@@ -88,50 +97,72 @@ export class Spectrogram {
     this.canvas.style.width = `${r.width}px`;
     this.canvas.style.height = `${r.height}px`;
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.dirty = true;
     this.draw();
   }
 
   /** Push one spectrum: power values on linear bins with bin spacing df. */
   push(power: ArrayLike<number>, df: number, offsetDb = 0): void {
-    this.imgCtx.drawImage(this.img, -1, 0);
     const d = this.column.data;
     const range = this.dbMax - this.dbMin;
     const nb = power.length;
-    for (let r = 0; r < this.rows; r++) {
-      // Row 0 = top = fMax
-      const t0 = 1 - (r + 1) / this.rows;
-      const t1 = 1 - r / this.rows;
-      const f0 = this.fMin * Math.pow(this.fMax / this.fMin, t0);
-      const f1 = this.fMin * Math.pow(this.fMax / this.fMin, t1);
-      let b0 = Math.floor(f0 / df);
-      let b1 = Math.ceil(f1 / df);
-      b0 = Math.max(1, Math.min(nb - 1, b0));
-      b1 = Math.max(b0, Math.min(nb - 1, b1));
-      let m = 0;
-      for (let b = b0; b <= b1; b++) if (power[b] > m) m = power[b];
-      const db = 10 * Math.log10(Math.max(m, 1e-30)) + offsetDb;
-      const v = Math.max(0, Math.min(255, Math.round(((db - this.dbMin) / range) * 255)));
-      d[r * 4] = LUT[v * 3];
-      d[r * 4 + 1] = LUT[v * 3 + 1];
-      d[r * 4 + 2] = LUT[v * 3 + 2];
-      d[r * 4 + 3] = 255;
+    const key = `${df}|${nb}|${this.fMin}|${this.fMax}`;
+    if (this.rowBins?.key !== key) {
+      const b0 = new Int32Array(this.rows);
+      const b1 = new Int32Array(this.rows);
+      for (let r = 0; r < this.rows; r++) {
+        // Row 0 = top = fMax
+        const f0 = this.fMin * Math.pow(this.fMax / this.fMin, 1 - (r + 1) / this.rows);
+        const f1 = this.fMin * Math.pow(this.fMax / this.fMin, 1 - r / this.rows);
+        b0[r] = Math.max(1, Math.min(nb - 1, Math.floor(f0 / df)));
+        b1[r] = Math.max(b0[r], Math.min(nb - 1, Math.ceil(f1 / df)));
+      }
+      this.rowBins = { key, b0, b1 };
     }
-    this.imgCtx.putImageData(this.column, this.cols - 1, 0);
+    const { b0, b1 } = this.rowBins;
+    const scale = 255 / range;
+    for (let r = 0; r < this.rows; r++) {
+      let m = 0;
+      for (let b = b0[r]; b <= b1[r]; b++) if (power[b] > m) m = power[b];
+      const db = 10 * Math.log10(Math.max(m, 1e-30)) + offsetDb;
+      const v = Math.max(0, Math.min(255, Math.round((db - this.dbMin) * scale)));
+      const o = r * 4;
+      d[o] = LUT[v * 3];
+      d[o + 1] = LUT[v * 3 + 1];
+      d[o + 2] = LUT[v * 3 + 2];
+      d[o + 3] = 255;
+    }
+    this.imgCtx.putImageData(this.column, this.writeX, 0);
+    this.writeX = (this.writeX + 1) % this.cols;
+    this.dirty = true;
   }
 
   clear(): void {
     this.imgCtx.fillStyle = '#000';
     this.imgCtx.fillRect(0, 0, this.cols, this.rows);
+    this.dirty = true;
+  }
+
+  /** Redraw on the next frame (colour scheme or range changed). */
+  invalidate(): void {
+    this.dirty = true;
   }
 
   draw(): void {
     const ctx = this.ctx;
     const { w, h, padL, padB } = this;
-    if (!w || !h) return;
+    if (!w || !h || !this.dirty) return;
+    this.dirty = false;
     ctx.fillStyle = CHART.bg;
     ctx.fillRect(0, 0, w, h);
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(this.img, padL, 0, w - padL - 8, h - padB);
+    // The image is circular: oldest columns start at writeX. Draw the two parts side by side.
+    const dw = w - padL - 8;
+    const dh = h - padB;
+    const older = this.cols - this.writeX;
+    const split = Math.round((older / this.cols) * dw);
+    if (older > 0) ctx.drawImage(this.img, this.writeX, 0, older, this.rows, padL, 0, split, dh);
+    if (this.writeX > 0) ctx.drawImage(this.img, 0, 0, this.writeX, this.rows, padL + split, 0, dw - split, dh);
     ctx.font = '10px Inter, system-ui, sans-serif';
     ctx.fillStyle = CHART.text;
     ctx.textAlign = 'right';

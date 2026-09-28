@@ -1,5 +1,5 @@
 import { FFT } from './fft';
-import { getWindow, powerSum, coherentGain, type WindowType } from './windows';
+import { windowStats, type WindowType } from './windows';
 import { BandMap, PrefixSum, rangeSum } from './bands';
 import type { Smoothing } from './freq';
 import type { RingBuffer } from './ring';
@@ -15,12 +15,18 @@ export class SpectrumAnalyzer {
   readonly bins: number;
   readonly power: Float64Array;
   peak: Float64Array;
-  private re: Float64Array;
-  private im: Float64Array;
+  /** Windowed input frame. */
+  private buf: Float64Array;
+  /** Spectrum of the current frame (bins 0…n/2). */
+  private sr: Float64Array;
+  private si: Float64Array;
   private frames = 0;
   private nextEnd = -1;
   private maps = new Map<number, BandMap>();
-  private prefix = new PrefixSum();
+  /** Prefix sums per data source, rebuilt only when the data changed (see `version`). */
+  private prefixes = new Map<string, { at: number; p: PrefixSum }>();
+  /** Changes whenever the averaged data changes (new frame or reset). */
+  version = 0;
   averaging: Averaging = 4;
   window: WindowType = 'hann';
 
@@ -34,8 +40,9 @@ export class SpectrumAnalyzer {
     this.bins = size / 2 + 1;
     this.power = new Float64Array(this.bins);
     this.peak = new Float64Array(this.bins);
-    this.re = new Float64Array(size);
-    this.im = new Float64Array(size);
+    this.buf = new Float64Array(size);
+    this.sr = new Float64Array(this.bins);
+    this.si = new Float64Array(this.bins);
   }
 
   reset(): void {
@@ -43,10 +50,12 @@ export class SpectrumAnalyzer {
     this.peak.fill(0);
     this.frames = 0;
     this.nextEnd = -1;
+    this.version++;
   }
 
   resetPeak(): void {
     this.peak.fill(0);
+    this.version++;
   }
 
   /** Process new data (hop = size/2). Returns the number of frames processed. */
@@ -77,22 +86,30 @@ export class SpectrumAnalyzer {
 
   private frame(ring: RingBuffer, end: number): void {
     const n = this.size;
-    const w = getWindow(this.window, n);
-    ring.read(end - n, n, this.re);
-    for (let i = 0; i < n; i++) this.re[i] *= w[i];
-    this.im.fill(0);
-    FFT.get(n).forward(this.re, this.im);
+    const { w, powerSum } = windowStats(this.window, n);
+    const x = this.buf;
+    ring.read(end - n, n, x);
+    for (let i = 0; i < n; i++) x[i] *= w[i];
+    // Real-input transform: bins 0…n/2 into (sr, si)
+    const sr = this.sr;
+    const si = this.si;
+    FFT.get(n).forwardReal(x, sr, si);
     // Normalise so that the sum of one-sided bin powers equals mean-square*2 (i.e. sine peak² reference)
-    const norm = (2 * 2) / (n * powerSum(w));
+    const norm = (2 * 2) / (n * powerSum);
     this.frames++;
+    this.version++;
     const a = this.averaging === 0 ? 1 / this.frames : Math.max(1 / this.averaging, 1 / this.frames);
     const b = 1 - a;
-    if (!this.last) this.last = new Float64Array(this.bins);
-    for (let k = 0; k < this.bins; k++) {
-      const p = (this.re[k] * this.re[k] + this.im[k] * this.im[k]) * norm * (k === 0 || k === n / 2 ? 0.5 : 1);
-      this.last[k] = p;
-      this.power[k] = b * this.power[k] + a * p;
-      if (this.power[k] > this.peak[k]) this.peak[k] = this.power[k];
+    const last = (this.last ??= new Float64Array(this.bins));
+    const power = this.power;
+    const peak = this.peak;
+    const bins = this.bins;
+    for (let k = 0; k < bins; k++) {
+      const p = (sr[k] * sr[k] + si[k] * si[k]) * norm * (k === 0 || k === bins - 1 ? 0.5 : 1);
+      last[k] = p;
+      const v = b * power[k] + a * p;
+      power[k] = v;
+      if (v > peak[k]) peak[k] = v;
     }
   }
 
@@ -105,13 +122,11 @@ export class SpectrumAnalyzer {
     let map = this.maps.get(fraction);
     if (!map) this.maps.set(fraction, (map = new BandMap(g, this.size, this.fs, fraction)));
     const data = src === 'peak' ? this.peak : src === 'inst' ? this.instantaneous : this.power;
-    const p = this.prefix.build(data, this.bins);
     const { lo, hi } = map;
     if (fraction === 0) {
       // Per-bin: convert the band-power normalisation to a sine-amplitude reading
-      const w = getWindow(this.window, this.size);
-      const cg = coherentGain(w);
-      const enbwBins = powerSum(w) / (this.size * cg * cg);
+      const { powerSum, coherentGain: cg } = windowStats(this.window, this.size);
+      const enbwBins = powerSum / (this.size * cg * cg);
       // Peak-pick the bins under each display point so tonal components keep their true level
       for (let i = 0; i < g.length; i++) {
         if (g[i] < fLo || g[i] >= fHi) continue;
@@ -120,6 +135,13 @@ export class SpectrumAnalyzer {
         out[i] = 10 * Math.log10(Math.max(m * enbwBins, 1e-30));
       }
     } else {
+      let cached = this.prefixes.get(src);
+      if (!cached) this.prefixes.set(src, (cached = { at: -1, p: new PrefixSum() }));
+      if (cached.at !== this.version) {
+        cached.p.build(data, this.bins);
+        cached.at = this.version;
+      }
+      const p = cached.p.values;
       for (let i = 0; i < g.length; i++) {
         if (g[i] < fLo || g[i] >= fHi) continue;
         let s = rangeSum(p, lo[i], hi[i]);
@@ -179,6 +201,13 @@ export class MultiSpectrum {
 
   get averaging(): Averaging {
     return this.avg;
+  }
+
+  /** Changes whenever any of the analyzers' data changes. */
+  get version(): number {
+    let v = this.main.version;
+    for (const l of this.low) v += l.sa.version;
+    return v;
   }
 
   set averaging(a: Averaging) {

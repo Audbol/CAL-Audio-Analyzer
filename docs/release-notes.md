@@ -19,6 +19,12 @@ The builds are not code-signed yet:
 
 On first launch, choose **Explore with the demo room** to try every feature without hardware.
 
+## What's new in 1.5
+
+- **Faster everywhere:** a new FFT (1.5–1.8× faster, and 2.7–3.2× for the spectrum's real-valued signals), results and graphs recomputed only when new data arrives, fewer screen updates for numbers that change every frame, and a lighter spectrogram. On the measurement computer the processing load dropped by roughly a third to more than half depending on the tab; on a slow phone the spectrum went from 36 to 54 frames per second.
+- **Security:** the remote-access PIN protection now really locks out an address after 8 wrong PINs; the server refuses connections from other websites and unknown host names, and malformed addresses can no longer crash it.
+- **Fixes:** remote devices no longer rebuild the generator controls several times a second while music plays (dropdowns and sliders now work there); Enter on a focused button no longer also starts/stops audio; shortcuts don't act behind open dialogs; a sweep requested from a remote device that the host can't run no longer leaves the remote waiting; long sweeps at very high sample rates are refused with a clear message instead of giving a wrong result; SPL Leq/Lmax reset when the calibration changes; several small leaks fixed (playlist window, database connections).
+
 ## What's new in 1.4.2
 
 - **Spectrogram fixed with SPL calibration:** with a calibrated microphone (or on a remote device using the host's calibration) the spectrogram showed a solid beige colour. The colour range now follows the calibration, the Floor/Top fields show dB SPL when calibrated, a new **Auto** button fits the range to the signal, and the range fits itself once when the signal is entirely outside it.

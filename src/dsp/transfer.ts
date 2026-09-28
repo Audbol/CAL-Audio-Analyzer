@@ -1,6 +1,6 @@
 import { FFT } from './fft';
 import { getWindow } from './windows';
-import { BandMap, PrefixSum, rangeSum } from './bands';
+import { BandMap, rangeSum } from './bands';
 import type { Smoothing } from './freq';
 import type { RingBuffer } from './ring';
 import { DecimatedRing, decimationFactor, type LfResolution } from './decimate';
@@ -37,6 +37,12 @@ interface WindowState {
   xi: Float64Array;
   yr: Float64Array;
   maps: Map<number, BandMap>;
+  /** Prefix sums of gxx, gyy, gxyRe, gxyIm (for band sums) and the frame count they were built at. */
+  pxx: Float64Array;
+  pyy: Float64Array;
+  pre: Float64Array;
+  pim: Float64Array;
+  prefixAt: number;
 }
 
 /**
@@ -46,7 +52,6 @@ interface WindowState {
  */
 export class TransferFunction {
   private windows: WindowState[] = [];
-  private prefix = new PrefixSum();
   averaging: Averaging = 8;
   /** Delay applied to the reference channel, in samples. */
   delay = 0;
@@ -55,6 +60,8 @@ export class TransferFunction {
   private decRef: DecimatedRing | null = null;
   private decMic: DecimatedRing | null = null;
   lf: LfResolution = 'standard';
+  /** Changes whenever the averaged data changes (new frame or reset): lets callers skip recomputing. */
+  version = 0;
 
   constructor(
     readonly fs: number,
@@ -64,7 +71,9 @@ export class TransferFunction {
     const scale = Math.max(1, Math.round(fs / 48000));
     const base = [32768, 16384, 8192, 4096, 2048, 1024].map((s) => s * scale);
     const cross = [0, 180, 360, 720, 1440, 2880, Infinity];
-    this.windows = base.map((size, i) => newWindow(size, fs, cross[i], cross[i + 1]));
+    // The 16k/32k windows (bass) use 75% overlap so they update often; the short windows already deliver
+    // 12–95 frames a second at 50% overlap (plenty for the display) at half the processing cost
+    this.windows = base.map((size, i) => newWindow(size, fs, cross[i], cross[i + 1], i < 2 ? size / 4 : size / 2));
   }
 
   /**
@@ -90,6 +99,7 @@ export class TransferFunction {
     this.decRef?.reset();
     this.decMic?.reset();
     for (const w of [...this.windows, ...this.lowWindows]) resetWindow(w);
+    this.version++;
   }
 
   /** Largest time window in samples (for delay/IR estimation). */
@@ -111,6 +121,7 @@ export class TransferFunction {
       this.decRef.reset();
       this.decMic.reset();
       for (const w of this.lowWindows) resetWindow(w);
+      this.version++;
     }
     this.decRef.update(ref);
     this.decMic.update(mic);
@@ -148,8 +159,12 @@ export class TransferFunction {
     FFT.get(n).forward(xr, xi);
     const bins = n / 2 + 1;
     w.frames++;
-    const a = this.averaging === 0 ? 1 / w.frames : Math.max(1 / this.averaging, 1 / w.frames);
+    // Averaging is specified in frames at 75% overlap; windows with larger hops weight each frame more so
+    // the averaging time stays the same
+    const k = w.hop / (w.size / 4);
+    const a = this.averaging === 0 ? 1 / w.frames : Math.max(k === 1 ? 1 / this.averaging : 1 - Math.pow(1 - 1 / this.averaging, k), 1 / w.frames);
     const b = 1 - a;
+    this.version++;
     const { gxx, gyy, gxyRe, gxyIm } = w;
     for (let k = 0; k < bins; k++) {
       const m = k === 0 ? 0 : n - k;
@@ -201,11 +216,15 @@ export class TransferFunction {
       const w = sg.w;
       let map = w.maps.get(fraction);
       if (!map) w.maps.set(fraction, (map = new BandMap(g, w.size, w.fs, fraction)));
-      const bins = w.size / 2 + 1;
-      const pxx = this.prefix.build(w.gxx, bins).slice();
-      const pyy = this.prefix.build(w.gyy, bins).slice();
-      const pre = this.prefix.build(w.gxyRe, bins).slice();
-      const pim = this.prefix.build(w.gxyIm, bins);
+      // Prefix sums only change with new frames: rebuild them then, not on every call
+      if (w.prefixAt !== w.frames) {
+        prefixSum(w.gxx, w.pxx);
+        prefixSum(w.gyy, w.pyy);
+        prefixSum(w.gxyRe, w.pre);
+        prefixSum(w.gxyIm, w.pim);
+        w.prefixAt = w.frames;
+      }
+      const { pxx, pyy, pre, pim } = w;
       const { lo, hi } = map;
       const [hr, hi2, hc] = [this.segBufs[sg.k * 3], this.segBufs[sg.k * 3 + 1], this.segBufs[sg.k * 3 + 2]];
       const f0 = sg.lo / XFADE;
@@ -286,6 +305,11 @@ function newWindow(size: number, fs: number, fLo: number, fHi: number, hop = siz
     nextEnd: -1,
     frames: 0,
     maps: new Map(),
+    pxx: new Float64Array(bins + 1),
+    pyy: new Float64Array(bins + 1),
+    pre: new Float64Array(bins + 1),
+    pim: new Float64Array(bins + 1),
+    prefixAt: -1,
     gxx: new Float64Array(bins),
     gyy: new Float64Array(bins),
     gxyRe: new Float64Array(bins),
@@ -296,8 +320,18 @@ function newWindow(size: number, fs: number, fLo: number, fHi: number, hop = siz
   };
 }
 
+function prefixSum(v: Float64Array, out: Float64Array): void {
+  let s = 0;
+  out[0] = 0;
+  for (let i = 0; i < v.length; i++) {
+    s += v[i];
+    out[i + 1] = s;
+  }
+}
+
 function resetWindow(w: WindowState): void {
   w.frames = 0;
+  w.prefixAt = -1;
   w.nextEnd = -1;
   w.gxx.fill(0);
   w.gyy.fill(0);

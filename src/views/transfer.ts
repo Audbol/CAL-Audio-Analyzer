@@ -74,10 +74,20 @@ export class TransferView extends DockedView implements View {
     return cohAlpha(coh, this.app.settings.coherenceThreshold, a);
   }
 
+  private lastKey = '';
+
+  invalidate(): void {
+    this.lastKey = '';
+  }
+
   tick(detachedOnly = false): void {
     this.detachedOnly = detachedOnly;
     const app = this.app;
     const s = app.settings;
+    // Redraw only when what is shown changed
+    const key = `${app.traces.version}|${s.coherenceThreshold}|${s.showCoherence}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.tfReady}:${m.tfShown}`).join(',')}`;
+    if (key === this.lastKey) return this.tickMeters();
+    this.lastKey = key;
     const g = app.grid;
     const magS: Series[] = [];
     const phS: Series[] = [];

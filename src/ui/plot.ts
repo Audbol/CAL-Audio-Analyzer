@@ -60,6 +60,23 @@ export class Plot {
   private static instances = new Set<Plot>();
 
   /** Change the pixel-ratio limit of every plot (adaptive quality on slow devices). */
+  /** Redraw every plot on its next `drawIf` (e.g. after a colour-scheme change). */
+  static invalidateAll(): void {
+    for (const p of Plot.instances) p.lastKey = null;
+  }
+
+  private lastKey: string | null = null;
+
+  /**
+   * Draw only when `key` (a summary of what is shown: data versions, settings) changed since the last draw,
+   * or something else required a redraw. Resizing, zooming and the hover readout redraw directly.
+   */
+  drawIf(key: string): void {
+    if (key === this.lastKey) return;
+    this.draw();
+    this.lastKey = key;
+  }
+
   static setMaxDpr(v: number): void {
     if (v === Plot.maxDpr) return;
     Plot.maxDpr = v;
@@ -376,6 +393,7 @@ export class Plot {
   draw(): void {
     const ctx = this.ctx;
     const { w, hgt: H, pad } = this;
+    this.lastKey = null;
     if (!w || !H) return;
     this.maybeAutoFit();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
@@ -548,15 +566,55 @@ export class Plot {
     let pen = false;
     let firstX = 0;
     let lastX = 0;
-    for (let i = 0; i < n; i++) {
+    // Only the visible x range (plus one point either side, so lines run to the edges)
+    let i0 = 0;
+    let i1 = n - 1;
+    while (i0 < n - 1 && s.x[i0 + 1] < xMin) i0++;
+    while (i1 > 0 && s.x[i1 - 1] > xMax) i1--;
+    // Dense series (e.g. a 16k-point impulse response on a 1000-pixel plot): draw each pixel column as the
+    // line through its first, lowest, highest and last point. Looks identical, draws a fraction of the segments.
+    const dense = !s.wrap && i1 - i0 > 3 * (this.w - this.pad.l - this.pad.r);
+    let col = NaN;
+    let yF = 0;
+    let yLo = 0;
+    let yHi = 0;
+    let yL = 0;
+    const flush = () => {
+      if (Number.isNaN(col)) return;
+      if (!pen) {
+        ctx.moveTo(col, yF);
+        if (!firstX) firstX = col;
+        pen = true;
+      } else ctx.lineTo(col, yF);
+      if (yLo !== yF) ctx.lineTo(col, yLo);
+      if (yHi !== yLo) ctx.lineTo(col, yHi);
+      if (yL !== yHi) ctx.lineTo(col, yL);
+      lastX = col;
+      col = NaN;
+    };
+    for (let i = i0; i <= i1; i++) {
       const x = s.x[i];
       const y = s.y[i];
-      if (!Number.isFinite(y) || x <= 0 && this.cfg.xType === 'log') {
+      if (!Number.isFinite(y) || (x <= 0 && this.cfg.xType === 'log')) {
+        if (dense) flush();
         pen = false;
         continue;
       }
       const px = this.xToPx(x);
       const py = this.yToPx(y, s.secondary);
+      if (dense) {
+        const c = Math.round(px);
+        if (c !== col) {
+          flush();
+          col = c;
+          yF = yLo = yHi = yL = py;
+        } else {
+          if (py < yLo) yLo = py;
+          if (py > yHi) yHi = py;
+          yL = py;
+        }
+        continue;
+      }
       if (pen && s.wrap && Math.abs(y - s.y[i - 1]) > s.wrap) pen = false;
       if (!pen) {
         ctx.moveTo(px, py);
@@ -565,6 +623,7 @@ export class Plot {
       } else ctx.lineTo(px, py);
       lastX = px;
     }
+    if (dense) flush();
     ctx.stroke();
     if (s.fill) {
       ctx.lineTo(lastX, bottom);

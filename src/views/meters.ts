@@ -30,16 +30,27 @@ export class SplPanel {
 
   constructor(private app: App) {}
 
+  private lastAt = 0;
+  private lastHtml = '';
+
   render(): void {
+    // Numbers are readable at ~10 updates per second (like a hardware SPL meter); faster only costs layout work
+    const now = performance.now();
+    if (now - this.lastAt < 100 && this.lastHtml) return;
+    this.lastAt = now;
     const s = this.app.settings;
     const r = this.app.splReading;
     const run = this.app.engine.running && r;
     const unit = s.splCalibrated ? `dB(${s.splWeighting})` : `dBFS(${s.splWeighting})`;
     const f = (v: number | undefined) => (run && v !== undefined && Number.isFinite(v) ? v.toFixed(1) : '—');
-    this.el.innerHTML =
+    const html =
       `<div class="spl-val">${f(r?.level)}</div>` +
       `<div class="spl-unit">${unit} · ${s.splTime === 'fast' ? 'Fast' : 'Slow'}${s.splCalibrated ? '' : ' · <span class="warn-text">uncal.</span>'}</div>` +
       `<div class="spl-row"><span>L<sub>eq</sub> <b>${f(r?.leq)}</b></span><span>L<sub>max</sub> <b>${f(r?.max)}</b></span><span>Pk <b>${f(r?.peakHold)}</b></span></div>`;
+    if (html !== this.lastHtml) {
+      this.lastHtml = html;
+      this.el.innerHTML = html;
+    }
   }
 }
 
@@ -50,6 +61,9 @@ const pct = (db: number) => Math.max(0, Math.min(100, ((db - METER_FLOOR) / -MET
 export class LevelsPanel {
   readonly el = h('div', { class: 'levels-panel' });
   private holds: { v: number; t: number }[] = [];
+  /** Element references and last written values of each meter column (avoids DOM queries and writes). */
+  private cols: { rms: HTMLElement; peak: HTMLElement; hold: HTMLElement; val: HTMLElement; col: HTMLElement; last: string[] }[] = [];
+  private textAt = 0;
 
   constructor(private app: App) {}
 
@@ -81,8 +95,16 @@ export class LevelsPanel {
       );
     }
     const now = performance.now();
+    if (this.cols.length !== chans.length || !this.cols[0]?.col.isConnected) {
+      this.cols = chans.map((_, i) => {
+        const col = this.el.children[i + 1] as HTMLElement;
+        return { col, rms: col.querySelector('.lv-rms')!, peak: col.querySelector('.lv-peak')!, hold: col.querySelector('.lv-hold')!, val: col.querySelector('.lv-val')!, last: [] };
+      });
+    }
+    const text = now - this.textAt > 100;
+    if (text) this.textAt = now;
     chans.forEach((c, i) => {
-      const col = this.el.children[i + 1] as HTMLElement;
+      const ref = this.cols[i];
       const pk = 20 * Math.log10(Math.max(c.l.peak, 1e-6));
       const rms = 20 * Math.log10(Math.max(c.l.rms, 1e-6)) + 3.01;
       const hold = (this.holds[i] ??= { v: -Infinity, t: 0 });
@@ -90,12 +112,20 @@ export class LevelsPanel {
         hold.v = pk;
         hold.t = now;
       }
-      (col.querySelector('.lv-rms') as HTMLElement).style.height = `${pct(rms)}%`;
-      (col.querySelector('.lv-peak') as HTMLElement).style.height = `${pct(pk)}%`;
-      (col.querySelector('.lv-hold') as HTMLElement).style.bottom = `${pct(hold.v)}%`;
-      (col.querySelector('.lv-val') as HTMLElement).textContent = e.running && hold.v > -99 ? hold.v.toFixed(1) : '—';
-      col.classList.toggle('clip', c.l.clipped);
-      col.classList.toggle('hot', pk > -6);
+      const set = (k: number, v: string, apply: (v: string) => void) => {
+        if (ref.last[k] !== v) {
+          ref.last[k] = v;
+          apply(v);
+        }
+      };
+      set(0, `${pct(rms).toFixed(1)}%`, (v) => (ref.rms.style.height = v));
+      set(1, `${pct(pk).toFixed(1)}%`, (v) => (ref.peak.style.height = v));
+      set(2, `${pct(hold.v).toFixed(1)}%`, (v) => (ref.hold.style.bottom = v));
+      if (text) set(3, e.running && hold.v > -99 ? hold.v.toFixed(1) : '—', (v) => (ref.val.textContent = v));
+      set(4, `${c.l.clipped}${pk > -6}`, () => {
+        ref.col.classList.toggle('clip', c.l.clipped);
+        ref.col.classList.toggle('hot', pk > -6);
+      });
     });
   }
 }

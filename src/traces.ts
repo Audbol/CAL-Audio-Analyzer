@@ -32,6 +32,8 @@ export type TraceOp =
 export class TraceStore {
   traces: Trace[] = [];
   private listeners = new Set<() => void>();
+  /** Increases on every change (views redraw only when it moved). */
+  version = 0;
   /**
    * Remote devices: changes are applied locally at once and forwarded here (to the measurement host, which
    * owns the shared trace list and broadcasts it to every device). Nothing is persisted on the remote.
@@ -52,6 +54,7 @@ export class TraceStore {
   }
 
   private emit(op?: TraceOp): void {
+    this.version++;
     if (this.sink) {
       if (op) this.sink(op);
     } else {
@@ -67,6 +70,7 @@ export class TraceStore {
   /** Remote devices: replace the list with the host's shared list. */
   setAll(traces: Trace[]): void {
     this.traces = traces;
+    this.version++;
     for (const l of this.listeners) l();
   }
 

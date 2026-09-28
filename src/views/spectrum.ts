@@ -26,6 +26,11 @@ export class SpectrumView extends DockedView implements View {
   icon = 'bars' as const;
   private rta: Plot;
   private bands: number[] = [];
+  private lastKey = '';
+
+  invalidate(): void {
+    this.lastKey = '';
+  }
   private bandFraction = 0;
   /** Calibration offset the RTA's y range is currently shifted by (the saved range is in dBFS). */
   private appliedCal = 0;
@@ -111,6 +116,10 @@ export class SpectrumView extends DockedView implements View {
     const app = this.app;
     const s = app.settings;
     if (this.visible('rta')) {
+      // Redraw only when what is shown changed (new analysis data arrives ~6–12 times a second)
+      const key = `${app.traces.version}|${s.rtaStyle}|${s.rtaSmoothing}|${s.peakHold}|${s.splCalibrated}|${s.splOffset}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.rtaShown}`).join(',')}`;
+      if (key === this.lastKey) return this.tickMeters();
+      this.lastKey = key;
       const g = app.grid;
       const series: Series[] = [];
       for (const t of app.traces.traces) {
@@ -144,6 +153,7 @@ export class SpectrumView extends DockedView implements View {
       this.rta.cfg.yUnit = s.splCalibrated ? 'dB SPL' : 'dBFS';
       this.rta.series = series;
       this.rta.draw();
+      return this.tickMeters();
     }
     this.tickMeters();
   }

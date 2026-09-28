@@ -40,6 +40,11 @@ export class BandMap {
 export class PrefixSum {
   private buf = new Float64Array(0);
 
+  /** The last built prefix sums. */
+  get values(): Float64Array {
+    return this.buf;
+  }
+
   build(values: ArrayLike<number>, n: number): Float64Array {
     if (this.buf.length !== n + 1) this.buf = new Float64Array(n + 1);
     const p = this.buf;

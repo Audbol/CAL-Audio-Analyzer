@@ -29,7 +29,15 @@ export class Measurement {
   /** Latest analysis frame computed by the measurement host (remote devices in host-processing mode). */
   hostFrame: AnalysisFrame | null = null;
   hostFrameAt = 0;
+  private hostKey = '';
   private paused = { rta: false, tf: false };
+  /** What the display arrays were last computed from: recompute only when data or settings changed. */
+  private tfKey = '';
+  private rtaKey = '';
+  private tfAt = 0;
+  /** Increase whenever the displayed TF / RTA arrays change (views redraw only then). */
+  tfShown = 0;
+  rtaShown = 0;
 
   constructor(
     public cfg: MeasurementConfig,
@@ -49,6 +57,8 @@ export class Measurement {
   }
 
   applySettings(s: Settings): void {
+    this.tfKey = '';
+    this.rtaKey = '';
     this.tf.averaging = s.tfAveraging;
     this.rta.averaging = s.rtaAveraging;
     this.tf.setLfResolution(s.lfResolution);
@@ -62,6 +72,8 @@ export class Measurement {
     this.tf.reset();
     this.rta.reset();
     this.tfReady = false;
+    this.tfKey = '';
+    this.rtaKey = '';
   }
 
   process(engine: AudioEngine, needs: AnalysisNeeds = { rta: true, tf: true }): void {
@@ -89,16 +101,30 @@ export class Measurement {
   render(s: Settings, cal: Float64Array | null): void {
     if (!this.cfg.enabled) return;
     if (this.tf.ready && !this.frozen && !this.paused.tf) {
-      this.tf.result(s.tfSmoothing, this.result);
+      // New frames arrive ~6–25 times a second, the display refreshes more often: skip unchanged work
+      const key = `${this.tf.version}|${s.tfSmoothing}|${this.cfg.invert}|${calId(cal)}`;
+      // The short windows deliver new frames ~190 times a second: refresh the display at up to 30 Hz
+      const now = performance.now();
+      if (key !== this.tfKey && (now - this.tfAt >= 33 || this.tfKey === '')) {
+        this.tfAt = now;
+        this.tfKey = key;
+        this.tf.result(s.tfSmoothing, this.result);
+        this.renderDisplay(s, cal);
+        this.tfShown++;
+      }
       this.tfReady = true;
     }
-    this.renderDisplay(s, cal);
     if (!this.frozen && !this.paused.rta) {
-      this.rta.render(s.rtaSmoothing, 'avg', this.rtaOut);
-      if (s.peakHold) this.rta.render(s.rtaSmoothing, 'peak', this.rtaPeakOut);
-      if (cal) for (let i = 0; i < this.grid.length; i++) {
-        this.rtaOut[i] += cal[i];
-        this.rtaPeakOut[i] += cal[i];
+      const key = `${this.rta.version}|${s.rtaSmoothing}|${s.peakHold}|${calId(cal)}`;
+      if (key !== this.rtaKey) {
+        this.rtaKey = key;
+        this.rta.render(s.rtaSmoothing, 'avg', this.rtaOut);
+        if (s.peakHold) this.rta.render(s.rtaSmoothing, 'peak', this.rtaPeakOut);
+        if (cal) for (let i = 0; i < this.grid.length; i++) {
+          this.rtaOut[i] += cal[i];
+          this.rtaPeakOut[i] += cal[i];
+        }
+        this.rtaShown++;
       }
     }
   }
@@ -124,12 +150,18 @@ export class Measurement {
       else regroupBands(bands, ppo, s.rtaSmoothing, out);
       if (cal) for (let i = 0; i < out.length; i++) out[i] += cal[i];
     };
+    // Host frames arrive ~10 times a second; the display refreshes more often
+    const key = `${this.hostFrameAt}|${s.rtaSmoothing}|${s.tfSmoothing}|${s.peakHold}|${this.cfg.invert}|${calId(cal)}`;
+    if (key === this.hostKey) return;
+    this.hostKey = key;
     rta(f.rtaBands, f.rtaFft, this.rtaOut);
     if (s.peakHold) rta(f.peakBands, f.peakFft, this.rtaPeakOut);
+    this.rtaShown++;
     this.tfReady = f.tfReady;
     if (f.tfReady) {
       smoothTransfer(f.mag, f.phase, f.coh, ppo, s.tfSmoothing || 48, this.result.mag, this.result.phase, this.result.coh);
       this.renderDisplay(s, cal);
+      this.tfShown++;
     }
   }
 
@@ -161,4 +193,15 @@ export class Measurement {
     this.lastDelay = est;
     return est;
   }
+}
+
+const calIds = new WeakMap<Float64Array, number>();
+let nextCalId = 1;
+
+/** Identity of a calibration curve (a new array whenever the calibration changes). */
+function calId(cal: Float64Array | null): number {
+  if (!cal) return 0;
+  let id = calIds.get(cal);
+  if (!id) calIds.set(cal, (id = nextCalId++));
+  return id;
 }

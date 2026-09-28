@@ -664,6 +664,7 @@ export class App {
     const day = this.settings.theme === 'day';
     document.documentElement.dataset.theme = this.settings.theme;
     applyChartTheme(this.settings.theme);
+    Plot.invalidateAll();
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', day ? '#ffffff' : '#000000');
     this.themeBtn.replaceChildren(icon(day ? 'moon' : 'sun', 18));
     this.themeBtn.title = day ? 'Switch to night mode (OLED black) — T' : 'Switch to day mode (high contrast for sunlight) — T';
@@ -1158,6 +1159,7 @@ export class App {
   private frameToken = 0;
   private frameTimer = 0;
   private frameCount = 0;
+  private lastDrawAt = 0;
 
   /**
    * Schedule the next frame on every window that can show panels (main window + detached panel windows)
@@ -1190,7 +1192,9 @@ export class App {
     // Adaptive drawing: slow devices (e.g. phones on remote) still process every audio block but draw less often
     const avg = this.frameTimes.reduce((a, b) => a + b, 0) / Math.max(1, this.frameTimes.length);
     const drawEvery = avg > 30 ? 3 : avg > 15 ? 2 : 1;
-    const draw = this.frameCount++ % drawEvery === 0;
+    // At most ~60 draws per second: high-refresh displays (120/144 Hz) would otherwise draw 2–3× as often
+    const draw = this.frameCount++ % drawEvery === 0 && t0 - this.lastDrawAt >= 15;
+    if (draw) this.lastDrawAt = t0;
     if (this.engine.running) {
       const needs = this.analysisNeeds();
       const now = performance.now();
@@ -1220,12 +1224,26 @@ export class App {
     this.scheduleFrame();
   };
 
+  private statusRefs: { bar: HTMLElement; mark: HTMLElement; val: HTMLElement; el: HTMLElement; last: string[] }[] = [];
+  private statusTextAt = 0;
+  private lastSplMini = '';
+  private lastStatus = '';
+
   private renderStatus(): void {
     const e = this.engine;
-    // SPL mini readout
-    const r = this.splReading;
-    const unit = this.settings.splCalibrated ? `dB${this.settings.splWeighting}` : `dBFS ${this.settings.splWeighting}`;
-    this.splMini.innerHTML = e.running && r ? `<b>${r.level.toFixed(1)}</b><span>${unit}</span><em>Leq ${r.leq.toFixed(1)}</em>` : `<b>—</b><span>${unit}</span>`;
+    const now = performance.now();
+    // Numbers at ~10 updates per second, the status line at 2; bars every frame. Only write what changed.
+    const text = now - this.statusTextAt > 100;
+    if (text) {
+      this.statusTextAt = now;
+      const r = this.splReading;
+      const unit = this.settings.splCalibrated ? `dB${this.settings.splWeighting}` : `dBFS ${this.settings.splWeighting}`;
+      const mini = e.running && r ? `<b>${r.level.toFixed(1)}</b><span>${unit}</span><em>Leq ${r.leq.toFixed(1)}</em>` : `<b>—</b><span>${unit}</span>`;
+      if (mini !== this.lastSplMini) {
+        this.lastSplMini = mini;
+        this.splMini.innerHTML = mini;
+      }
+    }
     // Input meters
     if (this.metersEl.childElementCount !== e.levels.length + 1) {
       clear(this.metersEl);
@@ -1235,30 +1253,46 @@ export class App {
         ),
       );
       this.metersEl.append(h('div', { class: 'meter gen', title: 'Generator output' }, h('span', {}, 'Gen'), h('div', { class: 'bar' }, h('i', {}), h('b', {})), h('em', {}, '')));
+      this.statusRefs = Array.from(this.metersEl.children, (el) => ({ el: el as HTMLElement, bar: el.querySelector('i')!, mark: el.querySelector('b')!, val: el.querySelector('em')!, last: [] }));
     }
     const all = [...e.levels, e.genLevel];
-    Array.from(this.metersEl.children).forEach((el, i) => {
+    const pct = (db: number) => `${Math.max(0, Math.min(100, ((db + 72) / 72) * 100)).toFixed(1)}%`;
+    this.statusRefs.forEach((ref, i) => {
       const l = all[i];
       if (!l) return;
       const pkDb = 20 * Math.log10(Math.max(l.peak, 1e-6));
       const rmsDb = 20 * Math.log10(Math.max(l.rms, 1e-6)) + 3.01;
-      const pct = (db: number) => `${Math.max(0, Math.min(100, ((db + 72) / 72) * 100))}%`;
-      (el.querySelector('i') as HTMLElement).style.width = pct(rmsDb);
-      (el.querySelector('b') as HTMLElement).style.left = pct(pkDb);
-      (el.querySelector('em') as HTMLElement).textContent = e.running ? `${pkDb > -99 ? pkDb.toFixed(0) : '-∞'}` : '';
-      el.classList.toggle('clip', l.clipped);
-      el.classList.toggle('hot', pkDb > -6);
+      const set = (k: number, v: string, apply: (v: string) => void) => {
+        if (ref.last[k] !== v) {
+          ref.last[k] = v;
+          apply(v);
+        }
+      };
+      set(0, pct(rmsDb), (v) => (ref.bar.style.width = v));
+      set(1, pct(pkDb), (v) => (ref.mark.style.left = v));
+      if (text) set(2, e.running ? `${pkDb > -99 ? pkDb.toFixed(0) : '-∞'}` : '', (v) => (ref.val.textContent = v));
+      set(3, `${l.clipped}${pkDb > -6}`, () => {
+        ref.el.classList.toggle('clip', l.clipped);
+        ref.el.classList.toggle('hot', pkDb > -6);
+      });
     });
+    if (now - this.statusAt < 500 && this.lastStatus) return;
+    this.statusAt = now;
     const avg = this.frameTimes.reduce((a, b) => a + b, 0) / Math.max(1, this.frameTimes.length);
     const remoteInfo = this.remote ? ' · remote client' : this.hostLink?.connected ? ` · remote access on (${this.hostLink.clients.length} connected)` : '';
-    this.statusEl.textContent = e.running
+    const status = e.running
       ? `${e.deviceLabel} · ${(e.sampleRate / 1000).toFixed(1)} kHz · ${e.channelCount} in · DSP ${avg.toFixed(1)} ms/frame${remoteInfo}`
       : this.remote
         ? (this.engine as RemoteEngine).state === 'connected'
           ? 'Connected · audio on the measurement host is stopped'
           : 'Not connected to the measurement host'
         : `Audio stopped${remoteInfo}`;
+    if (status !== this.lastStatus) {
+      this.lastStatus = status;
+      this.statusEl.textContent = status;
+    }
   }
+  private statusAt = 0;
 
   // ---------------------------------------------------------------------------------------------------------
   // Assistant hints

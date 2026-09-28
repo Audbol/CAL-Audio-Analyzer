@@ -51,3 +51,17 @@ export function powerSum(w: Float64Array): number {
   for (let i = 0; i < w.length; i++) s += w[i] * w[i];
   return s;
 }
+
+const statsCache = new Map<string, { w: Float64Array; powerSum: number; coherentGain: number }>();
+
+/** A window with its power sum and coherent gain, all cached (computing the sums is O(n)). */
+export function windowStats(type: WindowType, n: number): { w: Float64Array; powerSum: number; coherentGain: number } {
+  const key = `${type}:${n}`;
+  let st = statsCache.get(key);
+  if (!st) {
+    const w = getWindow(type, n);
+    st = { w, powerSum: powerSum(w), coherentGain: coherentGain(w) };
+    statsCache.set(key, st);
+  }
+  return st;
+}

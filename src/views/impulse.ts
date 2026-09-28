@@ -76,6 +76,7 @@ export class ImpulseView implements View {
       const norm = Float64Array.from(ir, (v) => (sign * v) / (pk || 1));
       const etc = energyTimeCurve(ir);
       this.lastPeakMs = t[pkIdx];
+      this.irVersion++;
       this.lin.series = [{ id: 'ir', label: m.cfg.name, x: t, y: norm, color: m.cfg.color, width: 1.3 }];
       this.etc.series = [{ id: 'etc', label: m.cfg.name, x: t, y: etc, color: m.cfg.color, width: 1.3, fill: true }];
       this.lin.markers = [{ x: this.lastPeakMs, color: CHART.marker, label: `peak ${this.lastPeakMs.toFixed(2)} ms` }];
@@ -87,7 +88,9 @@ export class ImpulseView implements View {
     } else if (!m || !m.tf.ready) {
       this.info.textContent = 'Waiting for transfer function data — start audio and turn on the generator.';
     }
-    this.lin.draw();
-    this.etc.draw();
+    // The response is recomputed ~8 times a second: redraw only then (hover and zoom redraw by themselves)
+    this.lin.drawIf(`${this.irVersion}`);
+    this.etc.drawIf(`${this.irVersion}`);
   }
+  private irVersion = 0;
 }

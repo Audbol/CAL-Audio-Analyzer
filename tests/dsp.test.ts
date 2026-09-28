@@ -45,6 +45,37 @@ describe('FFT', () => {
     }
   });
 
+  it('matches a direct DFT for every size (radix-2 and radix-4 pass layouts), complex and real input', () => {
+    for (const n of [2, 4, 8, 16, 32, 128, 256, 2048]) {
+      const r = rng(n);
+      const x = Array.from({ length: n }, r);
+      const y = Array.from({ length: n }, r);
+      const re = Float64Array.from(x);
+      const im = Float64Array.from(y);
+      FFT.get(n).forward(re, im);
+      const rr = new Float64Array(n / 2 + 1);
+      const ri = new Float64Array(n / 2 + 1);
+      FFT.get(n).forwardReal(x, rr, ri);
+      for (let k = 0; k < n; k += Math.max(1, n >> 4)) {
+        let sr = 0, si = 0, xr = 0, xi = 0;
+        for (let t = 0; t < n; t++) {
+          const c = Math.cos((2 * Math.PI * k * t) / n);
+          const s = Math.sin((2 * Math.PI * k * t) / n);
+          sr += x[t] * c + y[t] * s;
+          si += y[t] * c - x[t] * s;
+          xr += x[t] * c;
+          xi -= x[t] * s;
+        }
+        expect(re[k]).toBeCloseTo(sr, 9);
+        expect(im[k]).toBeCloseTo(si, 9);
+        if (k <= n / 2) {
+          expect(rr[k]).toBeCloseTo(xr, 9);
+          expect(ri[k]).toBeCloseTo(xi, 9);
+        }
+      }
+    }
+  });
+
   it('round-trips through the inverse', () => {
     const n = 1024;
     const r = rng(9);
