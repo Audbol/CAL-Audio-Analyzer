@@ -45,6 +45,16 @@ export class Dock {
   private readonly empty: HTMLDivElement;
   private readonly frames = new Map<string, HTMLDivElement>();
   private readonly popups = new Map<string, Window>();
+  /** Detached panel windows of every dock (the app schedules frames on them). */
+  private static readonly windows = new Set<Window>();
+
+  static openWindows(): Window[] {
+    return [...Dock.windows].filter((w) => !w.closed);
+  }
+
+  get hasDetached(): boolean {
+    return this.popups.size > 0;
+  }
   private zTop = 10;
 
   constructor(
@@ -65,6 +75,14 @@ export class Dock {
     for (const p of panels) this.frames.set(p.id, this.buildFrame(p));
     new ResizeObserver(() => this.clampFloating()).observe(this.el);
     window.addEventListener('beforeunload', () => this.popups.forEach((w) => w.close()));
+    // Escape leaves the maximised (fallback) full screen
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      for (const [id, f] of this.frames) {
+        const doc = f.ownerDocument as Document & { webkitFullscreenElement?: Element };
+        if (f.classList.contains('maximized') || (doc.fullscreenElement ?? doc.webkitFullscreenElement) === f) this.toggleFullscreen(id);
+      }
+    });
     this.render();
   }
 
@@ -149,6 +167,7 @@ export class Dock {
     frame.style.cssText = '';
     doc.body.append(frame);
     this.popups.set(id, win);
+    Dock.windows.add(win);
     const resize = () => panel.onResize?.();
     win.addEventListener('resize', resize);
     // Stylesheets load asynchronously in the new window
@@ -156,6 +175,59 @@ export class Dock {
     setTimeout(resize, 60);
     setTimeout(resize, 400);
     win.addEventListener('pagehide', () => this.returnFromPopup(id));
+    this.render();
+  }
+
+  /** Full screen a panel: native element full screen where supported, otherwise maximise it over the page. */
+  toggleFullscreen(id: string): void {
+    const frame = this.frames.get(id) as HTMLDivElement & { webkitRequestFullscreen?: () => void };
+    const doc = frame.ownerDocument as Document & { webkitFullscreenElement?: Element; webkitExitFullscreen?: () => void };
+    const current = doc.fullscreenElement ?? doc.webkitFullscreenElement;
+    if (current === frame) {
+      (doc.exitFullscreen ?? doc.webkitExitFullscreen)?.call(doc);
+      return;
+    }
+    if (frame.classList.contains('maximized')) {
+      frame.classList.remove('maximized');
+      this.afterFullscreen(id);
+      return;
+    }
+    const req = frame.requestFullscreen ?? frame.webkitRequestFullscreen;
+    const fallback = () => {
+      frame.classList.add('maximized');
+      this.afterFullscreen(id);
+    };
+    if (!req) return fallback();
+    try {
+      const r = req.call(frame) as Promise<void> | undefined;
+      r?.catch?.(fallback);
+    } catch {
+      fallback();
+    }
+  }
+
+  private afterFullscreen(id: string): void {
+    const frame = this.frames.get(id)!;
+    const doc = frame.ownerDocument as Document & { webkitFullscreenElement?: Element };
+    const on = (doc.fullscreenElement ?? doc.webkitFullscreenElement) === frame || frame.classList.contains('maximized');
+    const b = frame.querySelector<HTMLButtonElement>('[data-act="fullscreen"]');
+    if (b) {
+      b.replaceChildren(icon(on ? 'minimize' : 'maximize', 13));
+      b.title = on ? 'Exit full screen (Esc)' : 'Full screen (Esc to exit)';
+    }
+    frame.classList.toggle('is-fullscreen', on);
+    const panel = this.panels.find((x) => x.id === id);
+    requestAnimationFrame(() => panel?.onResize?.());
+    setTimeout(() => panel?.onResize?.(), 150);
+  }
+
+  /** Compact mode (small screens): every visible panel is stacked in a scrolling column; no floating. */
+  private compact = false;
+
+  setCompact(compact: boolean): void {
+    if (compact === this.compact) return;
+    this.compact = compact;
+    this.el.classList.toggle('compact', compact);
     this.render();
   }
 
@@ -175,7 +247,7 @@ export class Dock {
 
   private render(): void {
     const L = this.layout;
-    const docked = L.order.filter((id) => this.isVisible(id) && !L.floating[id] && !this.popups.has(id));
+    const docked = L.order.filter((id) => this.isVisible(id) && (this.compact || !L.floating[id]) && !this.popups.has(id));
     clear(this.stack);
     docked.forEach((id, i) => {
       const frame = this.frames.get(id)!;
@@ -189,7 +261,7 @@ export class Dock {
     if (!docked.length) this.stack.append(this.empty);
     clear(this.layer);
     for (const id of L.order) {
-      if (!L.floating[id] || !this.isVisible(id) || this.popups.has(id)) continue;
+      if (this.compact || !L.floating[id] || !this.isVisible(id) || this.popups.has(id)) continue;
       const frame = this.frames.get(id)!;
       frame.classList.add('floating');
       frame.classList.remove('popped');
@@ -245,6 +317,7 @@ export class Dock {
       h('span', { class: 'dp-grip' }, icon('grip', 13)),
       h('span', { class: 'dp-title' }, p.title),
       h('span', { class: 'spacer' }),
+      btn('fullscreen', 'maximize', 'Full screen (Esc to exit)'),
       btn('float', 'float', 'Float over the view'),
       btn('popout', 'popout', 'Detach into a separate window'),
       btn('close', 'x', 'Hide panel'),
@@ -254,7 +327,8 @@ export class Dock {
     head.addEventListener('click', (e) => {
       const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
       if (!act) return;
-      if (act === 'close') this.setVisible(p.id, false);
+      if (act === 'fullscreen') this.toggleFullscreen(p.id);
+      else if (act === 'close') this.setVisible(p.id, false);
       else if (act === 'popout') this.popOut(p.id);
       else if (act === 'float') {
         if (this.popups.has(p.id)) this.popups.get(p.id)!.close();
@@ -267,6 +341,9 @@ export class Dock {
       if (this.layout.floating[p.id]) this.dock(p.id);
       else this.float(p.id);
     });
+    // Native full screen (or the maximised fallback) changes the panel size
+    frame.addEventListener('fullscreenchange', () => this.afterFullscreen(p.id));
+    frame.addEventListener('webkitfullscreenchange', () => this.afterFullscreen(p.id));
     this.bindHeadDrag(p.id, head, frame);
     this.bindFloatResize(p.id, grip, frame);
     frame.addEventListener('pointerdown', () => {
@@ -326,7 +403,7 @@ export class Dock {
         this.onChange(this.layout);
         return;
       }
-      if (this.outside(e)) {
+      if (this.outside(e) && !this.compact) {
         // Dropped outside the stack: float it where it was released
         const host = this.el.getBoundingClientRect();
         const r = frame.getBoundingClientRect();
@@ -467,6 +544,8 @@ export class Dock {
 
   private returnFromPopup(id: string): void {
     if (!this.popups.has(id)) return;
+    const w = this.popups.get(id);
+    if (w) Dock.windows.delete(w);
     this.popups.delete(id);
     const frame = this.frames.get(id)!;
     frame.classList.remove('popped');

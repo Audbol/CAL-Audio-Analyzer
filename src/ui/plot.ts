@@ -121,7 +121,10 @@ export class Plot {
       }
       this.draw();
     });
-    c.addEventListener('pointerleave', () => {
+    c.addEventListener('pointerleave', (e) => {
+      this.drag = null;
+      // On touch screens the finger lifting ends the gesture: keep the tapped readout visible
+      if (e.pointerType === 'touch') return;
       this.mouse = null;
       this.drag = null;
       this.tip.style.display = 'none';
@@ -129,6 +132,13 @@ export class Plot {
     });
     c.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
+      if (e.pointerType === 'touch') {
+        // Touch: tap / slide sideways to read values; vertical swipes scroll the page (no axis panning)
+        const r = c.getBoundingClientRect();
+        this.mouse = { x: e.clientX - r.left, y: e.clientY - r.top };
+        this.draw();
+        return;
+      }
       c.setPointerCapture(e.pointerId);
       const r = c.getBoundingClientRect();
       this.drag = { y: e.clientY - r.top, yMin: this.cfg.yMin, yMax: this.cfg.yMax, x: e.clientX - r.left, xMin: this.cfg.xMin, xMax: this.cfg.xMax };
@@ -208,6 +218,9 @@ export class Plot {
     const r = this.el.getBoundingClientRect();
     this.dpr = this.el.ownerDocument.defaultView?.devicePixelRatio || window.devicePixelRatio || 1;
     this.w = Math.max(10, r.width);
+    // Narrow plots (phones) get a tighter left margin
+    this.pad.l = this.w < 520 ? 36 : 46;
+    if (this.cfg.secondaryLabel) this.pad.r = this.w < 520 ? 32 : 40;
     this.hgt = Math.max(10, r.height);
     this.canvas.width = Math.round(this.w * this.dpr);
     this.canvas.height = Math.round(this.hgt * this.dpr);

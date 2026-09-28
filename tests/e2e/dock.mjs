@@ -138,8 +138,51 @@ check(JSON.stringify(await docked()) === '["rta"]', `Spectrum tab has its own la
   await page.waitForTimeout(300);
   check((await docked()).includes('rta'), 'closing the detached window re-docks the panel');
 }
-await page.keyboard.press('2');
+// 5b. A detached panel keeps updating when its tab is not the active one (and full screen does not freeze it)
+{
+  const [popup] = await Promise.all([context.waitForEvent('page'), vis('.dpanel[data-panel="rta"] [data-act="popout"]').click()]);
+  await popup.waitForTimeout(800);
+  await page.keyboard.press('2'); // main window shows the Transfer tab now
+  const snap = () => popup.evaluate(() => {
+    const c = document.querySelector('canvas');
+    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    let h = 0;
+    for (let i = 0; i < d.length; i += 4 * 53) h = (h * 31 + d[i] + d[i + 1] * 3 + d[i + 2] * 7) >>> 0;
+    return h;
+  });
+  const a1 = await snap();
+  await popup.waitForTimeout(1200);
+  const a2 = await snap();
+  check(a1 !== a2, 'detached RTA keeps updating while the main window shows another tab');
+  await popup.locator('[data-act="fullscreen"]').click();
+  await popup.waitForTimeout(800);
+  const fs = await popup.evaluate(() => {
+    const f = document.querySelector('.dpanel');
+    return { on: f.classList.contains('is-fullscreen'), w: document.querySelector('canvas').width / devicePixelRatio, vw: innerWidth };
+  });
+  const b1 = await snap();
+  await popup.waitForTimeout(1200);
+  const b2 = await snap();
+  check(fs.on && Math.abs(fs.w - fs.vw) < 4 && b1 !== b2, `full-screen detached panel fills the window and keeps updating (${fs.w}/${fs.vw})`);
+  await popup.close();
+  await page.waitForTimeout(300);
+}
 await page.waitForTimeout(300);
+
+// 5c. Full screen a docked panel in the main window
+{
+  await vis('.dpanel[data-panel="mag"] [data-act="fullscreen"]').click();
+  await page.waitForTimeout(700);
+  const st = await page.evaluate(() => {
+    const f = document.querySelector('.dpanel[data-panel="mag"]');
+    const c = f.querySelector('canvas');
+    return { on: f.classList.contains('is-fullscreen'), w: c.width / devicePixelRatio, h: c.height / devicePixelRatio, vw: innerWidth, vh: innerHeight };
+  });
+  check(st.on && st.w > st.vw - 4 && st.h > st.vh - 80, `panel full screen fills the screen (${st.w}×${st.h})`);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(500);
+  check(!(await page.evaluate(() => document.querySelector('.dpanel[data-panel="mag"]').classList.contains('is-fullscreen'))), 'Escape leaves full screen');
+}
 
 // 6. Meters show data and the arrangement persists across reloads
 {

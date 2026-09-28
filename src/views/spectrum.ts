@@ -70,7 +70,8 @@ export class SpectrumView extends DockedView implements View {
     );
   }
 
-  tick(): void {
+  tick(detachedOnly = false): void {
+    this.detachedOnly = detachedOnly;
     const app = this.app;
     const s = app.settings;
     if (this.visible('rta')) {

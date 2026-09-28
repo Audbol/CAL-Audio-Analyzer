@@ -20,6 +20,9 @@ protocol.registerSchemesAsPrivileged([
 // Measurement audio must never be throttled or processed by the OS voice pipeline
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
+// Keep drawing when a window is covered by another (e.g. a detached meter full screen over the main window)
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 if (!app.requestSingleInstanceLock()) {

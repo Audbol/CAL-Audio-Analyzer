@@ -69,6 +69,13 @@ check(Math.abs(r.spl - h.spl) < 1.5, `remote SPL meter matches host (${r.spl.toF
 check(h.clients === 1, 'host sees the connected remote client');
 await rem.screenshot({ path: `${out}/remote-01-transfer.png` });
 
+// --- Connection drop (Wi-Fi blip / phone sleep): the remote reconnects by itself
+await rem.evaluate(() => window.calApp.engine.ws.close(4000, 'network drop'));
+await rem.waitForTimeout(300);
+check(await rem.evaluate(() => window.calApp.engine.state !== 'connected'), 'remote notices the dropped connection');
+await rem.waitForFunction(() => window.calApp.engine.running === true, null, { timeout: 10000 }).catch(() => undefined);
+check(await rem.evaluate(() => window.calApp.engine.running), 'remote reconnects automatically and resumes live data');
+
 // --- Remote controls the host's generator
 await rem.keyboard.press(' ');
 await host.waitForTimeout(700);

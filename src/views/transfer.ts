@@ -73,7 +73,8 @@ export class TransferView extends DockedView implements View {
     return cohAlpha(coh, this.app.settings.coherenceThreshold, a);
   }
 
-  tick(): void {
+  tick(detachedOnly = false): void {
+    this.detachedOnly = detachedOnly;
     const app = this.app;
     const s = app.settings;
     const g = app.grid;

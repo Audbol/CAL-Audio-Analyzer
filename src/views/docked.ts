@@ -85,8 +85,19 @@ export abstract class DockedView {
     for (const [id, b] of this.chips) b.classList.toggle('on', this.dock.isVisible(id));
   }
 
+  /** Set by `tick(true)`: this view is not the active tab, only its detached panels are drawn. */
+  protected detachedOnly = false;
+
+  setCompact(compact: boolean): void {
+    this.dock.setCompact(compact);
+  }
+
+  hasDetached(): boolean {
+    return this.dock.hasDetached;
+  }
+
   protected visible(id: string): boolean {
-    return this.dock.isVisible(id);
+    return this.dock.isVisible(id) && (!this.detachedOnly || this.dock.isPopped(id));
   }
 
   /** Numeric meters don't need 60 fps. */

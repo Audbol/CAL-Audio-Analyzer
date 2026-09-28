@@ -18,6 +18,7 @@ import { SplView } from './views/spl';
 import { ToolsView } from './views/tools';
 import { showWizard, showHelp, showRemoteConnect } from './ui/dialogs';
 import { applyChartTheme } from './ui/theme';
+import { Dock } from './ui/dock';
 import { RemoteEngine } from './remote/client';
 import { HostLink, desktopBridge, hubPageInfo } from './remote/host';
 import type { HostStatus } from './remote/protocol';
@@ -27,11 +28,14 @@ export interface View {
   title: string;
   icon: Parameters<typeof icon>[0];
   el: HTMLElement;
-  tick(): void;
+  /** Draw the view. `detachedOnly`: the view is not active; update only panels detached into other windows. */
+  tick(detachedOnly?: boolean): void;
   show?(): void;
   hide?(): void;
   /** Force a redraw on the next tick (e.g. after a theme change). */
   invalidate?(): void;
+  /** True if any of the view's panels is detached into its own window. */
+  hasDetached?(): boolean;
 }
 
 export interface Hint {
@@ -89,7 +93,7 @@ export class App {
     this.updateCal();
     this.build();
     this.traces.onChange(() => this.renderTraces());
-    this.loop();
+    this.scheduleFrame();
     setInterval(() => this.updateHints(), 700);
     this.bindKeys();
     if (this.remote) this.initRemoteClient();
@@ -157,7 +161,13 @@ export class App {
       const msg = e instanceof Error ? e.message : String(e);
       await this.engine.stop();
       if (this.remote) {
-        showRemoteConnect(this, msg === 'Wrong PIN' ? 'Wrong PIN. Check the PIN shown on the host (Tools → Remote access).' : msg);
+        const eng = this.engine as RemoteEngine;
+        eng.state = 'error';
+        eng.lastError = msg;
+        if (msg === 'Wrong PIN') showRemoteConnect(this, 'Wrong PIN. Check the PIN shown on the host (Tools → Remote access).');
+        else if (!this.autoReconnecting) this.toast(`Could not reach the measurement host: ${msg}. Retrying…`, 'warn');
+        this.scheduleReconnect();
+        this.renderTopState();
       } else this.toast(`Could not start audio: ${msg}`, 'warn');
     } finally {
       this.starting = false;
@@ -175,8 +185,16 @@ export class App {
   async toggleEngine(): Promise<void> {
     if (this.remote) {
       // Remote: the button connects / disconnects from the host (the host's audio keeps running)
-      if ((this.engine as RemoteEngine).state === 'connected') await this.stop();
-      else await this.start();
+      if ((this.engine as RemoteEngine).state === 'connected') {
+        this.userDisconnected = true;
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = 0;
+        await this.stop();
+      } else {
+        this.userDisconnected = false;
+        this.reconnectDelay = 1500;
+        await this.start();
+      }
       return;
     }
     if (this.engine.running) await this.stop();
@@ -277,11 +295,42 @@ export class App {
   private async initRemoteClient(): Promise<void> {
     const eng = this.engine as RemoteEngine;
     eng.onStatus = (st) => this.adoptHost(st);
-    eng.onChange = () => this.renderTopState();
+    eng.onChange = () => {
+      this.renderTopState();
+      if (eng.state === 'connected') this.reconnectDelay = 1500;
+      this.scheduleReconnect();
+    };
+    // Phones suspend background tabs and drop Wi-Fi when the screen turns off: reconnect on return
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && eng.state !== 'connected' && eng.state !== 'connecting' && !this.userDisconnected) this.start();
+    });
+    window.addEventListener('online', () => {
+      if (eng.state !== 'connected' && !this.userDisconnected) this.start();
+    });
     this.refreshDevices();
     const info = await fetch('/api/info', { cache: 'no-store' }).then((r) => r.json()).catch(() => null);
     if (info?.pinRequired && !this.remotePin) showRemoteConnect(this);
     else this.start();
+  }
+
+  private reconnectTimer = 0;
+  private reconnectDelay = 1500;
+  /** The user pressed Disconnect: don't reconnect automatically. */
+  private userDisconnected = false;
+  private autoReconnecting = false;
+
+  /** After a lost connection, retry with back-off (not after a wrong PIN or a manual disconnect). */
+  private scheduleReconnect(): void {
+    const eng = this.engine as RemoteEngine;
+    if (eng.state !== 'error' || this.userDisconnected || this.reconnectTimer || /PIN/.test(eng.lastError)) return;
+    this.reconnectTimer = window.setTimeout(async () => {
+      this.reconnectTimer = 0;
+      if (eng.state === 'connected' || this.userDisconnected) return;
+      this.autoReconnecting = true;
+      await this.start();
+      this.autoReconnecting = false;
+    }, this.reconnectDelay);
+    this.reconnectDelay = Math.min(this.reconnectDelay * 2, 15000);
   }
 
   /** Called by the PIN dialog. */
@@ -431,19 +480,36 @@ export class App {
     this.genControls = h('div', { class: 'gen-controls' });
     this.splMini = h('div', { class: 'spl-mini', title: 'Sound level (click for SPL meter)', onclick: () => this.setView('spl') });
 
-    const top = h(
-      'header',
-      { class: 'topbar' },
-      h('div', { class: 'brand' }, h('div', { class: 'logo' }, 'CAL'), h('div', { class: 'brand-text' }, h('b', {}, 'CAL Audio Analyzer'), h('span', {}, 'System & room measurement'))),
-      h('div', { class: 'group' }, this.startBtn, this.sourceSel),
-      h('div', { class: 'group gen' }, h('span', { class: 'label' }, 'Generator'), this.genBtn, this.genControls),
-      h('div', { class: 'spacer' }),
-      this.remoteBadge,
-      this.splMini,
+    // Controls that move into the "more" sheet on small screens
+    this.sourceGroup = h('div', { class: 'group src-group' }, this.sourceSel);
+    this.genGroup = h('div', { class: 'group gen' }, h('span', { class: 'label' }, 'Generator'), this.genBtn, this.genControls);
+    this.extraGroup = h(
+      'div',
+      { class: 'group extra-group' },
       this.themeBtn,
       h('button', { class: 'btn icon-btn', title: 'Help & shortcuts (?)', onclick: () => showHelp(this) }, icon('help', 18)),
       this.remote ? null : h('button', { class: 'btn icon-btn', title: 'Setup assistant', onclick: () => showWizard(this) }, icon('sparkle', 18)),
     );
+    const drawerBtn = h('button', { class: 'btn icon-btn compact-only', title: 'Measurements, traces & assistant', onclick: () => this.toggleDrawer() }, icon('menu', 18));
+    const moreBtn = h('button', { class: 'btn icon-btn compact-only', title: 'Source, generator & display settings', onclick: () => this.toggleSheet() }, icon('more', 18));
+    this.startGroup = h('div', { class: 'group start-group' }, this.startBtn);
+    this.topbar = h(
+      'header',
+      { class: 'topbar' },
+      drawerBtn,
+      h('div', { class: 'brand' }, h('div', { class: 'logo' }, 'CAL'), h('div', { class: 'brand-text' }, h('b', {}, 'CAL Audio Analyzer'), h('span', {}, 'System & room measurement'))),
+      this.startGroup,
+      this.sourceGroup,
+      this.genGroup,
+      h('div', { class: 'spacer' }),
+      this.remoteBadge,
+      this.splMini,
+      this.extraGroup,
+      moreBtn,
+    );
+    const top = this.topbar;
+    this.sheet = h('div', { class: 'sheet', role: 'dialog', 'aria-label': 'Settings' });
+    this.scrim = h('div', { class: 'scrim', onclick: () => this.closeOverlays() });
 
     this.views = [
       new SpectrumView(this),
@@ -505,7 +571,9 @@ export class App {
     this.metersEl = h('div', { class: 'meters' });
     this.statusEl = h('div', { class: 'status-text' });
     const status = h('footer', { class: 'statusbar' }, this.metersEl, h('div', { class: 'spacer' }), this.statusEl);
-    this.root.append(top, h('div', { class: 'body' }, sidebar, h('div', { class: 'main-col' }, this.tabs, this.viewHost)), status);
+    this.root.append(top, h('div', { class: 'body' }, sidebar, h('div', { class: 'main-col' }, this.tabs, this.viewHost)), status, this.scrim, this.sheet);
+    this.compactQuery.addEventListener('change', () => this.applyCompact());
+    this.applyCompact();
 
     this.setView(this.settings.view);
     this.renderTopState();
@@ -528,7 +596,58 @@ export class App {
     setTimeout(() => t.remove(), level === 'warn' ? 5600 : 3600);
   }
 
+  // ---------------------------------------------------------------------------------------------------------
+  // Compact layout (phones, small tablets, small windows)
+
+  private compactQuery = window.matchMedia('(max-width: 900px), (max-height: 560px)');
+  private topbar!: HTMLElement;
+  private sheet!: HTMLElement;
+  private scrim!: HTMLElement;
+  private sourceGroup!: HTMLElement;
+  private genGroup!: HTMLElement;
+  private extraGroup!: HTMLElement;
+  private startGroup!: HTMLElement;
+  compact = false;
+
+  /** Switch between the full desktop layout and the compact one (one-row top bar, drawer, stacked panels). */
+  private applyCompact(): void {
+    const compact = this.compactQuery.matches;
+    this.compact = compact;
+    document.documentElement.classList.toggle('compact', compact);
+    this.closeOverlays();
+    if (compact) {
+      this.sheet.replaceChildren(
+        h('div', { class: 'sheet-head' }, h('b', {}, 'Settings'), h('button', { class: 'btn icon-btn ghost', title: 'Close', onclick: () => this.closeOverlays() }, icon('x', 18))),
+        h('div', { class: 'sheet-sec' }, h('div', { class: 'remote-label' }, this.remote ? 'Measurement host' : 'Audio source'), this.sourceGroup),
+        h('div', { class: 'sheet-sec' }, h('div', { class: 'remote-label' }, 'Generator'), this.genGroup),
+        h('div', { class: 'sheet-sec' }, h('div', { class: 'remote-label' }, 'Display & help'), this.extraGroup),
+      );
+    } else {
+      // Put the controls back into the top bar, in their original order
+      this.startGroup.after(this.sourceGroup, this.genGroup);
+      this.splMini.after(this.extraGroup);
+    }
+    for (const v of this.views) (v as View & { setCompact?(c: boolean): void }).setCompact?.(compact);
+  }
+
+  toggleDrawer(): void {
+    const open = !this.root.classList.contains('drawer-open');
+    this.closeOverlays();
+    this.root.classList.toggle('drawer-open', open);
+  }
+
+  toggleSheet(): void {
+    const open = !this.root.classList.contains('sheet-open');
+    this.closeOverlays();
+    this.root.classList.toggle('sheet-open', open);
+  }
+
+  closeOverlays(): void {
+    this.root.classList.remove('drawer-open', 'sheet-open');
+  }
+
   setView(id: ViewId): void {
+    this.closeOverlays();
     const v = this.views.find((x) => x.id === id) ?? this.views[0];
     if (this.active && this.active !== v) {
       this.active.el.style.display = 'none';
@@ -783,18 +902,55 @@ export class App {
   // ---------------------------------------------------------------------------------------------------------
   // Main loop
 
+  private frameToken = 0;
+  private frameTimer = 0;
+  private frameCount = 0;
+
+  /**
+   * Schedule the next frame on every window that can show panels (main window + detached panel windows)
+   * and a timer fallback. Whichever fires first runs the frame, so a detached panel keeps updating when it
+   * covers or replaces the main window (e.g. full screen on a second monitor), where the browser pauses the
+   * main window's animation frames.
+   */
+  private scheduleFrame(): void {
+    const token = ++this.frameToken;
+    const run = () => {
+      if (token !== this.frameToken) return;
+      this.frameToken++;
+      clearTimeout(this.frameTimer);
+      this.loop();
+    };
+    requestAnimationFrame(run);
+    for (const w of Dock.openWindows()) {
+      try {
+        w.requestAnimationFrame(run);
+      } catch {
+        /* window closing */
+      }
+    }
+    this.frameTimer = window.setTimeout(run, 40);
+  }
+
   private loop = (): void => {
     const t0 = performance.now();
+    // Adaptive drawing: slow devices (e.g. phones on remote) still process every audio block but draw less often
+    const avg = this.frameTimes.reduce((a, b) => a + b, 0) / Math.max(1, this.frameTimes.length);
+    const drawEvery = avg > 30 ? 3 : avg > 15 ? 2 : 1;
+    const draw = this.frameCount++ % drawEvery === 0;
     if (this.engine.running) {
       if (!this.busy) for (const m of this.measurements) m.process(this.engine);
-      for (const m of this.measurements) m.render(this.settings, this.cal);
+      if (draw) for (const m of this.measurements) m.render(this.settings, this.cal);
       this.splReading = this.spl.read(this.settings.splTime);
     }
-    this.active?.tick();
-    this.renderStatus();
+    if (draw) {
+      this.active?.tick();
+      // Detached panels of other tabs keep updating too
+      for (const v of this.views) if (v !== this.active && v.hasDetached?.()) v.tick(true);
+      this.renderStatus();
+    }
     this.frameTimes.push(performance.now() - t0);
     if (this.frameTimes.length > 60) this.frameTimes.shift();
-    requestAnimationFrame(this.loop);
+    this.scheduleFrame();
   };
 
   private renderStatus(): void {
