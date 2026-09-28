@@ -21,6 +21,7 @@ export function defaultTransferLayout(): DockLayout {
 /** Dual-channel transfer function: magnitude with coherence, phase, plus SPL and level meters. */
 export class TransferView extends DockedView implements View {
   id = 'transfer' as const;
+  readonly needs = { tf: true };
   title = 'Transfer';
   icon = 'wave' as const;
   private mag: Plot;
@@ -57,7 +58,7 @@ export class TransferView extends DockedView implements View {
       { class: 'toolbar' },
       h('div', { class: 'tb-group' }, this.panelChip('mag', 'Magnitude', 'magnitude'), this.panelChip('phase', 'Phase', 'phase'), this.panelChip('spl', 'SPL', 'SPL meter'), this.panelChip('levels', 'Levels', 'input level')),
       h('div', { class: 'tb-group' }, this.settingChip('showCoherence', 'Coherence', 'Show coherence trace on the magnitude plot')),
-      h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Smoothing'), select(SMOOTHING_OPTIONS.filter((o) => o.value !== 0), s.tfSmoothing, (v: Smoothing) => { s.tfSmoothing = v; app.save(); }), h('span', { class: 'tb-label' }, 'Avg'), select(AVG_OPTIONS, s.tfAveraging, (v) => { s.tfAveraging = v; app.applyAnalysisSettings(); })),
+      h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Smoothing'), select(SMOOTHING_OPTIONS.filter((o) => o.value !== 0), s.tfSmoothing, (v: Smoothing) => { s.tfSmoothing = v; app.save(); }), h('span', { class: 'tb-label' }, 'Avg'), select(AVG_OPTIONS, s.tfAveraging, (v) => { s.tfAveraging = v; app.applyAnalysisSettings(); }, { dataset: { setting: 'tfAveraging' } })),
       h('div', { class: 'tb-group' }, h('span', { class: 'tb-label', title: 'Fade data with coherence below this value' }, 'Blank <'), cohSlider, cohVal),
       h('div', { class: 'spacer' }),
       ...this.layoutButtons(),
@@ -86,7 +87,7 @@ export class TransferView extends DockedView implements View {
       if (t.phase) phS.push({ id: t.id, label: t.name, x: t.freqs, y: t.phase, color: t.color, width: 1.1, dash: [5, 3], wrap: 180 });
     }
     for (const m of app.measurements) {
-      if (!m.cfg.enabled || !m.tf.ready) continue;
+      if (!m.cfg.enabled || !m.tfReady) continue;
       const c = m.cfg.color;
       const a = this.alpha(m.cfg.id, m.result.coh);
       magS.push({ id: m.cfg.id, label: m.cfg.name, x: g, y: m.mag, color: c, width: 2, alpha: a });

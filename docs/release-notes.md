@@ -19,6 +19,13 @@ The builds are not code-signed yet:
 
 On first launch, choose **Explore with the demo room** to try every feature without hardware.
 
+## What's new in 1.3
+
+- **Spectrum bars:** show the RTA as 1/1, 1/3, 1/6, 1/12 or 1/24-octave bars (Display → Bars, or **B**). Peak hold shows as a cap on each bar.
+- **Much faster on older phones and tablets:** remote devices now let the measurement host do the analysis and only draw the result. On-device analysis is also faster: the transfer function needs half the work, and a device only computes what is on screen. *Auto* graph quality lowers the resolution on devices that can't keep up. Settings are in Tools → Display & performance.
+- **Detached windows remember where they were:** a panel detached again opens at its last position and size. The desktop app reopens detached windows when it starts. The new **pin** button keeps a detached window on top of other windows (desktop app; picture-in-picture in Chrome and Edge).
+- **Music generator with a playlist:** play MP3, WAV, FLAC, OGG or M4A songs through the generator output. Add or drop files, reorder them, and use repeat or shuffle. Songs are level-matched to the generator level and act as the transfer-function reference. Remote devices can control the playlist and add songs from the phone.
+
 ## What's new in 1.2
 
 - **One shared session across devices:** the measurement host now keeps all results. A sweep started on a phone, tablet or the host runs on the host, shows its progress everywhere, and the result appears on every connected device (and on devices that connect later). Traces captured, renamed or deleted on any device appear on all of them. Calibration and channel setup changes on a remote reach the host and every other remote.

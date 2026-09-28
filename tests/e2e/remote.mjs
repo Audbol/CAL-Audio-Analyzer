@@ -4,6 +4,7 @@ import { chromium } from 'playwright';
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
+import { makeWav } from './music.mjs';
 
 const require = createRequire(import.meta.url);
 const { createHub } = require('../../electron/hub.cjs');
@@ -64,7 +65,36 @@ const h = await host.evaluate(() => ({ delay: window.calApp.measurements[0].cfg.
 console.log(JSON.stringify({ r, h }));
 check(r.remote && r.ch === 2 && r.fs > 0, 'remote mirrors the host audio format');
 check(r.delay === h.delay && r.delay > 0, 'remote adopts the host measurement setup (delay compensation)');
-check(r.coh > 0.6, `remote computes the transfer function locally (coherence ${r.coh.toFixed(2)})`);
+check(r.coh > 0.6, `remote shows the transfer function (coherence ${r.coh.toFixed(2)})`);
+
+// --- Host processing (default): the remote shows the host's analysis, re-smoothed to its own resolution
+const curves = (p) => p.evaluate(() => {
+  const a = window.calApp;
+  const m = a.measurements[0];
+  const pick = (arr) => Array.from(arr).filter((_, i) => a.grid[i] > 200 && a.grid[i] < 5000);
+  return { mode: a.processingMode(), rta: pick(m.rtaOut), mag: pick(m.mag), fromHost: !!m.hostFrame };
+});
+const med = (a, b) => { const d = a.map((v, i) => Math.abs(v - b[i])).sort((x, y) => x - y); return d[d.length >> 1]; };
+await rem.keyboard.press('1');
+await rem.waitForTimeout(1200);
+let [rc, hc] = [await curves(rem), await curves(host)];
+check(rc.mode === 'host' && rc.fromHost, 'remote devices use host processing by default');
+check(med(rc.rta, hc.rta) < 1, `host-processed RTA matches the host (median difference ${med(rc.rta, hc.rta).toFixed(2)} dB)`);
+check(med(rc.mag, hc.mag) < 1, `host-processed transfer function matches the host (median difference ${med(rc.mag, hc.mag).toFixed(2)} dB)`);
+// Different smoothing on the remote than on the host
+await rem.evaluate(() => { window.calApp.settings.rtaSmoothing = 1; });
+await rem.waitForTimeout(400);
+rc = await curves(rem);
+const smooth = (arr) => arr.slice(1).reduce((s, v, i) => s + Math.abs(v - arr[i]), 0) / arr.length;
+check(smooth(rc.rta) < smooth(hc.rta), 'remote applies its own smoothing to host-processed data');
+await rem.evaluate(() => { window.calApp.settings.rtaSmoothing = 3; });
+// Analysis on the device itself
+await rem.evaluate(() => window.calApp.setProcessing('device'));
+await rem.keyboard.press('2');
+await rem.waitForTimeout(3000);
+const dev = await rem.evaluate(() => { const a = window.calApp; const m = a.measurements[0]; let c = 0, n = 0; a.grid.forEach((f, i) => { if (f > 300 && f < 8000) { c += m.result.coh[i]; n++; } }); return { coh: c / n, host: !!m.hostFrame, mode: a.processingMode() }; });
+check(dev.mode === 'device' && !dev.host && dev.coh > 0.6, `on-device analysis works too (coherence ${dev.coh.toFixed(2)})`);
+await rem.evaluate(() => window.calApp.setProcessing('host'));
 check(Math.abs(r.spl - h.spl) < 1.5, `remote SPL meter matches host (${r.spl.toFixed(1)} vs ${h.spl.toFixed(1)})`);
 check(h.clients === 1, 'host sees the connected remote client');
 await rem.screenshot({ path: `${out}/remote-01-transfer.png` });
@@ -164,6 +194,24 @@ check((await names(host)).length === nTraces && (await names(rem)).length === nT
 await phone.evaluate(() => { window.calApp.settings.tempC = 27; window.calApp.save(); });
 await host.waitForTimeout(1200);
 check((await host.evaluate(() => window.calApp.settings.tempC)) === 27 && (await rem.evaluate(() => window.calApp.settings.tempC)) === 27, 'shared settings changed on a remote sync to the host and other remotes');
+// --- Music: a song added on a remote device is stored and played on the host
+{
+  const song = makeWav(path.join(out, 'Remote song.wav'), 3, 262);
+  await phone.keyboard.press('Escape');
+  await phone.evaluate(async (bytes) => {
+    const f = new File([new Uint8Array(bytes)], 'Remote song.wav', { type: 'audio/wav' });
+    await window.calApp.playlist.addFiles([f]);
+  }, [...fs.readFileSync(song)]);
+  await host.waitForFunction(() => window.calApp.playlist.state().tracks.some((t) => t.name === 'Remote song'), null, { timeout: 8000 }).catch(() => undefined);
+  check(await host.evaluate(() => window.calApp.playlist.state().tracks.some((t) => t.name === 'Remote song')), 'a song uploaded from a phone is added to the host playlist');
+  await rem.evaluate(() => { window.calApp.setGenerator({ type: 'music' }); });
+  await host.waitForFunction(() => window.calApp.settings.generator.type === 'music' && (window.calApp.engine.musicPos?.pos ?? 0) > 0, null, { timeout: 8000 }).catch(() => undefined);
+  check(await host.evaluate(() => window.calApp.settings.generator.type === 'music' && window.calApp.engine.genLevel.rms > 0.01), 'a remote starts the music on the host');
+  await rem.waitForTimeout(900);
+  const rs = await rem.evaluate(() => { const s = window.calApp.playlist.state(); return { name: s.tracks.find((t) => t.id === s.current)?.name, pos: s.pos }; });
+  check(rs.name === 'Remote song' && rs.pos > 0, `remotes show the playing song and its position (${rs.name} ${rs.pos.toFixed(1)} s)`);
+  await rem.evaluate(() => { window.calApp.setGenerator({ type: 'pink' }); });
+}
 await lateCtx.close();
 await phoneCtx.close();
 

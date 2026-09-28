@@ -209,10 +209,10 @@ export class RemoteCard {
         'p',
         { class: 'small' },
         connected && st
-          ? `Receiving live audio from ${st.deviceLabel} (${(st.sampleRate / 1000).toFixed(1)} kHz, ${st.channels} input${st.channels === 1 ? '' : 's'}). All views and meters are computed on this device. ${eng.allowControl ? 'You can control the generator and run sweeps; they play on the host.' : 'The host allows viewing only.'}`
+          ? `Receiving live audio from ${st.deviceLabel} (${(st.sampleRate / 1000).toFixed(1)} kHz, ${st.channels} input${st.channels === 1 ? '' : 's'}). ${this.app.hostProcessing ? 'Spectrum and transfer function are computed by the host (Display & performance below); meters and the other views run on this device.' : 'All views and meters are computed on this device.'} ${eng.allowControl ? 'You can control the generator and run sweeps; they play on the host.' : 'The host allows viewing only.'}`
           : eng.lastError || 'Press Connect in the top bar.',
       ),
-      h('p', { class: 'dim small' }, 'Calibration, microphone correction and measurement channel setup are taken from the host. Other settings (views, smoothing, traces, colour scheme) are stored on this device.'),
+      h('p', { class: 'dim small' }, 'Sweeps, traces, calibration, microphone correction and the measurement channel setup are shared through the host with every device. View settings (tabs, smoothing, zoom, colour scheme) are stored on this device.'),
       h('div', { class: 'row gap8' }, connected ? h('button', { class: 'btn small', onclick: () => this.app.toggleEngine().then(() => this.render()) }, icon('stop', 13), 'Disconnect') : h('button', { class: 'btn small accent', onclick: () => this.app.start() }, icon('wifi', 13), 'Connect')),
     );
   }

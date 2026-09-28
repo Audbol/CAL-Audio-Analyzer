@@ -31,6 +31,17 @@ export interface DockLayout {
   hidden: string[];
   /** Floating panels and their position inside the dock (px). Negative x / y anchor to the right / bottom edge. */
   floating: Record<string, FloatRect>;
+  /** Last screen position and size of each panel's detached window (reused when it is detached again). */
+  windows?: Record<string, FloatRect>;
+  /** Panels that were detached when the app closed (the desktop app reopens them). */
+  popped?: string[];
+  /** Detached windows kept on top of other windows. */
+  pinned?: string[];
+}
+
+type PipApi = { requestWindow(o: { width: number; height: number }): Promise<Window> };
+function pipApi(): PipApi | null {
+  return (window as unknown as { documentPictureInPicture?: PipApi }).documentPictureInPicture ?? null;
 }
 
 const MIN_DOCKED = 90;
@@ -47,6 +58,18 @@ export class Dock {
   private readonly popups = new Map<string, Window>();
   /** Detached panel windows of every dock (the app schedules frames on them). */
   private static readonly windows = new Set<Window>();
+
+  /** Desktop app: keep a detached window on top of all other windows (set by the app). */
+  static pinWindow: ((name: string, on: boolean) => Promise<boolean>) | null = null;
+  /** Reopen the windows that were detached when the app was last closed (desktop app only). */
+  static restoreDetached = false;
+
+  /** Pinning is possible: always-on-top windows in the desktop app, picture-in-picture in Chrome / Edge. */
+  static get canPin(): boolean {
+    return !!Dock.pinWindow || !!pipApi();
+  }
+
+  private unloading = false;
 
   static openWindows(): Window[] {
     return [...Dock.windows].filter((w) => !w.closed);
@@ -74,7 +97,11 @@ export class Dock {
     layout.order = layout.order.filter((id) => panels.some((p) => p.id === id));
     for (const p of panels) this.frames.set(p.id, this.buildFrame(p));
     new ResizeObserver(() => this.clampFloating()).observe(this.el);
-    window.addEventListener('beforeunload', () => this.popups.forEach((w) => w.close()));
+    window.addEventListener('beforeunload', () => {
+      // Closing the app closes its detached windows; remember them so they can be reopened next time
+      this.unloading = true;
+      this.popups.forEach((w) => w.close());
+    });
     // Escape leaves the maximised (fallback) full screen
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
@@ -84,6 +111,10 @@ export class Dock {
       }
     });
     this.render();
+    if (Dock.restoreDetached) {
+      const ids = (layout.popped ?? []).filter((id) => panels.some((p) => p.id === id) && this.isVisible(id));
+      setTimeout(() => ids.forEach((id) => this.popOut(id)), 300);
+    } else layout.popped = [];
   }
 
   // ------------------------------------------------------------------------------------------------------
@@ -123,19 +154,73 @@ export class Dock {
     this.commit();
   }
 
-  /** Detach a panel into its own browser / OS window. */
-  popOut(id: string): void {
+  /** Detach a panel into its own browser / OS window (at the position it had last time). */
+  popOut(id: string, opts: { pip?: boolean } = {}): void {
     const panel = this.panels.find((p) => p.id === id);
     const frame = this.frames.get(id);
     if (!panel || !frame || this.popups.has(id)) return;
     const r = frame.getBoundingClientRect();
-    const w = Math.round(Math.max(480, r.width));
-    const hgt = Math.round(Math.max(300, r.height + 30));
-    const win = window.open('', `cal-panel-${id}`, `popup=yes,width=${w},height=${hgt}`);
+    const saved = this.layout.windows?.[id];
+    const w = Math.round(saved?.w ?? Math.max(480, r.width));
+    const hgt = Math.round(saved?.h ?? Math.max(300, r.height + 30));
+    const pinned = !!this.layout.pinned?.includes(id);
+    const pip = pipApi();
+    // In browsers, a pinned panel lives in a picture-in-picture window (always on top)
+    if ((opts.pip || (pinned && !Dock.pinWindow)) && pip) {
+      pip
+        .requestWindow({ width: w, height: hgt })
+        .then((win) => this.mount(id, win, true))
+        .catch(() => {
+          this.notify('The browser did not allow an always-on-top window here.');
+          this.setPinned(id, false);
+        });
+      return;
+    }
+    const pos = saved ? `,left=${Math.round(saved.x)},top=${Math.round(saved.y)}` : '';
+    const win = window.open('', `cal-panel-${id}`, `popup=yes,width=${w},height=${hgt}${pos}`);
     if (!win) {
       this.notify('The pop-out window was blocked. Allow pop-ups for this app and try again.');
       return;
     }
+    this.mount(id, win, false);
+    if (pinned && Dock.pinWindow) Dock.pinWindow(`cal-panel-${id}`, true).catch(() => undefined);
+  }
+
+  private pipIds = new Set<string>();
+
+  private setPinned(id: string, on: boolean): void {
+    const list = (this.layout.pinned ??= []).filter((x) => x !== id);
+    if (on) list.push(id);
+    this.layout.pinned = list;
+    this.commit();
+  }
+
+  /** Keep a detached window on top of other windows (or stop doing so). */
+  async togglePin(id: string): Promise<void> {
+    const on = !this.layout.pinned?.includes(id);
+    this.setPinned(id, on);
+    if (Dock.pinWindow) {
+      if (!this.popups.has(id)) return this.popOut(id);
+      await Dock.pinWindow(`cal-panel-${id}`, on).catch(() => false);
+      this.updateButtons(id);
+      return;
+    }
+    // Browser: move the panel between a normal pop-up and a picture-in-picture window
+    const win = this.popups.get(id);
+    this.moving = true;
+    win?.close();
+    this.returnFromPopup(id);
+    this.moving = false;
+    this.popOut(id, { pip: on });
+  }
+
+  private moving = false;
+
+  private mount(id: string, win: Window, isPip: boolean): void {
+    const panel = this.panels.find((p) => p.id === id)!;
+    const frame = this.frames.get(id)!;
+    if (isPip) this.pipIds.add(id);
+    else this.pipIds.delete(id);
     const doc = win.document;
     doc.title = `${panel.title} · CAL Audio Analyzer`;
     // Bring the app's styles along (inline <style> in development, <link> in production builds)
@@ -174,8 +259,24 @@ export class Dock {
     win.addEventListener('load', resize);
     setTimeout(resize, 60);
     setTimeout(resize, 400);
-    win.addEventListener('pagehide', () => this.returnFromPopup(id));
+    win.addEventListener('pagehide', () => {
+      if (this.popups.get(id) === win) this.returnFromPopup(id);
+    });
+    if (!(this.layout.popped ??= []).includes(id)) this.layout.popped.push(id);
+    // Remember where the window is (there is no move event: poll while it is open)
+    const track = window.setInterval(() => {
+      if (win.closed || this.popups.get(id) !== win) return clearInterval(track);
+      const rect = isPip
+        ? { ...(this.layout.windows?.[id] ?? { x: win.screenX, y: win.screenY }), w: win.innerWidth, h: win.innerHeight }
+        : { x: win.screenX, y: win.screenY, w: win.outerWidth, h: win.outerHeight };
+      const old = this.layout.windows?.[id];
+      if (rect.w > 50 && rect.h > 50 && (!old || old.x !== rect.x || old.y !== rect.y || old.w !== rect.w || old.h !== rect.h)) {
+        (this.layout.windows ??= {})[id] = rect;
+        this.commit();
+      }
+    }, 700);
     this.render();
+    this.commit();
   }
 
   /** Full screen a panel: native element full screen where supported, otherwise maximise it over the page. */
@@ -306,6 +407,11 @@ export class Dock {
     fl.title = popped ? 'Return to the main window' : floating ? 'Dock back into the stack' : 'Float over the view';
     const po = frame.querySelector<HTMLButtonElement>('[data-act="popout"]')!;
     po.style.display = popped ? 'none' : '';
+    const pin = frame.querySelector<HTMLButtonElement>('[data-act="pin"]')!;
+    const pinned = !!this.layout.pinned?.includes(id);
+    pin.style.display = popped && Dock.canPin ? '' : 'none';
+    pin.classList.toggle('on', pinned);
+    pin.title = pinned ? 'Pinned on top of other windows — click to unpin' : 'Pin: keep this window on top of other windows';
   }
 
   private buildFrame(p: DockPanel): HTMLDivElement {
@@ -319,6 +425,7 @@ export class Dock {
       h('span', { class: 'spacer' }),
       btn('fullscreen', 'maximize', 'Full screen (Esc to exit)'),
       btn('float', 'float', 'Float over the view'),
+      btn('pin', 'pin', 'Keep this window on top of other windows'),
       btn('popout', 'popout', 'Detach into a separate window'),
       btn('close', 'x', 'Hide panel'),
     );
@@ -330,6 +437,7 @@ export class Dock {
       if (act === 'fullscreen') this.toggleFullscreen(p.id);
       else if (act === 'close') this.setVisible(p.id, false);
       else if (act === 'popout') this.popOut(p.id);
+      else if (act === 'pin') this.togglePin(p.id);
       else if (act === 'float') {
         if (this.popups.has(p.id)) this.popups.get(p.id)!.close();
         else if (this.layout.floating[p.id]) this.dock(p.id);
@@ -547,6 +655,11 @@ export class Dock {
     const w = this.popups.get(id);
     if (w) Dock.windows.delete(w);
     this.popups.delete(id);
+    this.pipIds.delete(id);
+    if (!this.unloading && !this.moving) {
+      this.layout.popped = (this.layout.popped ?? []).filter((x) => x !== id);
+      this.commit();
+    }
     const frame = this.frames.get(id)!;
     frame.classList.remove('popped');
     // Move the panel back into this document before re-rendering

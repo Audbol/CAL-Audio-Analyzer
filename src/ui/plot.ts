@@ -15,8 +15,10 @@ export interface Series {
   fill?: boolean;
   /** Treat as wrapped phase: break the line on ±180° jumps. */
   wrap?: number;
-  /** Render as bars centred on each x (RTA bands). */
+  /** Render as bars centred on each x (RTA bands): the bar width in 1/N octave. */
   bars?: number;
+  /** With `bars`: draw only a marker line at each bar's level (e.g. peak hold). */
+  cap?: boolean;
   /** Exclude from the hover readout. */
   quiet?: boolean;
   /** Secondary y axis (0..1 range drawn on the right), e.g. coherence. */
@@ -53,6 +55,19 @@ const COLORS = CHART;
 
 /** Fast canvas line plot with log/linear x-axis, hover readout, y zoom/pan and markers. */
 export class Plot {
+  /** Upper limit for the canvas pixel ratio (lowered by the app on slow devices). */
+  static maxDpr = 2;
+  private static instances = new Set<Plot>();
+
+  /** Change the pixel-ratio limit of every plot (adaptive quality on slow devices). */
+  static setMaxDpr(v: number): void {
+    if (v === Plot.maxDpr) return;
+    Plot.maxDpr = v;
+    for (const p of Plot.instances) {
+      p.resize();
+      p.draw();
+    }
+  }
   readonly el: HTMLDivElement;
   readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
@@ -94,6 +109,7 @@ export class Plot {
     this.el.append(hint);
     this.el.append(this.zoomBar());
     this.ctx = this.canvas.getContext('2d')!;
+    Plot.instances.add(this);
     new ResizeObserver(() => this.resize()).observe(this.el);
     this.bindEvents();
   }
@@ -311,7 +327,8 @@ export class Plot {
   /** Re-measure the plot (runs automatically; the panel dock also calls it when a panel changes window). */
   resize(): void {
     const r = this.el.getBoundingClientRect();
-    this.dpr = this.el.ownerDocument.defaultView?.devicePixelRatio || window.devicePixelRatio || 1;
+    // Beyond 2× the extra pixels are invisible on a graph but cost a lot of drawing time on phones
+    this.dpr = Math.min(Plot.maxDpr, this.el.ownerDocument.defaultView?.devicePixelRatio || window.devicePixelRatio || 1);
     this.w = Math.max(10, r.width);
     // Narrow plots (phones) get a tighter left margin
     this.pad.l = this.w < 520 ? 36 : 46;
@@ -478,20 +495,32 @@ export class Plot {
     const bottom = this.hgt - this.pad.b;
     if (s.bars) {
       const half = Math.pow(2, 1 / (2 * s.bars));
-      ctx.globalAlpha = 0.55;
+      const cap = Math.max(1.5, 2 * COLORS.lineScale);
+      const fill = new Path2D();
+      const tops = new Path2D();
       for (let i = 0; i < n; i++) {
         const x = s.x[i];
         if (x < xMin / 2 || x > xMax * 2 || !Number.isFinite(s.y[i])) continue;
-        const x0 = this.xToPx(x / half) + 1;
-        const x1 = this.xToPx(x * half) - 1;
-        const y = this.yToPx(s.y[i], s.secondary);
-        ctx.fillRect(x0, y, Math.max(1, x1 - x0), bottom - y);
+        const x0 = this.xToPx(x / half);
+        const x1 = this.xToPx(x * half);
+        const gap = Math.min(2, (x1 - x0) * 0.12);
+        const y = Math.max(this.pad.t - cap, this.yToPx(s.y[i], s.secondary));
+        if (!s.cap && y < bottom) fill.rect(x0 + gap, y, Math.max(1, x1 - x0 - 2 * gap), bottom - y);
+        tops.rect(x0 + gap, y - cap / 2, Math.max(1, x1 - x0 - 2 * gap), cap);
+      }
+      if (!s.cap) {
+        ctx.globalAlpha = 0.45;
+        ctx.fill(fill);
       }
       ctx.globalAlpha = 1;
+      ctx.fill(tops);
       return;
     }
     if (s.alpha) {
-      // Per-segment alpha (coherence blanking)
+      // Per-segment alpha (coherence blanking), batched into a few opacity levels: one stroke per level
+      // instead of one per segment keeps this fast on phones and older devices
+      const LEVELS = 8;
+      const paths: Path2D[] = [];
       for (let i = 1; i < n; i++) {
         const x0 = s.x[i - 1];
         const x1 = s.x[i];
@@ -502,12 +531,16 @@ export class Plot {
         if (s.wrap && Math.abs(y1 - y0) > s.wrap) continue;
         const a = Math.min(s.alpha[i - 1], s.alpha[i]);
         if (a < 0.03) continue;
-        ctx.globalAlpha = a;
-        ctx.beginPath();
-        ctx.moveTo(this.xToPx(x0), this.yToPx(y0, s.secondary));
-        ctx.lineTo(this.xToPx(x1), this.yToPx(y1, s.secondary));
-        ctx.stroke();
+        const lvl = Math.min(LEVELS - 1, Math.round(a * (LEVELS - 1)));
+        const p = (paths[lvl] ??= new Path2D());
+        p.moveTo(this.xToPx(x0), this.yToPx(y0, s.secondary));
+        p.lineTo(this.xToPx(x1), this.yToPx(y1, s.secondary));
       }
+      paths.forEach((p, lvl) => {
+        if (!p) return;
+        ctx.globalAlpha = Math.max(0.03, lvl / (LEVELS - 1));
+        ctx.stroke(p);
+      });
       ctx.globalAlpha = 1;
       return;
     }
@@ -565,7 +598,7 @@ export class Plot {
     rows.push(`<div class="tip-head">${head}</div>`);
     for (const s of this.series) {
       if (s.quiet) continue;
-      const v = sampleAt(s.x, s.y, x);
+      const v = s.bars ? barAt(s, x) : sampleAt(s.x, s.y, x);
       if (v === null) continue;
       const unit = s.unit ?? this.cfg.yUnit;
       const val = s.secondary ? `${(v * 100).toFixed(0)}%` : `${v.toFixed(1)} ${unit}`;
@@ -611,4 +644,13 @@ function trimNum(v: number): string {
 
 export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+}
+
+/** Level of the bar under frequency x (bars are 1/N octave wide around each centre). */
+function barAt(s: Series, x: number): number | null {
+  const half = Math.pow(2, 1 / (2 * (s.bars ?? 3)));
+  for (let i = 0; i < s.x.length; i++) {
+    if (x >= s.x[i] / half && x < s.x[i] * half) return Number.isFinite(s.y[i]) ? s.y[i] : null;
+  }
+  return null;
 }

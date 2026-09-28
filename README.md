@@ -11,7 +11,7 @@ A professional, real-time **sound system and room acoustics analyzer** that runs
 | **Dual-channel transfer function** | Multi-time-window FFT (32k → 1k, constant ~1/48-octave resolution), magnitude, phase and coherence. Coherence blanking fades unreliable data. Averaging from none to 64 frames, or cumulative. Smoothing from 1/48 to 1/1 octave. |
 | **Delay finder** | GCC-PHAT cross-correlation with sub-sample refinement, confidence estimate and polarity detection. Converts to distance using the air temperature. |
 | **Internal or loopback reference** | Use the generator's own signal as the reference (works with any interface), or a hardware loopback for program-material measurements. |
-| **RTA / spectrum** | True fractional-octave band power (pink noise reads flat) or narrowband FFT with peak picking. FFT sizes 4k–64k, peak hold, dBFS or calibrated dB SPL. |
+| **RTA / spectrum** | True fractional-octave band power (pink noise reads flat) or narrowband FFT with peak picking. FFT sizes 4k–64k, peak hold, dBFS or calibrated dB SPL. Draw it as a line or as 1/1–1/24-octave **bars** (**B**). |
 | **Spectrogram** | Scrolling log-frequency spectrogram of any channel, with an adjustable range. |
 | **Live impulse response** | Linear IR and energy-time curve from the averaged transfer function. One click sets the delay from the IR peak. Shows arrival time, distance and polarity. |
 | **Sweep & room acoustics** | Exponential sweep (Farina) with synchronous averaging. Frequency response with selectable time windows (5 ms gated up to full). Harmonic distortion (H2, H3, THD). **ISO 3382** parameters per octave or 1/3 octave: EDT, T20, T30, C50, C80, D50 and centre time, using Lundeby noise-floor truncation and compensation. Fit-quality and INR indicators. Impulse response export as WAV. |
@@ -20,9 +20,10 @@ A professional, real-time **sound system and room acoustics analyzer** that runs
 | **Traces** | Capture, overlay, offset, rename, spatially average (power average), and import/export CSV, REW and FRD text. Traces persist in the browser. |
 | **Tools** | Mic calibration file loader (miniDSP/UMIK, Dayton, FRD), room mode calculator with Schroeder frequency and critical distance, delay/distance/wavelength calculator, and a weighting table. |
 | **Spectrum & Transfer tabs** | Separate tabs for single-channel spectrum analysis (RTA/FFT) and the dual-channel transfer function (magnitude, coherence, phase). Each tab has its own panel layout, SPL meter and input level meters. |
-| **Flexible workspace** | Every display on the Spectrum and Transfer tabs is a panel: the graphs, the SPL meter, and the input level meters (peak, RMS, peak hold and clip). Drag a title bar to rearrange panels and drag the splitters to resize them. Float a panel over the view, where you can move it and resize it from the corner, or detach it into its own window, for example on a second monitor. Closing a detached window docks the panel again. The layout is saved automatically, and *Reset layout* restores the default. |
+| **Flexible workspace** | Every display on the Spectrum and Transfer tabs is a panel: the graphs, the SPL meter, and the input level meters (peak, RMS, peak hold and clip). Drag a title bar to rearrange panels and drag the splitters to resize them. Float a panel over the view, where you can move it and resize it from the corner, or detach it into its own window, for example on a second monitor. Detached windows reopen where you left them (the desktop app also reopens them at start-up), and the pin button keeps one on top of other windows (desktop app; picture-in-picture in Chrome/Edge). Closing a detached window docks the panel again. The layout is saved automatically, and *Reset layout* restores the default. |
 | **Day / night modes** | Night mode is OLED black for dark venues. Day mode is a high-contrast light scheme for use in direct sunlight: a white background, black text, darker and more saturated traces, and thicker lines. Toggle it with the sun/moon button or **T**. |
 | **Remote access** | The desktop app can host itself on your network. Phones, tablets and other computers open the app in any browser (scan the QR code, enter the PIN) and get **every tab, meter and function** with live data, including generator control and sweeps, while the audio interface stays on the host. |
+| **Music generator** | Choose *Music (playlist)* as the generator to play MP3, WAV, FLAC, OGG or M4A songs: add or drop files, reorder them, repeat and shuffle. Songs are level-matched to the generator level, and the music is the transfer-function reference, so you can measure with a song playing. The playlist is kept on the measurement computer; remote devices can control it and add songs. |
 | **Usability** | Setup wizard, a context-aware assistant (clipping, missing excitation, unset delay, low coherence, and so on), hover readouts with note name and wavelength, zoom and pan, keyboard shortcuts, and input/generator meters with clip indicators. |
 
 ![Sweep & Room: ISO 3382 parameters per octave band](docs/screenshot-room.png)
@@ -81,6 +82,7 @@ On first launch, choose **Explore with the demo room** to try everything with th
 | --- | --- |
 | Enter | Start / stop audio |
 | Space | Generator on/off |
+| B | Spectrum as line / bars |
 | D | Find delay |
 | C | Capture transfer function |
 | R | Reset averages |
@@ -102,6 +104,8 @@ Walk the room with a tablet while the analyzer and audio interface stay at the m
 4. Enter the 6-digit **PIN** if asked. The QR link already includes it.
 
 How it works: the host streams its live, sample-aligned audio (about 0.2 MB/s per input channel) to each remote device. The remote device runs the live analyzer on that stream, so every tab and meter works there. The host holds the shared session: sweeps started on any device run on the host, and their progress and results appear on every device (devices that join later get the latest result). Traces captured, renamed or deleted on any device are stored on the host and shown everywhere. Calibration, the mic correction, temperature and the measurement channel setup are shared the same way. View settings (tabs, smoothing, zoom, colour scheme) stay on each device.
+
+**Speed on older phones and tablets:** by default a remote device lets the host do the analysis. The host runs the FFTs and sends each device finished spectra and transfer functions (about 130 kB/s), so a slow device only draws them, and every device shows the same curves. Each device still applies its own smoothing and bar settings. *Tools → Display & performance* switches a device to *On this device* (independent averaging) and sets the graph quality. *Auto* lowers the graph resolution when drawing can't keep up.
 
 - **PIN and control:** you can change the PIN at any time, remove it for open access, or turn off *Allow remote control* for view-only clients.
 - **Firewall:** on Windows, allow CAL Audio Analyzer on *Private networks* when the firewall asks. Guest or venue Wi-Fi often isolates devices from each other; use a private network, a travel router or the laptop's hotspot instead.

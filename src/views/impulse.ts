@@ -11,6 +11,7 @@ import { speedOfSound } from '../dsp/delay';
  */
 export class ImpulseView implements View {
   id = 'impulse' as const;
+  readonly needs = { tfLocal: true };
   title = 'Impulse';
   icon = 'target' as const;
   el = h('div', { class: 'live' });

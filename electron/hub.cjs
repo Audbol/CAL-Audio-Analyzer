@@ -144,7 +144,7 @@ function createHub(options) {
   }
 
   function clientList() {
-    return [...remotes.entries()].map(([id, c]) => ({ id, name: c.name, address: c.address, since: c.since }));
+    return [...remotes.entries()].map(([id, c]) => ({ id, name: c.name, address: c.address, since: c.since, analysis: c.analysis }));
   }
 
   function hubInfo() {
@@ -175,6 +175,14 @@ function createHub(options) {
         if (data.length > 12 && data[12] === 1) {
           lastSweep = data;
           for (const c of remotes.values()) send(c.ws, data);
+          return;
+        }
+        // Analysis frames (host-processing mode): only to the devices that asked; a newer one replaces a late one
+        if (data.length > 12 && data[12] === 2) {
+          for (const c of remotes.values()) {
+            if (!c.analysis || c.ws.readyState !== 1 || c.ws.bufferedAmount > MAX_BUFFERED / 8) continue;
+            c.ws.send(data, { binary: true });
+          }
           return;
         }
         // Live audio: fan out to every remote, dropping blocks for clients that can't keep up
@@ -225,7 +233,7 @@ function createHub(options) {
   function acceptRemote(ws, req, name) {
     const id = nextId++;
     const address = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
-    const client = { ws, name: String(name || 'Remote').slice(0, 40), address, since: Date.now(), dropped: 0 };
+    const client = { ws, name: String(name || 'Remote').slice(0, 40), address, since: Date.now(), dropped: 0, analysis: false };
     remotes.set(id, client);
     log(`remote ${id} connected from ${address}`);
     send(ws, JSON.stringify({ t: 'welcome', id, allowControl: state.allowControl, hostConnected: !!host }));
@@ -234,6 +242,20 @@ function createHub(options) {
     if (lastSweep) send(ws, lastSweep);
     notifyHost();
     ws.on('message', (data, isBinary) => {
+      if (!isBinary && data.length < 200) {
+        // Stream preferences are handled by the hub itself (they also work while the host is away)
+        let p = null;
+        try {
+          p = JSON.parse(data.toString());
+        } catch {
+          return;
+        }
+        if (p && p.t === 'prefs') {
+          client.analysis = !!p.analysis;
+          notifyHost();
+          return;
+        }
+      }
       if (!host) return send(ws, JSON.stringify({ t: 'error', message: 'The measurement host is not connected.' }));
       if (isBinary) {
         // Sweep playback buffer: prefix the sender id so the host can reply to the right client

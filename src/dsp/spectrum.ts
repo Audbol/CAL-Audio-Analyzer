@@ -18,7 +18,7 @@ export class SpectrumAnalyzer {
   private im: Float64Array;
   private frames = 0;
   private nextEnd = -1;
-  private map?: BandMap;
+  private maps = new Map<number, BandMap>();
   private prefix = new PrefixSum();
   averaging: Averaging = 4;
   window: WindowType = 'hann';
@@ -94,10 +94,11 @@ export class SpectrumAnalyzer {
    */
   render(fraction: Smoothing, src: 'avg' | 'peak' | 'inst', out: Float64Array): Float64Array {
     const g = this.grid;
-    if (!this.map || this.map.fraction !== fraction) this.map = new BandMap(g, this.size, this.fs, fraction);
+    let map = this.maps.get(fraction);
+    if (!map) this.maps.set(fraction, (map = new BandMap(g, this.size, this.fs, fraction)));
     const data = src === 'peak' ? this.peak : src === 'inst' ? this.instantaneous : this.power;
     const p = this.prefix.build(data, this.bins);
-    const { lo, hi } = this.map;
+    const { lo, hi } = map;
     if (fraction === 0) {
       // Per-bin: convert the band-power normalisation to a sine-amplitude reading
       const w = getWindow(this.window, this.size);

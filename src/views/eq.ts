@@ -12,6 +12,7 @@ import { smoothCurve } from '../dsp/freq';
  */
 export class EqView implements View {
   id = 'eq' as const;
+  readonly needs = { tf: true };
   title = 'EQ Assistant';
   icon = 'sliders' as const;
   el = h('div', { class: 'eq' });
@@ -66,7 +67,7 @@ export class EqView implements View {
     const [kind, id] = this.source.split(':');
     if (kind === 'live') {
       const m = this.app.measurements[+id];
-      if (!m || !m.tf.ready) return null;
+      if (!m || !m.tfReady) return null;
       return { freqs: this.app.grid, mag: m.mag, coh: m.result.coh, name: m.cfg.name };
     }
     const t = this.app.traces.traces.find((x) => x.id === id);

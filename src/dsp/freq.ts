@@ -162,3 +162,113 @@ export function noteName(f: number): string {
 
 export const dB = (p: number): number => 10 * Math.log10(Math.max(p, 1e-30));
 export const dBa = (a: number): number => 20 * Math.log10(Math.max(Math.abs(a), 1e-15));
+
+/** Points per octave of a log grid (e.g. 48 for the analysis grid). */
+export function gridPpo(grid: ArrayLike<number>): number {
+  return (grid.length - 1) / Math.log2(grid[grid.length - 1] / grid[0]);
+}
+
+/**
+ * Combine fine band levels (dB, one band per grid point at 1/ppo octave) into 1/`fraction` octave band levels
+ * centred on every grid point (power sum with fractional edge weights, so pink noise stays flat).
+ */
+export function regroupBands(db: ArrayLike<number>, ppo: number, fraction: number, out: Float64Array): Float64Array {
+  const n = db.length;
+  const hw = ppo / (2 * fraction);
+  if (hw <= 0.5) {
+    for (let i = 0; i < n; i++) out[i] = db[i];
+    return out;
+  }
+  const r = Math.ceil(hw + 0.5);
+  const p = new Float64Array(n);
+  for (let i = 0; i < n; i++) p[i] = Math.pow(10, db[i] / 10);
+  for (let i = 0; i < n; i++) {
+    let s = 0;
+    let wsum = 0;
+    for (let j = -r; j <= r; j++) {
+      const w = Math.min(1, hw + 0.5 - Math.abs(j));
+      if (w <= 0) continue;
+      wsum += w;
+      const k = i + j;
+      if (k >= 0 && k < n) s += w * p[k];
+    }
+    // At the grid ends the band extends past the data: scale up the covered part
+    let covered = 0;
+    for (let j = -r; j <= r; j++) {
+      const w = Math.min(1, hw + 0.5 - Math.abs(j));
+      if (w > 0 && i + j >= 0 && i + j < n) covered += w;
+    }
+    out[i] = 10 * Math.log10(Math.max((s * wsum) / Math.max(covered, 1e-9), 1e-30));
+  }
+  return out;
+}
+
+/** Smooth a transfer function (dB, degrees, coherence) given on a fine log grid to 1/`fraction` octave. */
+export function smoothTransfer(
+  mag: ArrayLike<number>,
+  phase: ArrayLike<number>,
+  coh: ArrayLike<number>,
+  ppo: number,
+  fraction: number,
+  outMag: Float64Array,
+  outPhase: Float64Array,
+  outCoh: Float64Array,
+): void {
+  const n = mag.length;
+  const hw = ppo / (2 * fraction);
+  const r = Math.max(0, Math.floor(hw));
+  const re = new Float64Array(n);
+  const im = new Float64Array(n);
+  const pw = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const a = Number.isFinite(mag[i]) ? Math.pow(10, mag[i] / 20) : 0;
+    const ph = (phase[i] * Math.PI) / 180;
+    re[i] = Number.isFinite(ph) ? a * Math.cos(ph) : 0;
+    im[i] = Number.isFinite(ph) ? a * Math.sin(ph) : 0;
+    pw[i] = a * a;
+  }
+  for (let i = 0; i < n; i++) {
+    if (!Number.isFinite(mag[i])) {
+      outMag[i] = NaN;
+      outPhase[i] = NaN;
+      outCoh[i] = 0;
+      continue;
+    }
+    let sr = 0;
+    let si = 0;
+    let sp = 0;
+    let sc = 0;
+    let c = 0;
+    for (let k = Math.max(0, i - r); k <= Math.min(n - 1, i + r); k++) {
+      sr += re[k];
+      si += im[k];
+      sp += pw[k];
+      sc += coh[k];
+      c++;
+    }
+    outMag[i] = 10 * Math.log10(Math.max(sp / c, 1e-40));
+    outPhase[i] = (Math.atan2(si, sr) * 180) / Math.PI;
+    outCoh[i] = sc / c;
+  }
+}
+
+/** Exact base-2 fractional-octave band centres (1 kHz reference) of the bands that overlap [fMin, fMax]
+ * by at least half (so the nominal 20 Hz and 20 kHz third-octave bands are included). */
+export function octaveBandCentres(fraction: number, fMin = 20, fMax = 20000): number[] {
+  const out: number[] = [];
+  const k0 = Math.ceil(Math.log2(fMin / 1000) * fraction - 0.5);
+  const k1 = Math.floor(Math.log2(fMax / 1000) * fraction + 0.5);
+  for (let k = k0; k <= k1; k++) out.push(1000 * Math.pow(2, k / fraction));
+  return out;
+}
+
+/** Sample values on a log-uniform grid at frequency f (linear interpolation in log frequency). */
+export function sampleLogGrid(grid: ArrayLike<number>, vals: ArrayLike<number>, f: number): number {
+  const n = grid.length;
+  const pos = (Math.log2(f / grid[0]) / Math.log2(grid[n - 1] / grid[0])) * (n - 1);
+  if (pos <= 0) return vals[0];
+  if (pos >= n - 1) return vals[n - 1];
+  const i = Math.floor(pos);
+  const t = pos - i;
+  return vals[i] * (1 - t) + vals[i + 1] * t;
+}

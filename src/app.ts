@@ -4,7 +4,7 @@ import { logGrid, SMOOTHING_OPTIONS } from './dsp/freq';
 import { calCorrection } from './dsp/calibration';
 import { SplMeter, type SplReading } from './dsp/spl';
 import { speedOfSound } from './dsp/delay';
-import { Measurement } from './measurement';
+import { Measurement, type AnalysisNeeds } from './measurement';
 import { loadSettings, saveSettings, PALETTE, refLabel, type Settings, type ViewId, type MeasurementConfig } from './state';
 import { TraceStore, traceToCsv, parseTraceText, download, type Trace } from './traces';
 import { h, clear, icon, select } from './ui/dom';
@@ -19,6 +19,9 @@ import { ToolsView } from './views/tools';
 import { showWizard, showHelp, showRemoteConnect } from './ui/dialogs';
 import { applyChartTheme } from './ui/theme';
 import { Dock } from './ui/dock';
+import { Plot } from './ui/plot';
+import { Playlist, RemotePlaylist, type PlaylistApi } from './audio/playlist';
+import { MusicControls, showPlaylist } from './ui/music';
 import { RemoteEngine } from './remote/client';
 import { HostLink, desktopBridge, hubPageInfo } from './remote/host';
 import { sharedOf, type HostStatus, type RemoteCommand, type SharedSettings, type SweepMeta, type SweepRequest } from './remote/protocol';
@@ -36,6 +39,8 @@ export interface View {
   invalidate?(): void;
   /** True if any of the view's panels is detached into its own window. */
   hasDetached?(): boolean;
+  /** Live analyses the view displays (remote devices only compute what is on screen). */
+  needs?: Partial<AnalysisNeeds> & { tfLocal?: boolean };
 }
 
 export interface Hint {
@@ -58,6 +63,15 @@ export class App {
   private sharedApplied = '';
   private remoteBadge = h('button', { class: 'remote-badge', style: 'display:none' });
   traces = new TraceStore();
+  /** Music generator playlist: stored and played on the measurement computer, mirrored on remote devices. */
+  playlist: PlaylistApi = this.remote
+    ? new RemotePlaylist(
+        (a) => this.sendToHost({ t: 'cmd', cmd: 'playlist', a }),
+        (f) => (this.engine as RemoteEngine).uploadFile(f),
+        () => this.settings.generator.type === 'music' && this.engine.running,
+      )
+    : new Playlist(() => this.engine, this.settings.playlist, () => this.save());
+  private musicCtl: MusicControls | null = null;
   grid = logGrid(20, 20000, 48);
   measurements: Measurement[] = [];
   spl: SplMeter = new SplMeter(48000, this.settings.splWeighting);
@@ -89,9 +103,22 @@ export class App {
 
   constructor(root: HTMLElement) {
     this.root = root;
+    const desk = desktopBridge();
+    if (desk?.window) {
+      const bridge = desk.window;
+      Dock.pinWindow = (name, on) => bridge.pin(name, on);
+      Dock.restoreDetached = true;
+    }
+    if (this.settings.graphQuality === 'fast') Plot.maxDpr = 1;
     this.applyTheme();
     this.updateCal();
     this.build();
+    if (this.playlist instanceof Playlist) {
+      const pl = this.playlist;
+      pl.init();
+      this.engine.onMusicEnded = (key) => pl.ended(key);
+    }
+    this.playlist.onChange(() => this.musicCtl?.update());
     this.traces.onChange(() => {
       this.renderTraces();
       this.hostLink?.sendTraces();
@@ -271,6 +298,88 @@ export class App {
   applyAnalysisSettings(): void {
     for (const m of this.measurements) m.applySettings(this.settings);
     this.save();
+    const s = this.settings;
+    if (this.hostProcessing) this.sendToHost({ t: 'cmd', cmd: 'setAnalysis', analysis: { rtaFft: s.rtaFft, rtaAveraging: s.rtaAveraging, tfAveraging: s.tfAveraging } });
+  }
+
+  /** Remote device whose live analysis is computed by the measurement host. */
+  get hostProcessing(): boolean {
+    return this.remote && this.settings.remoteProcessing === 'host';
+  }
+
+  processingMode(): 'host' | 'device' | 'local' {
+    return this.remote ? this.settings.remoteProcessing : 'local';
+  }
+
+  setProcessing(mode: 'host' | 'device'): void {
+    this.settings.remoteProcessing = mode;
+    this.save();
+    if (!this.remote) return;
+    (this.engine as RemoteEngine).setWantAnalysis(mode === 'host');
+    for (const m of this.measurements) {
+      m.hostFrame = null;
+      m.reset();
+    }
+    this.renderTopState();
+  }
+
+  /** Graph pixel-ratio limit (lower = faster drawing on slow devices). */
+  setGraphQuality(maxDpr: number): void {
+    Plot.setMaxDpr(maxDpr);
+  }
+
+  setGraphQualityMode(mode: Settings['graphQuality']): void {
+    this.settings.graphQuality = mode;
+    this.save();
+    this.slowSince = 0;
+    this.setGraphQuality(mode === 'fast' ? 1 : 2);
+  }
+
+  private lastFrameAt = 0;
+  private frameGaps: number[] = [];
+  private slowSince = 0;
+
+  /** Auto graph quality: when the display rate stays low, draw graphs at a lower resolution. */
+  private adaptQuality(now: number): void {
+    if (this.lastFrameAt) this.frameGaps.push(now - this.lastFrameAt);
+    this.lastFrameAt = now;
+    if (this.frameGaps.length > 30) this.frameGaps.shift();
+    if (this.settings.graphQuality !== 'auto' || Plot.maxDpr <= 1 || this.frameGaps.length < 30 || document.hidden) return;
+    const gap = this.frameGaps.reduce((a, b) => a + b, 0) / this.frameGaps.length;
+    // Below ~20 frames per second for 3 s: step the resolution down (2 → 1.5 → 1)
+    if (gap < 50 || gap > 1000) {
+      this.slowSince = 0;
+      return;
+    }
+    this.slowSince ||= now;
+    if (now - this.slowSince > 3000) {
+      this.setGraphQuality(Plot.maxDpr > 1.5 ? 1.5 : 1);
+      this.slowSince = 0;
+      this.frameGaps = [];
+    }
+  }
+
+  /** What the visible views (active tab and detached panels) need computed this frame. */
+  private analysisNeeds(): AnalysisNeeds & { tfLocal: boolean } {
+    // The measurement host computes everything: remote devices in host-processing mode rely on it
+    if (!this.remote) return { rta: true, tf: true, tfLocal: true };
+    const n = { rta: false, tf: false, tfLocal: false };
+    for (const v of this.views) {
+      if (v !== this.active && !v.hasDetached?.()) continue;
+      n.rta ||= !!v.needs?.rta;
+      n.tf ||= !!v.needs?.tf;
+      n.tfLocal ||= !!v.needs?.tfLocal;
+    }
+    return n;
+  }
+
+  /** Set a toolbar control that mirrors a setting (after the value changed elsewhere, e.g. on the host). */
+  private syncSettingControls(): void {
+    const s = this.settings as unknown as Record<string, unknown>;
+    for (const el of this.root.querySelectorAll<HTMLSelectElement>('select[data-setting]')) {
+      const v = String(s[el.dataset.setting!]);
+      if (el.value !== v) el.value = v;
+    }
   }
 
   resetAverages(): void {
@@ -363,6 +472,17 @@ export class App {
     eng.onTraces = (list) => this.traces.setAll(list);
     eng.onSweep = (meta, ir) => this.roomView.applyShared(meta, ir);
     eng.onSweepProgress = (p) => this.roomView.showHostProgress(p.running, p.frac, p.text);
+    eng.wantAnalysis = this.hostProcessing;
+    eng.onAnalysis = (frames) => {
+      if (!this.hostProcessing) return; // frames still in flight after switching to on-device analysis
+      const t = performance.now();
+      for (const f of frames) {
+        const m = this.measurements[f.index];
+        if (!m) continue;
+        m.hostFrame = f;
+        m.hostFrameAt = t;
+      }
+    };
     eng.onChange = () => {
       this.renderTopState();
       if (eng.state === 'connected') this.reconnectDelay = 1500;
@@ -412,6 +532,13 @@ export class App {
   adoptHost(st: HostStatus, force = false): void {
     const s = this.settings;
     s.generator = { ...st.generator };
+    if (st.playlist && this.playlist instanceof RemotePlaylist) this.playlist.update(st.playlist);
+    if (this.hostProcessing && st.analysis && (st.analysis.rtaFft !== s.rtaFft || st.analysis.rtaAveraging !== s.rtaAveraging || st.analysis.tfAveraging !== s.tfAveraging)) {
+      // The host's analysis settings apply to what this device shows
+      Object.assign(s, st.analysis);
+      for (const m of this.measurements) m.applySettings(s);
+      this.syncSettingControls();
+    }
     const shared = JSON.stringify(st.shared);
     if (force || shared !== this.sharedApplied) {
       this.sharedApplied = shared;
@@ -808,6 +935,7 @@ export class App {
       { value: 'white', label: 'White noise' },
       { value: 'sine', label: 'Sine' },
       { value: 'sweep', label: 'Periodic sweep' },
+      { value: 'music', label: 'Music (playlist)' },
     ];
     const cur = g.type === 'off' ? (this.lastGenType ?? 'pink') : g.type;
     this.genControls.append(
@@ -815,8 +943,14 @@ export class App {
         this.lastGenType = v;
         if (g.type !== 'off') this.setGenerator({ type: v });
         this.renderGenControls();
+        if (v === 'music' && !this.playlist.state().tracks.length) showPlaylist(this);
       }, { title: 'Signal type' }),
     );
+    this.musicCtl = null;
+    if (cur === 'music') {
+      this.musicCtl = new MusicControls(this);
+      this.genControls.append(this.musicCtl.el);
+    }
     if (cur === 'sine') {
       const fi = h('input', { type: 'number', value: String(g.freq), min: '10', max: '24000', step: '1', class: 'num', title: 'Sine frequency (Hz)' });
       fi.addEventListener('change', () => this.setGenerator({ freq: Math.max(10, Math.min(this.fs / 2, +fi.value || 1000)) }));
@@ -1033,14 +1167,28 @@ export class App {
 
   private loop = (): void => {
     const t0 = performance.now();
+    this.adaptQuality(t0);
     // Adaptive drawing: slow devices (e.g. phones on remote) still process every audio block but draw less often
     const avg = this.frameTimes.reduce((a, b) => a + b, 0) / Math.max(1, this.frameTimes.length);
     const drawEvery = avg > 30 ? 3 : avg > 15 ? 2 : 1;
     const draw = this.frameCount++ % drawEvery === 0;
     if (this.engine.running) {
-      if (!this.busy) for (const m of this.measurements) m.process(this.engine);
-      if (draw) for (const m of this.measurements) m.render(this.settings, this.cal);
+      const needs = this.analysisNeeds();
+      const now = performance.now();
+      for (const m of this.measurements) {
+        // Host processing: use the host's analysis while it arrives, fall back to local processing otherwise
+        const fromHost = this.hostProcessing && !!m.hostFrame && now - m.hostFrameAt < 1500;
+        if (!this.busy) m.process(this.engine, fromHost ? { rta: false, tf: needs.tfLocal } : { rta: needs.rta, tf: needs.tf || needs.tfLocal });
+        if (draw) {
+          if (fromHost) m.renderHost(this.settings, this.cal);
+          else m.render(this.settings, this.cal);
+        }
+      }
       this.splReading = this.spl.read(this.settings.splTime);
+    }
+    if (this.frameCount % 15 === 0) {
+      if (this.playlist instanceof Playlist && this.settings.generator.type === 'music' && this.engine.running) this.playlist.ensureLoaded();
+      this.musicCtl?.update();
     }
     if (draw) {
       this.active?.tick();
@@ -1131,7 +1279,7 @@ export class App {
       const lvl = e.levels[m.cfg.mic];
       if (lvl && lvl.peak < 0.001 && !e.simulate) out.push({ level: 'warn', text: `${m.cfg.name}: no signal on In ${m.cfg.mic + 1}. Check phantom power, cable and input gain.` });
       if (m.cfg.ref === m.cfg.mic) out.push({ level: 'warn', text: `${m.cfg.name}: mic and reference are the same channel.` });
-      if (g.type !== 'off' && m.tf.ready && !this.busy) {
+      if (g.type !== 'off' && m.tfReady && !this.busy) {
         let s = 0;
         let n = 0;
         for (let i = 0; i < this.grid.length; i++) {
@@ -1212,7 +1360,12 @@ export class App {
           for (const x of this.measurements) x.frozen = !x.frozen;
           this.toast(this.measurements[0]?.frozen ? 'Display frozen' : 'Display live');
           break;
+        case 'b':
+        case 'B':
+          (this.views.find((v) => v.id === 'spectrum') as SpectrumView).setStyle(this.settings.rtaStyle === 'bars' ? 'line' : 'bars');
+          break;
         case 'F11':
+          if (desktopBridge()) break; // the desktop app's View menu handles F11
           e.preventDefault();
           this.toggleFullscreen();
           break;

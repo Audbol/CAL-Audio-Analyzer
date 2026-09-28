@@ -30,6 +30,8 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 let win = null;
+/** Detached panel windows by frame name (cal-panel-<id>). */
+const panelWindows = new Map();
 /** Remote-access server (created on demand from the app's Tools → Remote access). */
 let hub = null;
 
@@ -57,6 +59,14 @@ function registerServerIpc() {
     if (!fromApp(e)) throw new Error('Not allowed');
     if (hub) await hub.stop();
     hub = null;
+    return true;
+  });
+  // Detached panel windows: keep on top of other windows ("pin")
+  ipcMain.handle('window:pin', (e, name, on) => {
+    if (!fromApp(e)) throw new Error('Not allowed');
+    const child = panelWindows.get(String(name));
+    if (!child || child.isDestroyed()) return false;
+    child.setAlwaysOnTop(!!on, 'floating');
     return true;
   });
   ipcMain.handle('server:info', (e) => {
@@ -116,6 +126,14 @@ function createWindow() {
     }
     if (/^https?:/.test(url)) shell.openExternal(url);
     return { action: 'deny' };
+  });
+  win.webContents.on('did-create-window', (child, details) => {
+    const name = details.frameName || '';
+    if (!name.startsWith('cal-panel-')) return;
+    panelWindows.set(name, child);
+    child.on('closed', () => {
+      if (panelWindows.get(name) === child) panelWindows.delete(name);
+    });
   });
   win.webContents.on('will-navigate', (e, url) => {
     if (!url.startsWith(`${SCHEME}://`) && !(DEV_URL && url.startsWith(DEV_URL))) e.preventDefault();

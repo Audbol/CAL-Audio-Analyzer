@@ -1,6 +1,6 @@
 /** Message types exchanged between the main thread and the audio worklet. */
 
-export type GeneratorType = 'off' | 'pink' | 'white' | 'sine' | 'sweep';
+export type GeneratorType = 'off' | 'pink' | 'white' | 'sine' | 'sweep' | 'music';
 
 export interface GeneratorConfig {
   type: GeneratorType;
@@ -16,9 +16,13 @@ export type ProcessorMessage =
   | { type: 'generator'; config: GeneratorConfig }
   | { type: 'simulate'; enabled: boolean; distance?: number; rt60?: number }
   | { type: 'play'; id: number; data: Float32Array }
-  | { type: 'stopPlay' };
+  | { type: 'stopPlay' }
+  /** Music generator: a decoded mono track (level-normalised), or null to unload. */
+  | { type: 'music'; id: number; data: Float32Array | null; pos?: number }
+  | { type: 'musicSeek'; pos: number };
 
 export type ProcessorEvent =
-  | { type: 'data'; frame: number; inputs: Float32Array[]; gen: Float32Array }
+  | { type: 'data'; frame: number; inputs: Float32Array[]; gen: Float32Array; music?: { id: number; pos: number } }
+  | { type: 'musicEnded'; id: number }
   | { type: 'playStarted'; id: number; frame: number }
   | { type: 'playEnded'; id: number; frame: number };

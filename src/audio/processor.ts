@@ -35,6 +35,7 @@ class CalProcessor extends AudioWorkletProcessor {
   private sweepPos = 0;
   private sweepCache: Float32Array | null = null;
   private sweepKey = '';
+  private music: { data: Float32Array; pos: number; id: number } | null = null;
 
   constructor() {
     super();
@@ -56,6 +57,12 @@ class CalProcessor extends AudioWorkletProcessor {
         break;
       case 'stopPlay':
         this.playback = null;
+        break;
+      case 'music':
+        this.music = m.data ? { data: m.data, pos: Math.max(0, Math.min(m.pos ?? 0, m.data.length)), id: m.id } : null;
+        break;
+      case 'musicSeek':
+        if (this.music) this.music.pos = Math.max(0, Math.min(Math.round(m.pos), this.music.data.length));
         break;
     }
   }
@@ -117,6 +124,17 @@ class CalProcessor extends AudioWorkletProcessor {
       case 'sweep':
         v = this.sweepSample();
         break;
+      case 'music': {
+        // Advances only while the generator is on, so switching it off pauses the track
+        const mu = this.music;
+        if (!mu) break;
+        if (mu.pos < mu.data.length) v = mu.data[mu.pos++];
+        if (mu.pos === mu.data.length) {
+          mu.pos++;
+          this.post({ type: 'musicEnded', id: mu.id });
+        }
+        break;
+      }
       default:
         v = 0;
     }
@@ -153,7 +171,8 @@ class CalProcessor extends AudioWorkletProcessor {
   private flush(): void {
     const inputs = this.bufs;
     const gen = this.genBuf;
-    this.post({ type: 'data', frame: this.frame, inputs, gen }, [...inputs.map((b) => b.buffer), gen.buffer]);
+    const music = this.music ? { id: this.music.id, pos: Math.min(this.music.pos, this.music.data.length) } : undefined;
+    this.post({ type: 'data', frame: this.frame, inputs, gen, music }, [...inputs.map((b) => b.buffer), gen.buffer]);
     this.frame += BLOCK;
     this.bufs = inputs.map(() => new Float32Array(BLOCK));
     this.genBuf = new Float32Array(BLOCK);

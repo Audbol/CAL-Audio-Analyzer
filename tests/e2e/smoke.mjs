@@ -51,6 +51,23 @@ for (const [key, name] of [['1', 'spectrum'], ['3', 'spectrogram'], ['4', 'impul
   await page.screenshot({ path: `${out}/0${key}-${name}.png` });
 }
 const peak = await page.evaluate(() => window.calApp.views.find((v) => v.id === 'impulse').lastPeakMs);
+
+// Spectrum as third-octave bars (B), with peak hold caps
+await page.keyboard.press('1');
+await page.keyboard.press('b');
+await page.keyboard.press('p');
+await page.waitForTimeout(1200);
+const bars = await page.evaluate(() => {
+  const p = window.calApp.views.find((v) => v.id === 'spectrum').rta;
+  const main = p.series.find((s) => s.bars && !s.cap);
+  return { style: window.calApp.settings.rtaStyle, bars: main?.bars, n: main?.x.length, caps: p.series.some((s) => s.cap), finite: main ? main.y.filter(Number.isFinite).length : 0 };
+});
+check(bars.style === 'bars' && bars.bars === 3 && bars.n === 31 && bars.finite === 31, `spectrum shows 31 third-octave bars (${JSON.stringify(bars)})`);
+check(bars.caps, 'peak hold shows as caps on the bars');
+await page.screenshot({ path: `${out}/01-spectrum-bars.png` });
+await page.keyboard.press('p');
+await page.keyboard.press('b');
+check(await page.evaluate(() => window.calApp.settings.rtaStyle === 'line'), 'B switches back to a line');
 check(Math.abs(peak) < 1, `impulse peak at ~0 ms relative to delay (${peak.toFixed(2)})`);
 
 // EQ assistant on live data

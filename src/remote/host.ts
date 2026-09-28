@@ -1,5 +1,5 @@
 import type { App } from '../app';
-import { encodeAudio, encodeSweep, sharedOf, type HostStatus, type HubInfo, type HubMessage, type SweepMeta } from './protocol';
+import { decodeUpload, UPLOAD_MARKER, encodeAudio, encodeSweep, encodeAnalysis, sharedOf, type HostStatus, type HubInfo, type HubMessage, type SweepMeta } from './protocol';
 
 /** Desktop bridge exposed by electron/preload.cjs. */
 export interface DesktopBridge {
@@ -9,6 +9,7 @@ export interface DesktopBridge {
     stop(): Promise<boolean>;
     info(): Promise<unknown>;
   };
+  window?: { pin(name: string, on: boolean): Promise<boolean> };
 }
 
 /** Injected into index.html by the hub when the page is served by it. */
@@ -58,6 +59,7 @@ export class HostLink {
         this.lastStatus = '';
         this.sendStatus();
         this.statusTimer = window.setInterval(() => this.sendStatus(), 400);
+        this.analysisTimer = window.setInterval(() => this.sendAnalysis(), 100);
         this.unsubscribe = this.app.engine.onData((blocks, gen) => this.sendAudio(blocks, gen));
         // Publish the shared session state (traces, last sweep) for devices that connect
         this.sendTraces();
@@ -86,6 +88,7 @@ export class HostLink {
 
   private cleanup(): void {
     clearInterval(this.statusTimer);
+    clearInterval(this.analysisTimer);
     this.unsubscribe?.();
     this.unsubscribe = null;
     this.ws = null;
@@ -103,6 +106,25 @@ export class HostLink {
   }
 
   private tracesTimer = 0;
+  private analysisTimer = 0;
+  private analysisBufs: Float64Array[][] = [];
+
+  /** Host processing: send the live analysis (~10 per second) to the devices that asked for it. */
+  private sendAnalysis(): void {
+    const a = this.app;
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN || this.ws.bufferedAmount > 2 * 1024 * 1024) return;
+    if (!a.engine.running || !this.clients.some((c) => c.analysis)) return;
+    const n = a.grid.length;
+    const items: { index: number; tfReady: boolean; arrays: Float64Array[] }[] = [];
+    a.measurements.forEach((m, i) => {
+      if (!m.cfg.enabled) return;
+      const bufs = (this.analysisBufs[i] ??= Array.from({ length: 7 }, () => new Float64Array(n)));
+      if (bufs[0].length !== n) this.analysisBufs[i] = Array.from({ length: 7 }, () => new Float64Array(n));
+      const r = m.hostArrays(this.analysisBufs[i]);
+      items.push({ index: i, tfReady: r.tfReady, arrays: r.arrays });
+    });
+    this.ws.send(encodeAnalysis(n, items));
+  }
 
   /** Broadcast the shared trace list (debounced). */
   sendTraces(): void {
@@ -133,7 +155,14 @@ export class HostLink {
       generator: s.generator,
       shared: sharedOf(s),
       busy: a.busy,
+      analysis: { rtaFft: s.rtaFft, rtaAveraging: s.rtaAveraging, tfAveraging: s.tfAveraging },
+      playlist: this.playlistState(),
     };
+  }
+
+  private playlistState() {
+    const p = this.app.playlist.state();
+    return { ...p, pos: Math.round(p.pos * 2) / 2 };
   }
 
   private sendStatus(): void {
@@ -197,6 +226,13 @@ export class HostLink {
       case 'setShared':
         app.applyShared(msg.shared);
         break;
+      case 'playlist':
+        app.playlist.act(msg.a);
+        break;
+      case 'setAnalysis':
+        Object.assign(app.settings, { rtaFft: msg.analysis.rtaFft, rtaAveraging: msg.analysis.rtaAveraging, tfAveraging: msg.analysis.tfAveraging });
+        app.applyAnalysisSettings();
+        break;
     }
   }
 
@@ -205,6 +241,12 @@ export class HostLink {
     const dv = new DataView(buf);
     const from = dv.getUint32(0, true);
     const id = dv.getUint32(4, true);
+    if (id === UPLOAD_MARKER) {
+      const file = decodeUpload(buf.slice(4));
+      await this.app.playlist.addFiles([file]);
+      this.app.toast(`Song “${file.name}” added by ${remoteName(this.info, from)}`, 'info');
+      return;
+    }
     const data = new Float32Array(buf.slice(8));
     const app = this.app;
     if (!app.engine.running) await app.start();

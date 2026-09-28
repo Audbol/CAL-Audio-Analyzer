@@ -4,7 +4,7 @@ import { weightingDb, WeightingFilter } from '../src/dsp/weighting';
 import { RingBuffer } from '../src/dsp/ring';
 import { SpectrumAnalyzer } from '../src/dsp/spectrum';
 import { TransferFunction } from '../src/dsp/transfer';
-import { logGrid, interp, bandCentres } from '../src/dsp/freq';
+import { logGrid, interp, bandCentres, gridPpo, regroupBands } from '../src/dsp/freq';
 import { findDelay } from '../src/dsp/delay';
 import { logSweep, deconvolve, harmonicDistortion, linearIR } from '../src/dsp/sweep';
 import { analyseIR, roomModes } from '../src/dsp/acoustics';
@@ -282,5 +282,20 @@ describe('mic calibration', () => {
     expect(cal.sensitivity).toBeCloseTo(-1.2);
     expect(cal.freqs).toEqual([20, 1000, 20000]);
     expect(calCorrection(cal, 20000)).toBeCloseTo(-3);
+  });
+});
+
+describe('host-processed band regrouping', () => {
+  it('combines 1/48-octave band levels into flat 1/3-octave levels for pink noise', () => {
+    const grid = logGrid(20, 20000, 48);
+    const ppo = gridPpo(grid);
+    expect(ppo).toBeGreaterThan(47.9);
+    // Pink noise: equal power per 1/48 octave band
+    const fine = new Float64Array(grid.length).fill(-40);
+    const out = regroupBands(fine, ppo, 3, new Float64Array(grid.length));
+    const mid = out.slice(50, grid.length - 50);
+    for (const v of mid) expect(v).toBeCloseTo(-40 + 10 * Math.log10(ppo / 3), 1);
+    // The ends are compensated for the part of the band outside the grid
+    expect(out[0]).toBeCloseTo(mid[0], 1);
   });
 });

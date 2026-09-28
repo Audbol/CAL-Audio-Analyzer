@@ -11,4 +11,8 @@ contextBridge.exposeInMainWorld('calDesktop', {
     stop: () => ipcRenderer.invoke('server:stop'),
     info: () => ipcRenderer.invoke('server:info'),
   },
+  window: {
+    /** Keep a detached panel window (by its window name) on top of other windows. */
+    pin: (name, on) => ipcRenderer.invoke('window:pin', name, on),
+  },
 });

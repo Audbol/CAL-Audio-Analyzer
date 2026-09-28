@@ -134,6 +134,7 @@ check(JSON.stringify(await docked()) === '["rta"]', `Spectrum tab has its own la
   const w2 = await popup.evaluate(() => document.querySelector('canvas').width / devicePixelRatio);
   check(Math.abs(w2 - 900) < 4, 'detached plot follows window resizing');
   await popup.screenshot({ path: `${out}/dock-03-popout.png` });
+  await popup.waitForTimeout(900);
   await popup.close();
   await page.waitForTimeout(300);
   check((await docked()).includes('rta'), 'closing the detached window re-docks the panel');
@@ -142,6 +143,9 @@ check(JSON.stringify(await docked()) === '["rta"]', `Spectrum tab has its own la
 {
   const [popup] = await Promise.all([context.waitForEvent('page'), vis('.dpanel[data-panel="rta"] [data-act="popout"]').click()]);
   await popup.waitForTimeout(800);
+  const saved = await page.evaluate(() => window.calApp.settings.spectrumLayout?.windows?.rta);
+  const size = await popup.evaluate(() => ({ w: outerWidth, h: outerHeight }));
+  check(saved && Math.abs(size.w - saved.w) < 4 && Math.abs(size.h - saved.h) < 4 && Math.abs(saved.w - 900) < 30, `detaching again reopens the window with its remembered size (${size.w}×${size.h}, saved ${saved?.w}×${saved?.h})`);
   await page.keyboard.press('2'); // main window shows the Transfer tab now
   const snap = () => popup.evaluate(() => {
     const c = document.querySelector('canvas');

@@ -1,7 +1,7 @@
 import { CHART } from '../ui/theme';
 import type { App, View } from '../app';
 import { Plot } from '../ui/plot';
-import { h, icon, numberInput, clear } from '../ui/dom';
+import { h, icon, numberInput, clear, select } from '../ui/dom';
 import { roomModes, schroederFrequency, criticalDistance, type RoomMode } from '../dsp/acoustics';
 import { speedOfSound } from '../dsp/delay';
 import { parseMicCal } from '../dsp/calibration';
@@ -112,7 +112,49 @@ export class ToolsView implements View {
       h('p', { class: 'dim small' }, 'Settings and traces are stored locally in this browser only.'),
       h('div', { class: 'row gap8' }, h('button', { class: 'btn small ghost', onclick: () => { if (confirm('Delete all stored traces?')) this.app.traces.clear(); } }, 'Delete all traces'), h('button', { class: 'btn small ghost', onclick: () => { if (confirm('Reset all settings to defaults?')) { localStorage.removeItem('cal-analyzer-settings-v1'); location.reload(); } } }, 'Reset settings')),
     );
-    this.el.append(h('div', { class: 'tool-grid' }, this.remoteCard.el, calCard, micCard, delayCard, wCard, modesCard, dataCard));
+    // --- Display & performance
+    const app = this.app;
+    const perfCard = h(
+      'section',
+      { class: 'tool-card perf-card' },
+      h('h4', {}, icon('sliders', 15), ' Display & performance'),
+      h('p', { class: 'dim small' }, 'On slow phones, tablets and older computers, lower the graph resolution. Auto does this by itself when drawing can’t keep up.'),
+      h(
+        'div',
+        { class: 'row gap8' },
+        h('span', {}, 'Graph quality'),
+        select(
+          [
+            { value: 'auto' as const, label: 'Auto' },
+            { value: 'high' as const, label: 'High (sharp)' },
+            { value: 'fast' as const, label: 'Fast (low resolution)' },
+          ],
+          s.graphQuality,
+          (v) => app.setGraphQualityMode(v),
+          { dataset: { setting: 'graphQuality' } },
+        ),
+      ),
+      app.remote
+        ? h(
+            'div',
+            { class: 'row gap8' },
+            h('span', {}, 'Analysis'),
+            select(
+              [
+                { value: 'host' as const, label: 'On the measurement host (fast)' },
+                { value: 'device' as const, label: 'On this device' },
+              ],
+              s.remoteProcessing,
+              (v) => app.setProcessing(v),
+              { dataset: { setting: 'remoteProcessing' } },
+            ),
+          )
+        : null,
+      app.remote
+        ? h('p', { class: 'dim small' }, 'On the host: the measurement computer runs the FFTs and sends finished spectra, so every device shows the same result and slow devices only draw. Averaging and FFT size then follow the host. On this device: the full analysis runs here with its own averaging.')
+        : null,
+    );
+    this.el.append(h('div', { class: 'tool-grid' }, this.remoteCard.el, perfCard, calCard, micCard, delayCard, wCard, modesCard, dataCard));
     this.renderStatus();
   }
 

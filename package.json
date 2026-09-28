@@ -1,6 +1,6 @@
 {
   "name": "cal-audio-analyzer",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "private": true,
   "description": "CAL Audio Analyzer: professional real-time sound system and room acoustics analyzer in the browser",
   "type": "module",
@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:e2e": "vite build && node tests/e2e/smoke.mjs && node tests/e2e/dock.mjs && node tests/e2e/remote.mjs && node tests/e2e/mobile.mjs",
+    "test:e2e": "vite build && node tests/e2e/smoke.mjs && node tests/e2e/dock.mjs && node tests/e2e/remote.mjs && node tests/e2e/mobile.mjs && node tests/e2e/music.mjs",
     "check": "tsc --noEmit && vitest run",
     "app": "vite build && electron .",
     "app:dev": "node electron/dev.mjs",
@@ -19,7 +19,8 @@
     "dist:mac": "vite build && electron-builder --mac",
     "dist:linux": "vite build && electron-builder --linux",
     "test:electron": "vite build && xvfb-run -a node tests/e2e/electron.mjs",
-    "serve": "node server/cli.mjs"
+    "serve": "node server/cli.mjs",
+    "bench:remote": "vite build && node tests/e2e/perf.mjs"
   },
   "devDependencies": {
     "@types/qrcode": "^1.5.6",

@@ -79,6 +79,7 @@ export class AudioEngine {
   async start(opts: EngineOptions): Promise<void> {
     await this.stop();
     this.simulate = opts.simulate;
+    this.musicPos = null; // a new worklet starts without a song
     const ctx = new AudioContext({ latencyHint: 'interactive', sampleRate: opts.sampleRate });
     this.ctx = ctx;
     await ctx.audioWorklet.addModule(processorUrl);
@@ -134,7 +135,12 @@ export class AudioEngine {
 
   private onEvent(ev: ProcessorEvent): void {
     if (ev.type === 'data') {
+      if (ev.music) this.musicPos = ev.music;
       this.ingest(ev.inputs, ev.gen);
+      return;
+    }
+    if (ev.type === 'musicEnded') {
+      this.onMusicEnded?.(ev.id);
       return;
     }
     const w = this.playWaiters.get(ev.id);
@@ -172,6 +178,21 @@ export class AudioEngine {
     l.peak = Math.max(pk, l.peak * 0.93);
     l.rms = l.rms * 0.8 + Math.sqrt(ss / block.length) * 0.2;
     if (pk >= 0.999) l.clipped = true;
+  }
+
+  /** Music generator: playback position (samples) of the loaded track. */
+  musicPos: { id: number; pos: number } | null = null;
+  onMusicEnded?: (id: number) => void;
+
+  /** Load a decoded, level-normalised mono track into the music generator (the buffer is transferred). */
+  loadMusic(id: number, data: Float32Array | null, pos = 0): void {
+    this.musicPos = data ? { id, pos } : null;
+    this.node?.port.postMessage({ type: 'music', id, data, pos } satisfies ProcessorMessage, data ? [data.buffer] : []);
+  }
+
+  seekMusic(pos: number): void {
+    if (this.musicPos) this.musicPos = { ...this.musicPos, pos };
+    this.post({ type: 'musicSeek', pos });
   }
 
   setGenerator(config: GeneratorConfig): void {

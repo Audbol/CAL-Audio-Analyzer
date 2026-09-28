@@ -32,8 +32,7 @@ interface WindowState {
   xr: Float64Array;
   xi: Float64Array;
   yr: Float64Array;
-  yi: Float64Array;
-  map?: BandMap;
+  maps: Map<number, BandMap>;
 }
 
 /**
@@ -66,6 +65,7 @@ export class TransferFunction {
         fHi: cross[i + 1],
         nextEnd: -1,
         frames: 0,
+        maps: new Map(),
         gxx: new Float64Array(bins),
         gyy: new Float64Array(bins),
         gxyRe: new Float64Array(bins),
@@ -73,7 +73,6 @@ export class TransferFunction {
         xr: new Float64Array(size),
         xi: new Float64Array(size),
         yr: new Float64Array(size),
-        yi: new Float64Array(size),
       };
     });
   }
@@ -117,28 +116,32 @@ export class TransferFunction {
   private frame(w: WindowState, ref: RingBuffer, mic: RingBuffer, end: number): void {
     const n = w.size;
     const win = getWindow('hann', n);
-    const { xr, xi, yr, yi } = w;
+    const { xr, xi, yr } = w;
     ref.read(end - n - this.delay, n, xr);
     mic.read(end - n, n, yr);
     for (let i = 0; i < n; i++) {
       xr[i] *= win[i];
       yr[i] *= win[i];
     }
-    xi.fill(0);
-    yi.fill(0);
-    const fft = FFT.get(n);
-    fft.forward(xr, xi);
-    fft.forward(yr, yi);
+    // Two real signals in one complex FFT: z = x + j·y, then X[k] = (Z[k] + Z*[N−k]) / 2, Y[k] = (Z[k] − Z*[N−k]) / 2j
+    // (half the work of two transforms, which matters on phones and older remote devices)
+    xi.set(yr);
+    FFT.get(n).forward(xr, xi);
     const bins = n / 2 + 1;
     w.frames++;
     const a = this.averaging === 0 ? 1 / w.frames : Math.max(1 / this.averaging, 1 / w.frames);
     const b = 1 - a;
     const { gxx, gyy, gxyRe, gxyIm } = w;
     for (let k = 0; k < bins; k++) {
-      const ar = xr[k];
-      const ai = xi[k];
-      const br = yr[k];
-      const bi = yi[k];
+      const m = k === 0 ? 0 : n - k;
+      const zr = xr[k];
+      const zi = xi[k];
+      const cr = xr[m];
+      const ci = -xi[m];
+      const ar = 0.5 * (zr + cr);
+      const ai = 0.5 * (zi + ci);
+      const br = 0.5 * (zi - ci);
+      const bi = -0.5 * (zr - cr);
       gxx[k] = b * gxx[k] + a * (ar * ar + ai * ai);
       gyy[k] = b * gyy[k] + a * (br * br + bi * bi);
       // Gxy = conj(X) * Y
@@ -164,13 +167,14 @@ export class TransferFunction {
     };
     if (this.tmp.length < n) this.tmp = new Float64Array(n);
     for (const w of this.windows) {
-      if (!w.map || w.map.fraction !== fraction) w.map = new BandMap(g, w.size, this.fs, fraction);
+      let map = w.maps.get(fraction);
+      if (!map) w.maps.set(fraction, (map = new BandMap(g, w.size, this.fs, fraction)));
       const bins = w.size / 2 + 1;
       const pxx = this.prefix.build(w.gxx, bins).slice();
       const pyy = this.prefix.build(w.gyy, bins).slice();
       const pre = this.prefix.build(w.gxyRe, bins).slice();
       const pim = this.prefix.build(w.gxyIm, bins);
-      const { lo, hi } = w.map;
+      const { lo, hi } = map;
       for (let i = 0; i < n; i++) {
         const f = g[i];
         if (f < w.fLo || f >= w.fHi) continue;

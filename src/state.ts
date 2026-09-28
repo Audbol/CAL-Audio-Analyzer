@@ -1,3 +1,4 @@
+import type { PlaylistPrefs } from './audio/playlist';
 import type { Smoothing } from './dsp/freq';
 import type { Averaging } from './dsp/transfer';
 import type { Weighting } from './dsp/weighting';
@@ -52,6 +53,14 @@ export interface Settings {
   tfAveraging: Averaging;
   rtaAveraging: Averaging;
   rtaFft: number;
+  /** RTA drawn as a line or as fractional-octave bars. */
+  rtaStyle: 'line' | 'bars';
+  /** Remote devices: analysis computed by the measurement host (fast, identical everywhere) or on this device. */
+  remoteProcessing: 'host' | 'device';
+  /** Graph resolution: auto lowers it when drawing can't keep up (slow devices). */
+  graphQuality: 'auto' | 'high' | 'fast';
+  /** Music generator playlist order and playback options (the song files live in IndexedDB). */
+  playlist: PlaylistPrefs;
   coherenceThreshold: number;
   showCoherence: boolean;
   /** Panel arrangements (order, sizes, floating, hidden) of the Spectrum and Transfer views. */
@@ -86,6 +95,10 @@ export function defaultSettings(): Settings {
     tfAveraging: 8,
     rtaAveraging: 4,
     rtaFft: 16384,
+    rtaStyle: 'line',
+    remoteProcessing: 'host',
+    graphQuality: 'auto',
+    playlist: { order: [], current: null, repeat: 'all', shuffle: false },
     coherenceThreshold: 0.5,
     showCoherence: true,
     spectrumLayout: null,
@@ -122,23 +135,34 @@ export function loadSettings(): Settings {
       const i = LEGACY_PALETTE.indexOf(m.color);
       if (i >= 0) m.color = PALETTE[i];
     }
-    return { ...d, ...s, generator: { ...d.generator, ...(s.generator ?? {}) }, remoteServer: { ...d.remoteServer, ...(s.remoteServer ?? {}) } } as Settings;
+    return { ...d, ...s, generator: { ...d.generator, ...(s.generator ?? {}) }, remoteServer: { ...d.remoteServer, ...(s.remoteServer ?? {}) }, playlist: { ...d.playlist, ...(s.playlist ?? {}) } } as Settings;
   } catch {
     return d;
   }
 }
 
 let saveTimer = 0;
-export function saveSettings(s: Settings): void {
+let pending: Settings | null = null;
+
+function writeSettings(): void {
   clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(() => {
-    try {
-      localStorage.setItem(KEY, JSON.stringify(s));
-    } catch {
-      /* storage full or unavailable */
-    }
-  }, 300);
+  if (!pending) return;
+  try {
+    localStorage.setItem(KEY, JSON.stringify(pending));
+  } catch {
+    /* storage full or unavailable */
+  }
+  pending = null;
 }
+
+export function saveSettings(s: Settings): void {
+  pending = s;
+  clearTimeout(saveTimer);
+  saveTimer = window.setTimeout(writeSettings, 300);
+}
+
+// Don't lose the last change when the window closes or reloads within the debounce time
+if (typeof window !== 'undefined') window.addEventListener('pagehide', writeSettings);
 
 export function refLabel(ref: number): string {
   return ref === GEN_CHANNEL ? 'Generator (internal)' : `In ${ref + 1}`;

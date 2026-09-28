@@ -14,7 +14,12 @@ const check = (ok, msg) => {
 };
 await page.waitForSelector('.topbar');
 // Start from a clean profile so the first-run wizard appears
-await page.evaluate(() => localStorage.clear());
+await page.evaluate(() => {
+  localStorage.clear();
+  // Pending settings are written when the page unloads: clear again after that
+  window.addEventListener('pagehide', () => localStorage.clear());
+  indexedDB.deleteDatabase('cal-playlist');
+});
 await page.reload();
 await page.waitForSelector('.topbar');
 check((await page.title()) === 'CAL Audio Analyzer', 'window loads the app');
@@ -49,9 +54,40 @@ check(perm !== 'NotAllowedError', `microphone permission not blocked (${perm})`)
 const [popup] = await Promise.all([app.waitForEvent('window'), page.locator('.dpanel[data-panel="mag"] [data-act="popout"]').click()]);
 await popup.waitForTimeout(1200);
 check((await popup.locator('.dpanel.popped canvas').count()) === 1, 'panel detaches into a separate desktop window');
+// Pin it on top of other windows, move it, and check the position is remembered
+const onTop = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => w.getTitle().includes('magnitude')).map((w) => w.isAlwaysOnTop()));
+await popup.locator('[data-act="pin"]').click();
+await popup.waitForTimeout(300);
+check(JSON.stringify(await onTop()) === '[true]', 'pin keeps the detached window on top of other windows');
+await popup.evaluate(() => { moveTo(140, 110); resizeTo(700, 420); });
+await popup.waitForTimeout(1200);
+const savedWin = await page.evaluate(() => window.calApp.settings.transferLayout?.windows?.mag);
+console.log(JSON.stringify(savedWin));
 await popup.close();
 await page.waitForTimeout(300);
 check((await page.locator('.dock-stack .dpanel[data-panel="mag"]').count()) === 1, 'closing the window re-docks the panel');
+{
+  const [again] = await Promise.all([app.waitForEvent('window'), page.locator('.dpanel[data-panel="mag"] [data-act="popout"]').click()]);
+  await again.waitForTimeout(800);
+  const geo = await again.evaluate(() => ({ x: screenX, y: screenY, w: outerWidth, h: outerHeight }));
+  check(Math.abs(geo.x - savedWin.x) < 30 && Math.abs(geo.y - savedWin.y) < 60 && Math.abs(geo.w - 700) < 30 && Math.abs(geo.h - 420) < 60, `detached window reopens where it was (${JSON.stringify(geo)})`);
+  check(JSON.stringify(await onTop()) === '[true]', 'a pinned window stays pinned when detached again');
+  // Restarting the app (reload) reopens the detached window
+  const reopened = app.waitForEvent('window', { timeout: 10000 }).catch(() => null);
+  await page.reload();
+  await page.waitForSelector('.topbar');
+  const w3 = await reopened;
+  if (w3) await w3.waitForTimeout(800);
+  check(!!w3 && (await w3.locator('.dpanel.popped canvas').count()) === 1, 'detached windows reopen when the app starts again');
+  check(JSON.stringify(await onTop()) === '[true]', 'and stay pinned');
+  if (w3) {
+    await w3.locator('[data-act="pin"]').click();
+    await w3.waitForTimeout(300);
+    check(JSON.stringify(await onTop()) === '[false]', 'unpin');
+    await w3.close();
+  }
+  await page.waitForTimeout(300);
+}
 // Remote access: turn on the built-in server from Tools and connect a separate browser to it
 {
   await page.keyboard.press('8');

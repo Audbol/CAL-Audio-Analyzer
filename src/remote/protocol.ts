@@ -6,10 +6,15 @@
  *   [8..10) uint16   channel count (inputs + 1 generator channel, generator last)
  *   [10..12) uint16  samples per channel
  *   [12..16) reserved
- * Byte 12 of every host → remote binary message is its type: 0 = live audio, 1 = sweep result.
+ * Byte 12 of every host → remote binary message is its type: 0 = live audio, 1 = sweep result, 2 = analysis.
+ * Analysis frame (host → remotes in host-processing mode, binary): [0..4) uint32 grid length n,
+ *   [4..6) uint16 measurement count, [12] = 2, then per measurement float32 [index, tfReady, rtaBands, rtaFft,
+ *   peakBands, peakFft, tfMag, tfPhase, tfCoh] (each array n long, bands at the grid's 1/48 octave, uncalibrated).
  * Sweep result (host → all, binary): [0..4) uint32 meta JSON length, [4..8) uint32 IR length, [12] = 1,
  *   then UTF-8 meta JSON (padded to 4 bytes) and the float32 circular impulse response.
  * Sweep playback (remote → host, binary): uint32 request id + float32 samples. The hub prefixes the sender id.
+ * Song upload (remote → host, binary): uint32 0xFFFFFFFF, uint32 name length, UTF-8 name (padded to 4 bytes),
+ *   then the file's bytes. The hub prefixes the sender id.
  *
  * Shared session state lives on the host: traces, sweep results, calibration and measurement setup are sent
  * to the host by any device and broadcast to all of them.
@@ -20,6 +25,8 @@ import type { MeasurementConfig } from '../state';
 import type { MicCalibration } from '../dsp/calibration';
 import type { Trace, TraceOp } from '../traces';
 import type { Settings } from '../state';
+import type { Averaging } from '../dsp/transfer';
+import type { PlaylistAction, PlaylistState } from '../audio/playlist';
 
 /** The subset of settings that belongs to the measurement setup and is shared by every device. */
 export function sharedOf(s: Settings): SharedSettings {
@@ -45,6 +52,16 @@ export interface HostStatus {
   generator: GeneratorConfig;
   shared: SharedSettings;
   busy: boolean;
+  /** The host's analysis settings (used by remotes whose analysis runs on the host). */
+  analysis?: AnalysisSettings;
+  /** Music generator playlist (position rounded to 0.5 s). */
+  playlist?: PlaylistState;
+}
+
+export interface AnalysisSettings {
+  rtaFft: number;
+  rtaAveraging: Averaging;
+  tfAveraging: Averaging;
 }
 
 export interface HubInfo {
@@ -54,7 +71,7 @@ export interface HubInfo {
   allowControl: boolean;
   urls: { url: string; iface: string }[];
   hostname: string;
-  clients: { id: number; name: string; address: string; since: number }[];
+  clients: { id: number; name: string; address: string; since: number; analysis?: boolean }[];
 }
 
 export interface SweepRequest {
@@ -74,7 +91,16 @@ export type RemoteCommand =
   | { t: 'cmd'; cmd: 'sweep'; opts: SweepRequest }
   | { t: 'cmd'; cmd: 'sweepCancel' }
   | { t: 'cmd'; cmd: 'traces'; ops: TraceOp[] }
-  | { t: 'cmd'; cmd: 'setShared'; shared: SharedSettings };
+  | { t: 'cmd'; cmd: 'setShared'; shared: SharedSettings }
+  | { t: 'cmd'; cmd: 'setAnalysis'; analysis: AnalysisSettings }
+  | { t: 'cmd'; cmd: 'playlist'; a: PlaylistAction };
+
+/** Remote → hub: what this device wants streamed. */
+export interface RemotePrefs {
+  t: 'prefs';
+  /** Receive analysis frames computed by the host (host-processing mode). */
+  analysis: boolean;
+}
 
 export interface SweepProgress {
   t: 'sweepProgress';
@@ -159,4 +185,76 @@ export function decodeAudio(buf: ArrayBuffer): { frame: number; inputs: Float32A
   for (let c = 0; c < nCh; c++) chans.push(new Float32Array(buf, AUDIO_HEADER + c * len * 4, len));
   const gen = chans.pop()!;
   return { frame, inputs: chans, gen };
+}
+
+export const BIN_ANALYSIS = 2;
+/** Arrays per measurement in an analysis frame (after the index and tfReady values). */
+export const ANALYSIS_ARRAYS = 7;
+
+export interface AnalysisFrame {
+  index: number;
+  tfReady: boolean;
+  rtaBands: Float32Array;
+  rtaFft: Float32Array;
+  peakBands: Float32Array;
+  peakFft: Float32Array;
+  mag: Float32Array;
+  phase: Float32Array;
+  coh: Float32Array;
+}
+
+export function encodeAnalysis(n: number, items: { index: number; tfReady: boolean; arrays: ArrayLike<number>[] }[]): ArrayBuffer {
+  const per = 2 + ANALYSIS_ARRAYS * n;
+  const buf = new ArrayBuffer(AUDIO_HEADER + items.length * per * 4);
+  const dv = new DataView(buf);
+  dv.setUint32(0, n, true);
+  dv.setUint16(4, items.length, true);
+  dv.setUint8(12, BIN_ANALYSIS);
+  const f = new Float32Array(buf, AUDIO_HEADER);
+  items.forEach((it, j) => {
+    const o = j * per;
+    f[o] = it.index;
+    f[o + 1] = it.tfReady ? 1 : 0;
+    it.arrays.forEach((a, k) => f.set(a, o + 2 + k * n));
+  });
+  return buf;
+}
+
+export function decodeAnalysis(buf: ArrayBuffer): AnalysisFrame[] {
+  const dv = new DataView(buf);
+  const n = dv.getUint32(0, true);
+  const count = dv.getUint16(4, true);
+  const per = 2 + ANALYSIS_ARRAYS * n;
+  const f = new Float32Array(buf, AUDIO_HEADER, count * per);
+  const out: AnalysisFrame[] = [];
+  for (let j = 0; j < count; j++) {
+    const o = j * per;
+    const arr = (k: number) => f.subarray(o + 2 + k * n, o + 2 + (k + 1) * n);
+    out.push({ index: f[o], tfReady: f[o + 1] > 0, rtaBands: arr(0), rtaFft: arr(1), peakBands: arr(2), peakFft: arr(3), mag: arr(4), phase: arr(5), coh: arr(6) });
+  }
+  return out;
+}
+
+export const UPLOAD_MARKER = 0xffffffff;
+
+export async function encodeUpload(file: File): Promise<ArrayBuffer> {
+  const name = new TextEncoder().encode(file.name.slice(0, 200));
+  const nl = Math.ceil(name.length / 4) * 4;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const buf = new ArrayBuffer(8 + nl + bytes.length);
+  const dv = new DataView(buf);
+  dv.setUint32(0, UPLOAD_MARKER, true);
+  dv.setUint32(4, name.length, true);
+  new Uint8Array(buf, 8, name.length).set(name);
+  new Uint8Array(buf, 8 + nl).set(bytes);
+  return buf;
+}
+
+/** Decode an upload (without the hub's sender prefix). */
+export function decodeUpload(buf: ArrayBuffer): File {
+  const dv = new DataView(buf);
+  const len = dv.getUint32(4, true);
+  const name = new TextDecoder().decode(new Uint8Array(buf, 8, len));
+  const off = 8 + Math.ceil(len / 4) * 4;
+  return new File([buf.slice(off)], name);
 }

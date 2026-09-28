@@ -1,7 +1,7 @@
 import { AudioEngine, type EngineOptions } from '../audio/engine';
 import { RingBuffer } from '../dsp/ring';
 import type { GeneratorConfig } from '../audio/protocol';
-import { decodeAudio, decodeSweep, binaryType, BIN_SWEEP, type HostStatus, type HubMessage, type RemoteCommand, type SweepMeta, type SweepProgress } from './protocol';
+import { encodeUpload, decodeAudio, decodeSweep, decodeAnalysis, binaryType, BIN_SWEEP, BIN_ANALYSIS, type AnalysisFrame, type HostStatus, type HubMessage, type RemoteCommand, type RemotePrefs, type SweepMeta, type SweepProgress } from './protocol';
 import type { Trace } from '../traces';
 
 const RING_SIZE = 1 << 21;
@@ -29,6 +29,10 @@ export class RemoteEngine extends AudioEngine {
   onTraces?: (traces: Trace[]) => void;
   onSweep?: (meta: SweepMeta, ir: Float64Array) => void;
   onSweepProgress?: (p: SweepProgress) => void;
+  /** Analysis frames computed by the host (host-processing mode). */
+  onAnalysis?: (frames: AnalysisFrame[]) => void;
+  /** Ask the host for its analysis instead of computing it here. */
+  wantAnalysis = false;
   private closing = false;
 
   constructor(private pinProvider: () => string, private clientName: () => string) {
@@ -78,6 +82,7 @@ export class RemoteEngine extends AudioEngine {
         const msg = JSON.parse(e.data) as HubMessage;
         this.onMessage(msg);
         if (msg.t === 'welcome') {
+          this.sendPrefs();
           this.state = 'connected';
           this.onChange?.();
           resolve();
@@ -166,7 +171,12 @@ export class RemoteEngine extends AudioEngine {
 
   /** Live audio from the host: keep the local rings aligned to the host's absolute frame clock. */
   private onAudio(buf: ArrayBuffer): void {
-    if (binaryType(buf) === BIN_SWEEP) {
+    const type = binaryType(buf);
+    if (type === BIN_ANALYSIS) {
+      this.onAnalysis?.(decodeAnalysis(buf));
+      return;
+    }
+    if (type === BIN_SWEEP) {
       const { meta, ir } = decodeSweep(buf);
       this.onSweep?.(meta, ir);
       return;
@@ -193,6 +203,23 @@ export class RemoteEngine extends AudioEngine {
     if (this.ws?.readyState !== WebSocket.OPEN) return false;
     this.ws.send(JSON.stringify(msg));
     return true;
+  }
+
+  /** Send a song file to the host's music playlist. */
+  async uploadFile(file: File): Promise<boolean> {
+    if (this.ws?.readyState !== WebSocket.OPEN || !this.allowControl) return false;
+    this.ws.send(await encodeUpload(file));
+    return true;
+  }
+
+  /** Tell the hub which streams this device wants. */
+  setWantAnalysis(on: boolean): void {
+    this.wantAnalysis = on;
+    this.sendPrefs();
+  }
+
+  private sendPrefs(): void {
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ t: 'prefs', analysis: this.wantAnalysis } satisfies RemotePrefs));
   }
 
   private sendLegacy(msg: RemoteCommand): void {

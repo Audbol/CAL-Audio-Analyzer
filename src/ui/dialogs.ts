@@ -2,7 +2,7 @@ import type { App } from '../app';
 import { GEN_CHANNEL } from '../audio/engine';
 import { h, icon, clear } from './dom';
 
-function modal(title: string, body: HTMLElement, footer: HTMLElement[] = []): { close: () => void; el: HTMLElement } {
+export function modal(title: string, body: HTMLElement, footer: HTMLElement[] = []): { close: () => void; el: HTMLElement } {
   const overlay = h('div', { class: 'modal-overlay' });
   const close = () => {
     overlay.classList.add('out');
@@ -124,6 +124,7 @@ export function showHelp(app: App): void {
     ['C', 'Capture transfer function as trace'],
     ['R', 'Reset averages'],
     ['P', 'Toggle RTA peak hold'],
+    ['B', 'Spectrum as line / bars'],
     ['F', 'Freeze / unfreeze display'],
     ['1 – 8', 'Switch views'],
     ['T', 'Day / night colour scheme'],
