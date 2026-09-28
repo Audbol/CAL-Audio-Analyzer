@@ -49,6 +49,48 @@ export class SpectrogramView implements View {
         h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Channel'), this.chSel),
         h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Resolution'), select([2048, 4096, 8192, 16384].map((n) => ({ value: n, label: `${n / 1024}k FFT` })), this.fft, (v) => { this.fft = v; this.sa = null; })),
         h('div', { class: 'tb-group' }, range(0, 'Floor'), range(1, 'Top'), this.unit, h('button', { class: 'btn small', title: 'Fit the colour range to the current signal', onclick: () => this.autoRange() }, 'Auto')),
+        h(
+          'div',
+          { class: 'tb-group' },
+          h('span', { class: 'tb-label' }, 'Average'),
+          select(
+            [
+              { value: 0, label: 'Off' },
+              { value: 1, label: '1 s' },
+              { value: 3, label: '3 s' },
+              { value: 10, label: '10 s' },
+              { value: 30, label: '30 s' },
+              { value: -1, label: 'All (since reset)' },
+            ],
+            s.spectrogramAverage,
+            (v) => {
+              s.spectrogramAverage = v;
+              this.applyAverage();
+              app.save();
+            },
+            { title: 'Averaged spectrum drawn over the spectrogram, for tuning' },
+          ),
+          h('button', { class: 'btn small', title: 'Start the average again', onclick: () => this.sg.resetAverage() }, icon('reset', 14), 'Reset'),
+        ),
+        h(
+          'div',
+          { class: 'tb-group' },
+          h('span', { class: 'tb-label' }, 'Layout'),
+          select(
+            [
+              { value: 'horizontal' as const, label: 'Frequency →' },
+              { value: 'vertical' as const, label: 'Frequency ↑' },
+            ],
+            s.spectrogramLayout,
+            (v) => {
+              s.spectrogramLayout = v;
+              this.sg.orientation = v;
+              this.sg.invalidate();
+              app.save();
+            },
+            { title: 'Frequency across (newest at the top) or up the side (newest at the right)' },
+          ),
+        ),
         h('div', { class: 'spacer' }),
         pauseBtn,
         h('button', { class: 'btn small', onclick: () => this.sg.clear() }, icon('trash', 14), 'Clear'),
@@ -56,6 +98,14 @@ export class SpectrogramView implements View {
       h('div', { class: 'pane fill' }, this.sg.el),
     );
     this.applyRange();
+    this.sg.orientation = s.spectrogramLayout;
+    this.applyAverage();
+  }
+
+  private applyAverage(): void {
+    const v = this.app.settings.spectrogramAverage;
+    this.sg.avgSeconds = v < 0 ? Infinity : v;
+    this.sg.invalidate();
   }
 
   invalidate(): void {
@@ -111,6 +161,7 @@ export class SpectrogramView implements View {
         }
         // One column per processed frame
         for (let i = 0; i < 8 && this.sa.process(ring, 1) > 0; i++) {
+          this.sg.columnSeconds = this.sa.hop / e.sampleRate;
           this.sg.push(this.sa.instantaneous, e.sampleRate / this.fft, offset);
           this.sample(this.sa.instantaneous, e.sampleRate / this.fft, offset);
         }

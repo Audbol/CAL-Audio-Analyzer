@@ -68,6 +68,39 @@ await page.screenshot({ path: `${out}/01-spectrum-bars.png` });
 await page.keyboard.press('p');
 await page.keyboard.press('b');
 check(await page.evaluate(() => window.calApp.settings.rtaStyle === 'line'), 'B switches back to a line');
+
+// Spectrogram average curve (for tuning): follows the averaged spectrum; horizontal layout by default
+await page.keyboard.press('3');
+await page.waitForTimeout(4000);
+const sgAvg = await page.evaluate(() => {
+  const sg = window.calApp.views.find((v) => v.id === 'spectrogram').sg;
+  const c = sg.averageDb();
+  return c && { layout: sg.orientation, low: sg.averageAt(80, c), mid: sg.averageAt(1000, c), high: sg.averageAt(12000, c) };
+});
+console.log(JSON.stringify(sgAvg));
+check(sgAvg && sgAvg.layout === 'horizontal', 'spectrogram shows frequency horizontally by default');
+check(sgAvg && sgAvg.low > sgAvg.mid && sgAvg.mid > sgAvg.high, 'average curve follows the averaged spectrum (demo room: bass boost, falling top end)');
+await page.locator('.view:visible').getByRole('button', { name: 'Reset' }).click();
+check(await page.evaluate(() => window.calApp.views.find((v) => v.id === 'spectrogram').sg.averageDb() === null), 'Reset starts the average again');
+await page.locator('.view:visible select').filter({ hasText: 'Frequency →' }).selectOption('vertical');
+check(await page.evaluate(() => window.calApp.settings.spectrogramLayout === 'vertical'), 'layout switch to frequency vertical');
+await page.locator('.view:visible select').filter({ hasText: 'Frequency ↑' }).selectOption('horizontal');
+
+// Captured RTA traces line up with the live RTA when calibrated in dB SPL
+await page.keyboard.press('1');
+await page.evaluate(() => { const s = window.calApp.settings; s.splCalibrated = true; s.splOffset = 110; window.calApp.save(); });
+await page.waitForTimeout(600);
+await page.evaluate(() => window.calApp.captureTrace(window.calApp.measurements[0], 'rta'));
+await page.waitForTimeout(400);
+const align = await page.evaluate(() => {
+  const p = window.calApp.views.find((v) => v.id === 'spectrum').rta;
+  const at = (s, f) => { const i = s.x.findIndex((x) => x >= f); return s.y[i]; };
+  const live = p.series.find((s) => s.id === window.calApp.measurements[0].cfg.id);
+  const tr = p.series.find((s) => s.dash && s.id.startsWith('t'));
+  return { live: at(live, 1000), trace: at(tr, 1000) };
+});
+check(Math.abs(align.live - align.trace) < 3, `captured RTA trace lines up with the live RTA in dB SPL (${align.trace.toFixed(1)} vs ${align.live.toFixed(1)})`);
+await page.evaluate(() => { const s = window.calApp.settings; s.splCalibrated = false; s.splOffset = 0; const t = window.calApp.traces.traces; window.calApp.traces.remove(t[t.length - 1].id); window.calApp.save(); });
 check(Math.abs(peak) < 1, `impulse peak at ~0 ms relative to delay (${peak.toFixed(2)})`);
 
 // EQ assistant on live data

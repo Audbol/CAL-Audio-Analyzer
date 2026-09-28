@@ -458,6 +458,7 @@ export class App {
         : this.traces.add({
             name: `${m.cfg.name} RTA ${stamp}`,
             kind: 'rta',
+            dbfs: true,
             freqs: Array.from(this.grid),
             mag: Array.from(m.rtaOut, (v) => +v.toFixed(2)),
           });

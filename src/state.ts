@@ -84,6 +84,10 @@ export interface Settings {
   rtaRange: [number, number];
   splChannel: number;
   spectrogramRange: [number, number];
+  /** Spectrogram layout: frequency horizontal (waterfall) or vertical. */
+  spectrogramLayout: 'horizontal' | 'vertical';
+  /** Spectrogram average curve: averaging time in seconds (0 = off, -1 = everything since clear). */
+  spectrogramAverage: number;
 }
 
 export function defaultSettings(): Settings {
@@ -121,6 +125,8 @@ export function defaultSettings(): Settings {
     rtaRange: [-110, 0],
     splChannel: 0,
     spectrogramRange: [-110, -20],
+    spectrogramLayout: 'horizontal',
+    spectrogramAverage: 10,
   };
 }
 

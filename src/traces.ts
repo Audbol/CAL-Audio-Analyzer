@@ -18,6 +18,8 @@ export interface Trace {
   /** Display offset in dB. */
   offset: number;
   note?: string;
+  /** RTA captured in the app: levels are dBFS and get the SPL calibration offset when shown in dB SPL. */
+  dbfs?: boolean;
 }
 
 const KEY = 'cal-analyzer-traces-v1';
@@ -164,6 +166,7 @@ export class TraceStore {
       phase: hasPhase ? re.map((r, i) => (Math.atan2(im[i], r) * 180) / Math.PI) : undefined,
       coh: hasCoh ? coh.map((c) => c / src.length) : undefined,
       note: `Power average of ${src.length} traces`,
+      dbfs: src.every((t) => t.dbfs) || undefined,
     });
   }
 }

@@ -19,6 +19,12 @@ The builds are not code-signed yet:
 
 On first launch, choose **Explore with the demo room** to try every feature without hardware.
 
+## What's new in 1.6
+
+- **Average curve on the spectrogram:** a white averaged-spectrum line across the spectrogram shows the long-term tonal balance while you tune (Average: 1 s, 3 s, 10 s, 30 s or everything since Reset). Hover to read its level at any frequency.
+- **Spectrogram layout:** frequency now runs across (newest data at the top, like a waterfall), so the average curve lies horizontally like a spectrum. The previous layout (frequency up the side) is one click away under Layout.
+- **Fix:** RTA traces captured with a calibrated microphone now show at the right level in dB SPL (they appeared ~100 dB too low next to the live curve).
+
 ## What's new in 1.5
 
 - **Faster everywhere:** a new FFT (1.5–1.8× faster, and 2.7–3.2× for the spectrum's real-valued signals), results and graphs recomputed only when new data arrives, fewer screen updates for numbers that change every frame, and a lighter spectrogram. On the measurement computer the processing load dropped by roughly a third to more than half depending on the tab; on a slow phone the spectrum went from 36 to 54 frames per second.

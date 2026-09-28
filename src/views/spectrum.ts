@@ -122,11 +122,13 @@ export class SpectrumView extends DockedView implements View {
       this.lastKey = key;
       const g = app.grid;
       const series: Series[] = [];
+      const cal = s.splCalibrated ? s.splOffset : 0;
       for (const t of app.traces.traces) {
         if (!t.visible || t.kind !== 'rta') continue;
-        series.push({ id: t.id, label: t.name, x: t.freqs, y: t.offset ? t.mag.map((v) => v + t.offset) : t.mag, color: t.color, width: 1.2, dash: [5, 3] });
+        // Captured RTAs are stored in dBFS: show them in the same units as the live curves
+        const add = t.offset + (t.dbfs ? cal : 0);
+        series.push({ id: t.id, label: t.name, x: t.freqs, y: add ? t.mag.map((v) => v + add) : t.mag, color: t.color, width: 1.2, dash: [5, 3] });
       }
-      const cal = s.splCalibrated ? s.splOffset : 0;
       if (cal !== this.appliedCal) {
         // Keep the view on the data when SPL calibration (e.g. adopted from the measurement host) changes units
         this.rta.shiftY(cal - this.appliedCal);
