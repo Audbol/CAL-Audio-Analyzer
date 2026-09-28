@@ -4,6 +4,7 @@ import { BandMap, PrefixSum, rangeSum } from './bands';
 import type { Smoothing } from './freq';
 import type { RingBuffer } from './ring';
 import { DecimatedRing, decimationFactor, type LfResolution } from './decimate';
+import { XFADE, blendAt } from './spectrum';
 
 /** Averaging: number of frames in an exponential average, or 0 for infinite (cumulative) averaging. */
 export type Averaging = 1 | 2 | 4 | 8 | 16 | 32 | 64 | 0;
@@ -46,7 +47,6 @@ interface WindowState {
 export class TransferFunction {
   private windows: WindowState[] = [];
   private prefix = new PrefixSum();
-  private tmp = new Float64Array(0);
   averaging: Averaging = 8;
   /** Delay applied to the reference channel, in samples. */
   delay = 0;
@@ -78,7 +78,9 @@ export class TransferFunction {
     const d = decimationFactor(this.fs);
     const fsd = this.fs / d;
     const specs = lf === 'max' ? [[131072, 0, 45], [65536, 45, 90]] : lf === 'high' ? [[65536, 0, 90]] : [];
-    this.lowWindows = specs.map(([size, lo, hi]) => newWindow((size * scale) / d, fsd, lo, hi));
+    // Heavily overlapped frames at the same rate as the 32k window, so the bass is as up to date as the rest
+    const hop = Math.max(32, Math.round(this.windows[0].hop / d));
+    this.lowWindows = specs.map(([size, lo, hi]) => newWindow((size * scale) / d, fsd, lo, hi, hop));
     this.windows[0].fLo = specs.length ? 90 : 0;
     this.decRef = specs.length ? new DecimatedRing(this.fs, d, this.delay) : null;
     this.decMic = specs.length ? new DecimatedRing(this.fs, d) : null;
@@ -117,9 +119,10 @@ export class TransferFunction {
   }
 
   private run(w: WindowState, ref: RingBuffer, mic: RingBuffer, head: number, delay: number, maxFrames: number): void {
-    if (w.nextEnd < 0 || head - w.nextEnd > w.size * 4) {
-      // (Re)start close to the head – never try to catch up on stale data
-      w.nextEnd = Math.max(w.size + delay, head - w.size);
+    if (w.nextEnd < 0 || head - w.nextEnd > w.size * 4 || w.nextEnd - head > w.size * 4) {
+      // (Re)start close to the head – never try to catch up on stale data, and never use samples from before
+      // the stream began (they read as silence and would pull the average down)
+      w.nextEnd = Math.max(w.size + delay + ref.start, w.size + mic.start, head - w.size);
     }
     let count = 0;
     while (w.nextEnd <= head && count < maxFrames) {
@@ -181,16 +184,21 @@ export class TransferFunction {
       phase: new Float64Array(n),
       coh: new Float64Array(n),
     };
-    if (this.tmp.length < n) this.tmp = new Float64Array(n);
     // Bass windows join once they have data; until then the next window covers their range
+    const segs: { lo: number; hi: number; w: WindowState; k: number }[] = [];
     let pendingLo: number | null = null;
     for (const w of [...this.lowWindows, ...this.windows]) {
       if (w.frames === 0 && this.lowWindows.includes(w)) {
         pendingLo ??= w.fLo;
         continue;
       }
-      const fLo = pendingLo ?? w.fLo;
+      segs.push({ lo: pendingLo ?? w.fLo, hi: w.fHi, w, k: segs.length });
       pendingLo = null;
+    }
+    // Each window's H (real, imaginary) and coherence over its range plus the blend zones
+    while (this.segBufs.length < segs.length * 3) this.segBufs.push(new Float64Array(n));
+    for (const sg of segs) {
+      const w = sg.w;
       let map = w.maps.get(fraction);
       if (!map) w.maps.set(fraction, (map = new BandMap(g, w.size, w.fs, fraction)));
       const bins = w.size / 2 + 1;
@@ -199,22 +207,45 @@ export class TransferFunction {
       const pre = this.prefix.build(w.gxyRe, bins).slice();
       const pim = this.prefix.build(w.gxyIm, bins);
       const { lo, hi } = map;
+      const [hr, hi2, hc] = [this.segBufs[sg.k * 3], this.segBufs[sg.k * 3 + 1], this.segBufs[sg.k * 3 + 2]];
+      const f0 = sg.lo / XFADE;
+      const f1 = sg.hi * XFADE;
       for (let i = 0; i < n; i++) {
         const f = g[i];
-        if (f < fLo || f >= w.fHi) continue;
+        if (f < f0 || f >= f1) continue;
         const sxx = rangeSum(pxx, lo[i], hi[i]);
         const syy = rangeSum(pyy, lo[i], hi[i]);
         const sr = rangeSum(pre, lo[i], hi[i]);
         const si = rangeSum(pim, lo[i], hi[i]);
-        const cross = sr * sr + si * si;
-        res.mag[i] = 10 * Math.log10(Math.max(cross, 1e-40) / Math.max(sxx * sxx, 1e-40));
-        // Phase of H = Gxy/Gxx equals phase of Gxy (Gxx is real)
-        res.phase[i] = (Math.atan2(si, sr) * 180) / Math.PI;
-        res.coh[i] = sxx > 0 && syy > 0 ? Math.min(1, cross / (sxx * syy)) : 0;
+        const d = Math.max(sxx, 1e-40);
+        // H = Gxy / Gxx
+        hr[i] = sr / d;
+        hi2[i] = si / d;
+        hc[i] = sxx > 0 && syy > 0 ? Math.min(1, (sr * sr + si * si) / (sxx * syy)) : 0;
       }
+    }
+    for (let i = 0; i < n; i++) {
+      const bl = blendAt(segs, g[i]);
+      if (!bl) continue;
+      const A = bl.a.k * 3;
+      const B = bl.b.k * 3;
+      const wa = bl.w;
+      const wb = 1 - wa;
+      const [ar, ai] = [this.segBufs[A][i], this.segBufs[A + 1][i]];
+      const [br, bi] = [this.segBufs[B][i], this.segBufs[B + 1][i]];
+      // Blend level in dB and phase as a direction, so windows that disagree slightly never cancel
+      const ma = Math.max(ar * ar + ai * ai, 1e-40);
+      const mb = Math.max(br * br + bi * bi, 1e-40);
+      res.mag[i] = wa * 10 * Math.log10(ma) + wb * 10 * Math.log10(mb);
+      const ua = wa / Math.sqrt(ma);
+      const ub = wb / Math.sqrt(mb);
+      res.phase[i] = (Math.atan2(ai * ua + bi * ub, ar * ua + br * ub) * 180) / Math.PI;
+      res.coh[i] = wa * this.segBufs[A + 2][i] + wb * this.segBufs[B + 2][i];
     }
     return res;
   }
+
+  private segBufs: Float64Array[] = [];
 
   /**
    * Impulse response estimate from the averaged cross spectrum of the given window index
@@ -244,12 +275,12 @@ export class TransferFunction {
   }
 }
 
-function newWindow(size: number, fs: number, fLo: number, fHi: number): WindowState {
+function newWindow(size: number, fs: number, fLo: number, fHi: number, hop = size / 4): WindowState {
   const bins = size / 2 + 1;
   return {
     size,
     fs,
-    hop: size / 4,
+    hop,
     fLo,
     fHi,
     nextEnd: -1,

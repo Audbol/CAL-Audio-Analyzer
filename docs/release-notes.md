@@ -19,6 +19,11 @@ The builds are not code-signed yet:
 
 On first launch, choose **Explore with the demo room** to try every feature without hardware.
 
+## What's new in 1.4.1
+
+- **Smoother, more accurate low end:** the longer bass windows now blend into the regular ones over a third of an octave instead of switching at a fixed frequency, so the spectrum and transfer function no longer show small steps at 45, 80, 90 or 160 Hz. The bass windows also update as often as the rest of the analysis, so the low end keeps up with changes (about 40% faster to settle than in 1.4.0).
+- **No more low bass right after connecting:** after starting, reconnecting or joining as a remote device, the analysis no longer counts the silence from before the audio began, which could pull the low end down for a few seconds (or permanently with cumulative averaging).
+
 ## What's new in 1.4
 
 - **Better low-end resolution:** the spectrum and transfer function use longer analysis windows for the bass. Detail is 0.7 Hz (*High*, the new default) or 0.4 Hz (*Maximum*), instead of 2.9 Hz on the spectrum and 1.5 Hz on the transfer function. Tones 2 Hz apart at 40 Hz now show as two separate peaks. Mids and highs keep their fast response, and the extra processing is too small to measure because the bass windows run on a down-sampled copy of the signal. The bass needs a longer stretch of signal (≈1.4 s or 2.7 s) and reacts more slowly: choose *Standard* in Tools → Display & performance for the fastest bass response.

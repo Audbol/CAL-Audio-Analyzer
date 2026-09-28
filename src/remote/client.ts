@@ -187,8 +187,7 @@ export class RemoteEngine extends AudioEngine {
     if (head === 0 || frame < head || frame - head > RING_SIZE / 2) {
       // First block, host restart or a long gap: re-anchor the rings at the host's frame index
       for (const r of [...this.inputs, this.gen]) {
-        r.clear();
-        r.written = frame;
+        r.anchor(frame);
       }
     } else if (frame > head) {
       // Blocks dropped by a slow network: fill with silence so every channel stays sample-aligned

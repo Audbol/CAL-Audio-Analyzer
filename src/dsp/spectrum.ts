@@ -28,6 +28,8 @@ export class SpectrumAnalyzer {
     readonly fs: number,
     readonly size: number,
     readonly grid: Float64Array,
+    /** Samples between frames (default: 50% overlap). */
+    readonly hop = size / 2,
   ) {
     this.bins = size / 2 + 1;
     this.power = new Float64Array(this.bins);
@@ -50,8 +52,9 @@ export class SpectrumAnalyzer {
   /** Process new data (hop = size/2). Returns the number of frames processed. */
   process(ring: RingBuffer, maxFrames = 6): number {
     const head = ring.written;
-    const hop = this.size / 2;
-    if (this.nextEnd < 0 || head - this.nextEnd > this.size * 4) this.nextEnd = Math.max(this.size, head);
+    const hop = this.hop;
+    // (Re)start at the head, never on data from before the stream began (that would read as silence)
+    if (this.nextEnd < 0 || head - this.nextEnd > this.size * 4 || this.nextEnd - head > this.size * 4) this.nextEnd = Math.max(ring.start + this.size, head);
     let count = 0;
     while (this.nextEnd <= head && count < maxFrames) {
       this.frame(ring, this.nextEnd);
@@ -143,13 +146,16 @@ export class SpectrumAnalyzer {
 /**
  * RTA with optional extra-long analysis windows for the bass (see LfResolution): the main FFT covers everything,
  * and below 160 Hz longer windows computed on a decimated copy of the signal take over, so low-frequency detail
- * improves 4–8× while the mids and highs keep their fast response.
+ * improves 4–8× while the mids and highs keep their fast response. The bass windows update as often as the main
+ * FFT (heavily overlapped frames, cheap on the decimated signal), so the bass doesn't lag behind, and neighbouring
+ * windows are blended over a third of an octave so there is no step where one takes over from the other.
  */
 export class MultiSpectrum {
   readonly main: SpectrumAnalyzer;
   private low: { sa: SpectrumAnalyzer; fLo: number; fHi: number }[] = [];
   private dec: DecimatedRing | null = null;
   private avg: Averaging = 4;
+  private tmp: Float64Array[] = [];
 
   constructor(
     readonly fs: number,
@@ -165,7 +171,8 @@ export class MultiSpectrum {
     const useful = specs.filter(([eq]) => eq * scale > size);
     if (!useful.length) return;
     this.dec = new DecimatedRing(fs, d);
-    this.low = useful.map(([eq, fLo, fHi]) => ({ sa: new SpectrumAnalyzer(fs / d, (eq * scale) / d, grid), fLo, fHi }));
+    const hop = Math.max(32, Math.round(this.main.hop / d)); // same frame rate as the main FFT
+    this.low = useful.map(([eq, fLo, fHi]) => ({ sa: new SpectrumAnalyzer(fs / d, (eq * scale) / d, grid, hop), fLo, fHi }));
     // If only the longest window is dropped, the next one covers down to 0 Hz
     this.low[0].fLo = 0;
   }
@@ -190,21 +197,60 @@ export class MultiSpectrum {
     this.main.process(ring);
     if (!this.dec) return;
     this.dec.update(ring);
-    for (const l of this.low) l.sa.process(this.dec.ring);
+    for (const l of this.low) l.sa.process(this.dec.ring, 64);
   }
 
   render(fraction: Smoothing, src: 'avg' | 'peak', out: Float64Array): Float64Array {
     this.main.render(fraction, src, out);
-    // Bass windows replace the main FFT once they have data (a 128k window needs ≈ 2.7 s for its first frame)
+    // Bass windows join once they have data (a 128k window needs ≈ 2.7 s for its first frame)
+    const segs: { lo: number; hi: number; v: Float64Array }[] = [];
     let pendingLo: number | null = null;
-    for (const l of this.low) {
+    this.low.forEach((l, k) => {
       if (!l.sa.hasData) {
         pendingLo ??= l.fLo;
+        return;
+      }
+      const lo = pendingLo ?? l.fLo;
+      pendingLo = null;
+      const v = (this.tmp[k] ??= new Float64Array(this.grid.length));
+      l.sa.render(fraction, src, v, lo / XFADE, l.fHi * XFADE);
+      segs.push({ lo, hi: l.fHi, v });
+    });
+    if (!segs.length) return out;
+    segs.push({ lo: pendingLo ?? segs[segs.length - 1].hi, hi: Infinity, v: out });
+    const g = this.grid;
+    const res = this.tmp[this.low.length] ?? (this.tmp[this.low.length] = new Float64Array(g.length));
+    for (let i = 0; i < g.length; i++) {
+      const b = blendAt(segs, g[i]);
+      if (!b) {
+        res[i] = out[i];
         continue;
       }
-      l.sa.render(fraction, src, out, pendingLo ?? l.fLo, l.fHi);
-      pendingLo = null;
+      // Blend band powers (linear), so levels stay correct through the transition
+      const p = b.w * Math.pow(10, b.a.v[i] / 10) + (1 - b.w) * Math.pow(10, b.b.v[i] / 10);
+      res[i] = 10 * Math.log10(Math.max(p, 1e-30));
     }
+    out.set(res);
     return out;
   }
+}
+
+/** Half-width of the blend between neighbouring analysis windows (1/6 octave each side). */
+export const XFADE = Math.pow(2, 1 / 6);
+
+/**
+ * Where two frequency segments meet, a smooth blend over ±1/6 octave: returns the two segments and the weight
+ * of the first, or null inside a segment (or outside all of them).
+ */
+export function blendAt<T extends { lo: number; hi: number }>(segs: T[], f: number): { a: T; b: T; w: number } | null {
+  for (let k = 0; k < segs.length - 1; k++) {
+    const edge = segs[k].hi;
+    if (f >= edge / XFADE && f < edge * XFADE) {
+      const t = (Math.log2(f / edge) + 1 / 6) * 3; // 0 … 1 across the transition
+      const w = 1 - t * t * (3 - 2 * t); // smoothstep
+      return { a: segs[k], b: segs[k + 1], w };
+    }
+  }
+  for (const s of segs) if (f >= s.lo && f < s.hi) return { a: s, b: s, w: 1 };
+  return null;
 }

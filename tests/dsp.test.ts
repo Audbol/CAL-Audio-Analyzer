@@ -13,6 +13,7 @@ import { filterDb, autoEq, TARGETS, eqResponse } from '../src/dsp/eq';
 import { parseMicCal, calCorrection } from '../src/dsp/calibration';
 import { SplMeter } from '../src/dsp/spl';
 import { PinkNoise } from '../src/audio/noise';
+import { Biquad } from '../src/audio/biquad';
 
 const FS = 48000;
 
@@ -387,5 +388,96 @@ describe('low-frequency resolution (decimated bass windows)', () => {
       expect(Math.abs(res.phase[i])).toBeLessThan(2);
       expect(res.coh[i]).toBeGreaterThan(0.98);
     }
+  });
+});
+
+describe('bass windows in real conditions', () => {
+  it('measures a sharp low-frequency response accurately, with no steps where windows hand over', () => {
+    const grid = logGrid(20, 20000, 48);
+    // System: +9 dB at 40 Hz (Q 4), −12 dB at 70 Hz (Q 3), +5 dB at 140 Hz, 2 ms delay
+    const mk = () => {
+      const a = new Biquad('peak', 40, 4, 9, FS), b = new Biquad('peak', 70, 3, -12, FS), c = new Biquad('peak', 140, 2, 5, FS);
+      const dl = new Float64Array(96);
+      let p = 0;
+      return (x: number) => {
+        const y = c.process(b.process(a.process(x)));
+        const o = dl[p];
+        dl[p] = y;
+        p = (p + 1) % dl.length;
+        return o;
+      };
+    };
+    // Ground truth from a long impulse response, smoothed like the analyzer (1/24 octave power)
+    const n = 1 << 20;
+    const sys0 = mk();
+    const re = new Float64Array(n);
+    const im = new Float64Array(n);
+    for (let i = 0; i < n; i++) re[i] = sys0(i === 0 ? 1 : 0);
+    FFT.get(n).forward(re, im);
+    const half = Math.pow(2, 1 / 48);
+    const truth = (f: number) => {
+      let s = 0, c = 0;
+      for (let k = Math.ceil(f / half / (FS / n)); k <= Math.floor((f * half) / (FS / n)); k++) {
+        s += re[k] ** 2 + im[k] ** 2;
+        c++;
+      }
+      return 10 * Math.log10(s / c);
+    };
+    for (const lf of ['standard', 'high', 'max'] as const) {
+      const sys = mk();
+      const pink = new PinkNoise(3);
+      const tf = new TransferFunction(FS, grid);
+      tf.setLfResolution(lf);
+      tf.delay = 96;
+      const ref = new RingBuffer(1 << 21);
+      const mic = new RingBuffer(1 << 21);
+      const bx = new Float32Array(1024);
+      const by = new Float32Array(1024);
+      for (let t = 0; t < 16 * FS; t += 1024) {
+        for (let i = 0; i < 1024; i++) {
+          bx[i] = pink.next() * 0.2;
+          by[i] = sys(bx[i]);
+        }
+        ref.push(bx);
+        mic.push(by);
+        tf.process(ref, mic);
+      }
+      const r = tf.result(24);
+      let worst = 0;
+      let sq = 0;
+      let cnt = 0;
+      grid.forEach((f, i) => {
+        if (f < 25 || f > 250) return;
+        const e = r.mag[i] - truth(f);
+        worst = Math.max(worst, Math.abs(e));
+        sq += e * e;
+        cnt++;
+      });
+      // Long windows are more accurate in the bass; none of the modes may show steps or offsets
+      expect(Math.sqrt(sq / cnt)).toBeLessThan(lf === 'standard' ? 0.3 : 0.15);
+      expect(worst).toBeLessThan(lf === 'standard' ? 1 : 0.5);
+    }
+  });
+
+  it('does not count silence from before a (re)connected stream began', () => {
+    const grid = logGrid(20, 20000, 48);
+    const level = (anchor: number) => {
+      const ms = new MultiSpectrum(FS, 16384, grid, 'max');
+      ms.averaging = 0;
+      const ring = new RingBuffer(1 << 21);
+      ring.anchor(anchor); // like a remote device joining a host that has been running for a while
+      const pink = new PinkNoise(8);
+      const b = new Float32Array(1024);
+      for (let t = 0; t < 8 * FS; t += 1024) {
+        for (let i = 0; i < 1024; i++) b[i] = pink.next() * 0.1;
+        ring.push(b);
+        ms.process(ring);
+      }
+      const out = new Float64Array(grid.length);
+      ms.render(3, 'avg', out);
+      return sampleLogGrid(grid, out, 40) - sampleLogGrid(grid, out, 1000);
+    };
+    // Pink noise reads flat: the bass must not be pulled down by zeros from before the anchor
+    expect(Math.abs(level(123_456_789))).toBeLessThan(1);
   });
 });

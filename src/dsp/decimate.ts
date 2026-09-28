@@ -86,9 +86,11 @@ export class DecimatedRing {
     const last = Math.floor((headIn - 1) / d); // newest output index whose input is complete
     if (last < 0) return;
     // (Re)start near the head, and never try to catch up on a long gap
-    if (this.next < 0 || last - this.next > this.ring.capacity / 2) {
-      this.next = Math.max(0, last - this.ring.capacity / 4);
-      this.ring.written = this.next;
+    if (this.next < 0 || last - this.next > this.ring.capacity / 2 || this.next - last > this.ring.capacity / 2) {
+      // Start where the source has real data for the whole filter span
+      const firstValid = Math.ceil((src.start + this.offset + n - 1) / d);
+      this.next = Math.max(firstValid, last - this.ring.capacity / 4, 0);
+      this.ring.anchor(this.next);
     }
     const count = last - this.next + 1;
     if (count <= 0) return;
