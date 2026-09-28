@@ -19,6 +19,7 @@ A professional, real-time **sound system and room acoustics analyzer** that runs
 | **SPL meter** | IEC 61672 A/C/Z weighting, Fast/Slow, Leq, Lmax, peak and a 2-minute history. Calibrates with a 94/114 dB calibrator or a reference meter. |
 | **Traces** | Capture, overlay, offset, rename, spatially average (power average), and import/export CSV, REW and FRD text. Traces persist in the browser. |
 | **Tools** | Mic calibration file loader (miniDSP/UMIK, Dayton, FRD), room mode calculator with Schroeder frequency and critical distance, delay/distance/wavelength calculator, and a weighting table. |
+| **Flexible workspace** | Every Live display is a panel: the RTA, magnitude and phase graphs, the SPL meter, and the input level meters (peak, RMS, peak hold and clip). Drag a title bar to rearrange panels and drag the splitters to resize them. Float a panel over the view, where you can move it and resize it from the corner, or detach it into its own window, for example on a second monitor. Closing a detached window docks the panel again. The layout is saved automatically, and *Reset layout* restores the default. |
 | **Usability** | Setup wizard, a context-aware assistant (clipping, missing excitation, unset delay, low coherence, and so on), hover readouts with note name and wavelength, zoom and pan, keyboard shortcuts, and input/generator meters with clip indicators. |
 
 ![Sweep & Room: ISO 3382 parameters per octave band](docs/screenshot-room.png)

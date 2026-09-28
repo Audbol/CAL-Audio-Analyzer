@@ -4,6 +4,7 @@ import type { Weighting } from './dsp/weighting';
 import type { GeneratorConfig } from './audio/protocol';
 import type { MicCalibration } from './dsp/calibration';
 import { GEN_CHANNEL } from './audio/engine';
+import type { DockLayout } from './ui/dock';
 
 import { PALETTE } from './ui/theme';
 export { PALETTE };
@@ -39,9 +40,12 @@ export interface Settings {
   rtaFft: number;
   coherenceThreshold: number;
   showCoherence: boolean;
-  showRta: boolean;
-  showMag: boolean;
-  showPhase: boolean;
+  /** Legacy visibility flags (before the panel dock); only used to seed `liveLayout`. */
+  showRta?: boolean;
+  showMag?: boolean;
+  showPhase?: boolean;
+  /** Arrangement of the Live view's panels (order, sizes, floating, hidden). */
+  liveLayout: DockLayout | null;
   peakHold: boolean;
   splWeighting: Weighting;
   splTime: 'fast' | 'slow';
@@ -71,9 +75,7 @@ export function defaultSettings(): Settings {
     rtaFft: 16384,
     coherenceThreshold: 0.5,
     showCoherence: true,
-    showRta: true,
-    showMag: true,
-    showPhase: true,
+    liveLayout: null,
     peakHold: false,
     splWeighting: 'A',
     splTime: 'fast',

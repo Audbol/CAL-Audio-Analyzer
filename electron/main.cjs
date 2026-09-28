@@ -61,6 +61,20 @@ function createWindow() {
 
   // Keep navigation inside the app; open external links in the default browser
   win.webContents.setWindowOpenHandler(({ url }) => {
+    // Detached measurement panels: blank same-origin windows that the app fills itself
+    if (url === 'about:blank' || url === '') {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          backgroundColor: '#000000',
+          autoHideMenuBar: true,
+          minWidth: 320,
+          minHeight: 200,
+          icon: path.join(__dirname, '..', 'build', 'icon.png'),
+          webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false },
+        },
+      };
+    }
     if (/^https?:/.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });

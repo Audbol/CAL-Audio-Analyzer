@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:e2e": "vite build && node tests/e2e/smoke.mjs",
+    "test:e2e": "vite build && node tests/e2e/smoke.mjs && node tests/e2e/dock.mjs",
     "check": "tsc --noEmit && vitest run",
     "app": "vite build && electron .",
     "app:dev": "node electron/dev.mjs",

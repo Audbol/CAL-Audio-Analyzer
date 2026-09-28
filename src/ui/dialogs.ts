@@ -150,6 +150,8 @@ export function showHelp(app: App): void {
         ),
         h('h4', {}, 'Mouse'),
         h('p', { class: 'dim small' }, 'Hover for cursor readout (value, note name, wavelength). Scroll to zoom the level axis, Shift/Ctrl+scroll to zoom frequency, drag to pan (Shift+drag pans frequency), double-click to reset.'),
+        h('h4', {}, 'Panels (Live view)'),
+        h('p', { class: 'dim small' }, 'Drag a panel title bar to rearrange; drop it outside the stack (or double-click the title) to float it. Drag splitters to resize docked panels and the corner to resize floating ones. The window button detaches a panel into its own window, e.g. for a second monitor; close that window to dock it again. Toolbar chips show/hide panels; Reset layout restores the default.'),
       ),
       h('div', {}, h('h4', {}, 'Keyboard'), h('table', { class: 'keys' }, ...keys.map(([k, d]) => h('tr', {}, h('td', {}, h('kbd', {}, k)), h('td', {}, d))))),
     ),

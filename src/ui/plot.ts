@@ -97,7 +97,9 @@ export class Plot {
 
   private bindEvents(): void {
     const c = this.canvas;
-    c.addEventListener('mousemove', (e) => {
+    // Pointer events with capture (rather than window listeners) so plots keep working when their panel
+    // is moved into a detached window
+    c.addEventListener('pointermove', (e) => {
       const r = c.getBoundingClientRect();
       this.mouse = { x: e.clientX - r.left, y: e.clientY - r.top };
       if (this.drag) {
@@ -119,18 +121,21 @@ export class Plot {
       }
       this.draw();
     });
-    c.addEventListener('mouseleave', () => {
+    c.addEventListener('pointerleave', () => {
       this.mouse = null;
       this.drag = null;
       this.tip.style.display = 'none';
       this.draw();
     });
-    c.addEventListener('mousedown', (e) => {
+    c.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      c.setPointerCapture(e.pointerId);
       const r = c.getBoundingClientRect();
       this.drag = { y: e.clientY - r.top, yMin: this.cfg.yMin, yMax: this.cfg.yMax, x: e.clientX - r.left, xMin: this.cfg.xMin, xMax: this.cfg.xMax };
     });
-    window.addEventListener('mouseup', (e) => {
-      if (this.drag && this.mouse && Math.abs(this.mouse.y - this.drag.y) < 3 && Math.abs(this.mouse.x - this.drag.x) < 3 && e.target === c) {
+    c.addEventListener('pointerup', (e) => {
+      if (c.hasPointerCapture(e.pointerId)) c.releasePointerCapture(e.pointerId);
+      if (this.drag && this.mouse && Math.abs(this.mouse.y - this.drag.y) < 3 && Math.abs(this.mouse.x - this.drag.x) < 3) {
         this.onClick?.(this.xFromPx(this.mouse.x));
       }
       this.drag = null;
@@ -198,9 +203,10 @@ export class Plot {
     this.cfg.xMax = Math.min(xMax, hi);
   }
 
-  private resize(): void {
+  /** Re-measure the plot (runs automatically; the panel dock also calls it when a panel changes window). */
+  resize(): void {
     const r = this.el.getBoundingClientRect();
-    this.dpr = window.devicePixelRatio || 1;
+    this.dpr = this.el.ownerDocument.defaultView?.devicePixelRatio || window.devicePixelRatio || 1;
     this.w = Math.max(10, r.width);
     this.hgt = Math.max(10, r.height);
     this.canvas.width = Math.round(this.w * this.dpr);
