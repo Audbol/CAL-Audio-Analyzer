@@ -23,11 +23,39 @@ A professional, real-time **sound system and room acoustics analyzer** that runs
 
 ![Sweep & Room: ISO 3382 parameters per octave band](docs/screenshot-room.png)
 
-## Quick start
+## Desktop app (Windows, macOS, Linux)
+
+CAL Audio Analyzer runs as a standalone desktop program. You don't need a browser, Node.js or a terminal to use it.
+
+**Download:** open the repository's **Actions** tab → **Desktop app** → the latest run → **Artifacts**, and download the build for your system. Builds are also attached to **Releases** when a version tag is pushed.
+
+| System | File | How to run |
+| --- | --- | --- |
+| Windows 10/11 | `CAL-Audio-Analyzer-…-win-x64.exe` (installer) | Run it and follow the setup. It adds Start-menu and desktop shortcuts. |
+| Windows 10/11 | `CAL-Audio-Analyzer-…-portable.exe` | No install; just double-click it. |
+| macOS | `…-mac-*.dmg` | Drag it to Applications. The build is unsigned, so right-click → Open the first time. |
+| Linux | `…-linux-x86_64.AppImage` | `chmod +x` it, then run it. |
+
+Windows SmartScreen may warn about an unrecognised app because the builds are not code-signed. Click **More info → Run anyway**.
+
+**Build it yourself** (on the target OS):
+
+```bash
+npm install
+npm run app          # build and launch the desktop app
+npm run dist:win     # Windows installer + portable exe → release/
+npm run dist:mac     # macOS dmg
+npm run dist:linux   # Linux AppImage
+```
+
+The desktop app is Electron wrapping the same code as the web version. It serves the app from a secure `app://` origin, grants microphone access only to itself, and keeps measuring at full rate when its window is in the background. Settings and traces are stored in the app's own profile.
+
+## Quick start (browser / development)
 
 ```bash
 npm install
 npm run dev        # open the printed URL (localhost is required for microphone access)
+npm run app:dev    # same, but inside the desktop app window with hot reload
 ```
 
 On first launch, choose **Explore with the demo room** to try everything with the built-in virtual loudspeaker and room. Nothing is played through your speakers. To measure a real system, choose **Measure a real system** and follow the wizard.

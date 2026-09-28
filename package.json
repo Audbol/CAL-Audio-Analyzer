@@ -11,12 +11,85 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "vite build && node tests/e2e/smoke.mjs",
-    "check": "tsc --noEmit && vitest run"
+    "check": "tsc --noEmit && vitest run",
+    "app": "vite build && electron .",
+    "app:dev": "node electron/dev.mjs",
+    "dist": "vite build && electron-builder",
+    "dist:win": "vite build && electron-builder --win",
+    "dist:mac": "vite build && electron-builder --mac",
+    "dist:linux": "vite build && electron-builder --linux",
+    "test:electron": "vite build && xvfb-run -a node tests/e2e/electron.mjs"
   },
   "devDependencies": {
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
     "playwright": "1.56",
     "typescript": "^5.9.3",
     "vite": "^8.3.1",
     "vitest": "^5.0.2"
+  },
+  "main": "electron/main.cjs",
+  "productName": "CAL Audio Analyzer",
+  "author": "CAL Audio Analyzer contributors",
+  "build": {
+    "appId": "com.cal.audioanalyzer",
+    "productName": "CAL Audio Analyzer",
+    "artifactName": "CAL-Audio-Analyzer-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/main.cjs",
+      "build/icon.png",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "portable": {
+      "artifactName": "CAL-Audio-Analyzer-${version}-portable.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "CAL Audio Analyzer"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.music",
+      "icon": "build/icon.png",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "CAL Audio Analyzer uses audio inputs to measure sound systems and rooms."
+      }
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Audio",
+      "icon": "build/icon.png"
+    }
   }
 }
