@@ -21,6 +21,7 @@ On first launch, choose **Explore with the demo room** to try every feature with
 
 ## What's new in 1.8
 
+- **ASIO (Windows):** choose *ASIO: <your interface>* as the input source to use the interface's ASIO driver directly: every input and output channel, the driver's low latency, no system mixer or resampling. Set the sample rate, buffer size and safety margin, and open the driver's control panel, in *Tools → Audio interface (ASIO)*. The generator signal that was actually played is recorded in the same driver callback as the inputs, so the internal reference stays sample-aligned with your microphones.
 - **Smoother average curve:** the Spectrum's average line is now smoothed with a natural, bell-shaped window (1/6 octave by default; 1/12, 1/3, 1/1 or unsmoothed under *Average*), and it is drawn as a smooth curve over bars too.
 - **Several mics at once:** *Mic average* on the Spectrum and Transfer tabs shows the live power average of all measurement mics, with the spread between them as a band, or the average alone.
 - **Noise log (SPL tab):** log Leq and Lmax every 1 s to 15 min with the third-octave spectrum, for hours. Set a level limit on the rolling Leq (e.g. 100 dB LAeq,15min); the level readout turns amber near it and red above it, with a warning. Export CSV; included in sessions and reports.

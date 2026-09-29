@@ -10,6 +10,8 @@ export interface DesktopBridge {
     info(): Promise<unknown>;
   };
   window?: { pin(name: string, on: boolean): Promise<boolean> };
+  /** Native audio (ASIO), desktop app on Windows. */
+  nativeAudio?: { available(): Promise<boolean>; connect(): void };
 }
 
 /** Injected into index.html by the hub when the page is served by it. */

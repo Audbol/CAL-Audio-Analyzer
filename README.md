@@ -32,6 +32,7 @@ A professional, real-time **sound system and room acoustics analyzer** that runs
 | **Waterfall** | Cumulative spectral decay from the sweep in 3-D: room modes (15–500 Hz over 400 ms) or full range (100 Hz–20 kHz over 20 ms). Ridges that reach far back are resonances that keep ringing. |
 | **Noise log** | Log Leq and Lmax per interval (1 s to 15 min) with the third-octave spectrum, for hours. Set a limit on the rolling Leq (e.g. 100 dB LAeq over 15 minutes): the level readout turns amber near it and red above it, with a warning. Export as CSV; the log is kept in sessions and reports. |
 | **Trace notes & photos** | Add a note and a photo of the mic position to any trace (a phone or tablet opens its camera). They are kept in sessions and shown in reports. |
+| **ASIO** | Windows desktop app: open any ASIO driver directly, with all channels, a chosen sample rate and buffer size, and the generator reference recorded sample-aligned with the inputs. |
 | **Workspaces** | One click sets up the app for a job: *Live mix*, *System tuning*, *Sub alignment*, *Voice system*, *Room survey* or *Noise monitoring* (tab, analysis and display settings, target). Save your own setups, including panel layouts. |
 | **Sessions & reports** | Save a whole job (traces, sweep, EQ, alignment, calibration, measurement setup, name, venue and notes) as one `.calsession.json` file and open it again later or on another computer. **Create report** builds a printable report (print or save as PDF, or download as HTML) with the setup, spectrum and transfer function against the target with deviation figures, sweep and RT60 table, EQ filters, alignment and notes. |
 | **SPL meter** | IEC 61672 A/C/Z weighting, Fast/Slow, Leq, Lmax, peak and a 2-minute history. Calibrates with a 94/114 dB calibrator or a reference meter. |
@@ -74,6 +75,14 @@ npm run dist:win     # Windows installer + portable exe → release/
 npm run dist:mac     # macOS dmg
 npm run dist:linux   # Linux AppImage
 ```
+
+### ASIO (Windows)
+
+The Windows desktop app talks to audio interfaces through their **ASIO** driver: pick *ASIO: <your interface>* as the input source (top left). You get every input and output channel of the interface at the driver's latency, without the operating system's mixer, sample-rate conversion or channel limits. Set the sample rate, the driver buffer size and a safety margin in **Tools → Audio interface (ASIO)**, where *Driver control panel* opens the driver's own settings.
+
+The generator's signal is written straight to the driver, and the exact signal that was played (silence included, if the computer ever falls behind) is recorded next to the inputs in the same driver callback. The internal reference therefore stays sample-aligned with the microphones, and delay, phase and coherence are as accurate as with a hardware loopback. A small native module (RtAudio) does the audio I/O in a separate process, so the interface keeps running smoothly while the graphs draw.
+
+To build the ASIO module yourself on Windows (Visual Studio Build Tools and Python needed): `npm run build:native`, then `npm run dist:win`. The ASIO SDK files are included from RtAudio; ASIO is a trademark of Steinberg Media Technologies GmbH.
 
 The desktop app is Electron wrapping the same code as the web version. It serves the app from a secure `app://` origin, grants microphone access only to itself, and keeps measuring at full rate when its window is in the background. Settings and traces are stored in the app's own profile.
 
@@ -169,6 +178,7 @@ Audio is captured in an AudioWorklet and written into per-channel ring buffers t
 ```bash
 npm run check      # TypeScript + DSP unit tests (FFT, weighting, SPL, RTA, TF, delay, sweep, THD, RT60, EQ…)
 npm run test:e2e   # builds, then drives the app in headless Chromium (demo room + fake mic) and verifies results
+npm run build:native && npm run test:native   # native audio module + desktop app on the virtual loopback interface
 ```
 
 The end-to-end test checks that the delay finder recovers the virtual room's 12.5 ms propagation delay, that coherence is high after alignment, that the 47 Hz room mode appears in the transfer function, that the sweep's reverberation time is plausible, and that the hardware input path works.

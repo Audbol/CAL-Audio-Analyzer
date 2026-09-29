@@ -96,6 +96,8 @@ export interface Settings {
   /** Workspaces saved by the user (built-in ones live in workspaces.ts), and the last one chosen. */
   workspaces: Workspace[];
   workspace: string;
+  /** Desktop app, native audio (ASIO): stream settings. The device is chosen as the input source. */
+  nativeAudio: { sampleRate: number; bufferFrames: number; safetyMs: number };
   /** Target curve on the Spectrum and Transfer views: 'off', a built-in target id or `trace:<id>`. */
   targetCurve: string;
   /** ± tolerance band around the target (dB, 0 = none). */
@@ -145,6 +147,7 @@ export function defaultSettings(): Settings {
     micAverage: 'off',
     workspaces: [],
     workspace: '',
+    nativeAudio: { sampleRate: 48000, bufferFrames: 0, safetyMs: 40 },
     targetCurve: 'off',
     targetTolerance: 3,
     session: { name: '', venue: '', notes: '' },
@@ -172,7 +175,7 @@ export function loadSettings(): Settings {
       const i = LEGACY_PALETTE.indexOf(m.color);
       if (i >= 0) m.color = PALETTE[i];
     }
-    return { ...d, ...s, generator: { ...d.generator, ...(s.generator ?? {}) }, remoteServer: { ...d.remoteServer, ...(s.remoteServer ?? {}) }, playlist: { ...d.playlist, ...(s.playlist ?? {}) }, session: { ...d.session, ...(s.session ?? {}) } } as Settings;
+    return { ...d, ...s, generator: { ...d.generator, ...(s.generator ?? {}) }, remoteServer: { ...d.remoteServer, ...(s.remoteServer ?? {}) }, playlist: { ...d.playlist, ...(s.playlist ?? {}) }, session: { ...d.session, ...(s.session ?? {}) }, nativeAudio: { ...d.nativeAudio, ...(s.nativeAudio ?? {}) } } as Settings;
   } catch {
     return d;
   }

@@ -25,6 +25,8 @@ import { Playlist, RemotePlaylist, type PlaylistApi } from './audio/playlist';
 import { MusicControls, showPlaylist } from './ui/music';
 import { showTraceNotes } from './ui/trace-notes';
 import { SplLogger, LOG_BANDS } from './logger';
+import { NativeAudio } from './native/client';
+import type { NativeDevice, NativeOpenOptions } from './native/protocol';
 import { BUILTIN_WORKSPACES, allWorkspaces, applyWorkspace, captureWorkspace, type Workspace } from './workspaces';
 import { RemoteEngine } from './remote/client';
 import { HostLink, desktopBridge, hubPageInfo } from './remote/host';
@@ -306,7 +308,8 @@ export class App {
     this.startBtn.disabled = true;
     const modeChanged = !this.remote && this.lastMode !== null && this.lastMode !== this.settings.simulate;
     try {
-      await this.engine.start({ simulate: this.settings.simulate, deviceId: this.settings.deviceId || undefined });
+      const native = !this.remote && !this.settings.simulate ? await this.nativeOptions() : null;
+      await this.engine.start({ simulate: this.settings.simulate, deviceId: this.settings.deviceId || undefined, native: native ?? undefined });
       this.lastMode = this.settings.simulate;
       if (this.remote) {
         const st = (this.engine as RemoteEngine).status;
@@ -366,6 +369,30 @@ export class App {
   async stop(): Promise<void> {
     await this.engine.stop();
     this.renderTopState();
+  }
+
+  /** Native devices per API, as last listed (drivers can't be listed while one is open). */
+  nativeDevices = new Map<string, NativeDevice[]>();
+
+  /** The selected input source as a native device: `native:<api>:<device name>`. */
+  nativeSelection(): { api: string; name: string } | null {
+    const m = /^native:([^:]+):(.*)$/.exec(this.settings.deviceId);
+    return m ? { api: m[1], name: m[2] } : null;
+  }
+
+  /** Stream options for the selected native device, or null for the browser's audio. */
+  private async nativeOptions(): Promise<NativeOpenOptions | null> {
+    const sel = this.nativeSelection();
+    if (!sel) return null;
+    // A driver can only be listed while no native stream is open
+    if (this.engine.nativeInfo) await this.engine.stop();
+    const list = await this.engine.native.devices(sel.api);
+    this.nativeDevices.set(sel.api, list);
+    const dev = list.find((d) => d.name === sel.name);
+    if (!dev) throw new Error(`The audio interface “${sel.name}” was not found. Is it connected, and is its driver installed?`);
+    const na = this.settings.nativeAudio;
+    const rate = !dev.sampleRates.length || dev.sampleRates.includes(na.sampleRate) ? na.sampleRate : dev.preferredRate || dev.sampleRates[0];
+    return { api: sel.api, device: dev.id, sampleRate: rate, bufferFrames: na.bufferFrames, inputs: 0, outputs: 0, safetyMs: na.safetyMs };
   }
 
   async toggleEngine(): Promise<void> {
@@ -824,6 +851,12 @@ export class App {
     });
     this.genControls = h('div', { class: 'gen-controls' });
     this.splMini = h('div', { class: 'spl-mini', title: 'Sound level (click for SPL meter)', onclick: () => this.setView('spl') });
+    // Native audio (ASIO): a lost stream (driver removed, host ended) and status for the Tools card
+    this.engine.onNativeLost = (reason) => {
+      this.toast(`The audio interface stopped: ${reason}`, 'warn');
+      this.renderTopState();
+    };
+    if (!this.remote) this.engine.native.onStatus = () => (this.views.find((v) => v.id === 'tools') as ToolsView | undefined)?.nativeCard.update();
     // Noise-log limit: colour the level readout and warn when the rolling Leq nears or passes the limit
     this.logger.onState = (st, lvl) => {
       this.splMini.classList.toggle('log-near', st === 'near');
@@ -1034,6 +1067,24 @@ export class App {
     devices
       .filter((d) => d.deviceId && d.deviceId !== 'default')
       .forEach((d, i) => this.sourceSel.append(h('option', { value: d.deviceId }, d.label || `Input device ${i + 1}`)));
+    // Desktop app: native (ASIO) devices
+    if (await NativeAudio.available()) {
+      const apis = await this.engine.native.listApis().catch(() => [] as string[]);
+      for (const api of apis) {
+        let list = this.nativeDevices.get(api) ?? [];
+        if (!this.engine.nativeInfo) {
+          list = await this.engine.native.devices(api).catch(() => list);
+          this.nativeDevices.set(api, list);
+        }
+        const g = h('optgroup', { label: api === 'asio' ? 'ASIO (low latency, all channels)' : 'Virtual test interface' });
+        for (const d of list) g.append(h('option', { value: `native:${api}:${d.name}` }, `${api === 'asio' ? 'ASIO: ' : ''}${d.name} · ${d.inputs} in / ${d.outputs} out`));
+        if (!list.length) g.append(h('option', { value: '', disabled: true }, api === 'asio' ? 'No ASIO driver installed' : 'No devices'));
+        this.sourceSel.append(g);
+      }
+      // Keep a selected native device listed even if it is missing right now
+      const sel = this.nativeSelection();
+      if (sel && ![...this.sourceSel.options].some((o) => o.value === cur)) this.sourceSel.append(h('option', { value: cur }, `${sel.name} (not found)`));
+    }
     this.sourceSel.value = cur;
     if (this.sourceSel.value !== cur) this.sourceSel.value = '__default';
   }

@@ -7,6 +7,7 @@ import { speedOfSound } from '../dsp/delay';
 import { parseMicCal } from '../dsp/calibration';
 import { weightingDb } from '../dsp/weighting';
 import { RemoteCard } from './remote-card';
+import { NativeCard } from './native-card';
 import { modal } from '../ui/dialogs';
 import { applySession, buildSession, downloadText, parseSession, sessionFileName, type SessionFile } from '../session';
 import { openReport } from '../report';
@@ -25,9 +26,12 @@ export class ToolsView implements View {
   private delayOut = h('div', { class: 'calc-out' });
   private dirty = true;
   private remoteCard: RemoteCard;
+  readonly nativeCard: NativeCard;
+  private nativeTick = 0;
 
   constructor(private app: App) {
     this.remoteCard = new RemoteCard(app);
+    this.nativeCard = new NativeCard(app);
     this.modesPlot = new Plot({ xType: 'log', xMin: 15, xMax: 400, yMin: 0, yMax: 3.4, yUnit: '', title: 'Room modes (axial ▮ tangential ▮ oblique ▮)', yLimits: [0, 4] });
     this.build();
   }
@@ -262,7 +266,7 @@ export class ToolsView implements View {
         ? h('p', { class: 'dim small' }, 'On the host: the measurement computer runs the FFTs and sends finished spectra, so every device shows the same result and slow devices only draw. Averaging and FFT size then follow the host. On this device: the full analysis runs here with its own averaging.')
         : null,
     );
-    this.el.append(h('div', { class: 'tool-grid' }, this.sessionCard(), this.remoteCard.el, perfCard, calCard, micCard, delayCard, wCard, modesCard, dataCard));
+    this.el.append(h('div', { class: 'tool-grid' }, this.sessionCard(), this.nativeCard.el, this.remoteCard.el, perfCard, calCard, micCard, delayCard, wCard, modesCard, dataCard));
     this.renderStatus();
   }
 
@@ -302,6 +306,7 @@ export class ToolsView implements View {
   }
 
   tick(): void {
+    if ((this.nativeTick = (this.nativeTick + 1) % 15) === 0) this.nativeCard.update();
     if (!this.dirty) return;
     this.dirty = false;
     this.remoteCard.render();

@@ -1,7 +1,8 @@
 // Electron main process: runs CAL Audio Analyzer as a standalone desktop application.
 'use strict';
 
-const { app, BrowserWindow, Menu, protocol, session, shell, net, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, protocol, session, shell, net, ipcMain, utilityProcess, MessageChannelMain } = require('electron');
+const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { createHub } = require('./hub.cjs');
@@ -72,6 +73,57 @@ function registerServerIpc() {
   ipcMain.handle('server:info', (e) => {
     if (!fromApp(e)) throw new Error('Not allowed');
     return hub ? hub.info() : { running: false };
+  });
+}
+
+// Native audio (ASIO on Windows): a utility process runs the native module and the signal generator, and talks
+// to the app page directly over a MessagePort. CAL_NATIVE_TEST=1 enables a virtual test device on any system.
+let audioHost = null;
+
+function nativeAddonPath() {
+  const rel = path.join('native', 'build', 'Release', 'cal_audio.node');
+  const candidates = app.isPackaged
+    ? [path.join(process.resourcesPath, 'app.asar.unpacked', rel), path.join(process.resourcesPath, rel)]
+    : [path.join(__dirname, '..', rel)];
+  return candidates.find((p) => fs.existsSync(p)) || null;
+}
+
+function nativeAudioAvailable() {
+  return (process.platform === 'win32' || process.env.CAL_NATIVE_TEST === '1') && !!nativeAddonPath();
+}
+
+function startAudioHost() {
+  if (audioHost) return audioHost;
+  const addon = nativeAddonPath();
+  // Run the host from outside the app archive when packaged (see asarUnpack in package.json)
+  const script = path.join(__dirname, '..', 'dist-electron', 'native-host.cjs').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+  audioHost = utilityProcess.fork(script, [], {
+    serviceName: 'CAL audio host',
+    env: { ...process.env, CAL_NATIVE_ADDON: addon || '' },
+    stdio: 'inherit',
+  });
+  audioHost.on('exit', (code) => {
+    console.log(`[audio] host exited (${code})`);
+    audioHost = null;
+    // Tell the page, which falls back to its own audio and can reconnect
+    if (win && !win.isDestroyed()) win.webContents.send('native-audio:exit', code);
+  });
+  return audioHost;
+}
+
+function registerNativeAudioIpc() {
+  const fromApp = (e) => win && e.sender === win.webContents;
+  ipcMain.handle('native-audio:available', (e) => {
+    if (!fromApp(e)) throw new Error('Not allowed');
+    return nativeAudioAvailable();
+  });
+  // Connect the page to the audio host: each side gets one end of a new channel
+  ipcMain.on('native-audio:connect', (e) => {
+    if (!fromApp(e) || !nativeAudioAvailable()) return;
+    const host = startAudioHost();
+    const { port1, port2 } = new MessageChannelMain();
+    host.postMessage({ type: 'connect' }, [port2]);
+    e.sender.postMessage('native-audio:port', null, [port1]);
   });
 }
 
@@ -190,6 +242,7 @@ app.whenReady().then(() => {
 
   serveDist();
   registerServerIpc();
+  registerNativeAudioIpc();
   buildMenu();
   createWindow();
 
@@ -200,6 +253,7 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   if (hub) hub.stop();
+  if (audioHost) audioHost.kill();
 });
 
 app.on('window-all-closed', () => {

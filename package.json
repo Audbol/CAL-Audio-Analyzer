@@ -6,27 +6,32 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && vite build -c vite.native.config.ts",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "vite build && node tests/e2e/smoke.mjs && node tests/e2e/dock.mjs && node tests/e2e/remote.mjs && node tests/e2e/mobile.mjs && node tests/e2e/music.mjs && node tests/e2e/features.mjs && node tests/e2e/features2.mjs && node tests/e2e/hub-security.mjs",
     "check": "tsc --noEmit && vitest run",
-    "app": "vite build && electron .",
+    "app": "vite build && vite build -c vite.native.config.ts && electron .",
     "app:dev": "node electron/dev.mjs",
-    "dist": "vite build && electron-builder",
-    "dist:win": "vite build && electron-builder --win",
-    "dist:mac": "vite build && electron-builder --mac",
-    "dist:linux": "vite build && electron-builder --linux",
-    "test:electron": "vite build && xvfb-run -a node tests/e2e/electron.mjs",
+    "dist": "vite build && vite build -c vite.native.config.ts && electron-builder",
+    "dist:win": "vite build && vite build -c vite.native.config.ts && electron-builder --win",
+    "dist:mac": "vite build && vite build -c vite.native.config.ts && electron-builder --mac",
+    "dist:linux": "vite build && vite build -c vite.native.config.ts && electron-builder --linux",
+    "test:electron": "vite build && vite build -c vite.native.config.ts && xvfb-run -a node tests/e2e/electron.mjs",
     "serve": "node server/cli.mjs",
     "bench:remote": "vite build && node tests/e2e/perf.mjs",
-    "test:stress": "vite build && node tests/e2e/stress.mjs"
+    "test:stress": "vite build && node tests/e2e/stress.mjs",
+    "build:host": "vite build -c vite.native.config.ts",
+    "build:native": "node-gyp rebuild --directory native",
+    "test:native": "vite build && vite build -c vite.native.config.ts && vitest run tests/native.test.ts && xvfb-run -a node tests/e2e/electron-native.mjs"
   },
   "devDependencies": {
     "@types/qrcode": "^1.5.6",
     "electron": "^44.4.5",
     "electron-builder": "^26.15.3",
+    "node-addon-api": "^8.9.2",
+    "node-gyp": "^11.5.0",
     "playwright": "1.56",
     "qrcode": "^1.5.4",
     "typescript": "^5.9.3",
@@ -50,7 +55,9 @@
       "electron/preload.cjs",
       "electron/hub.cjs",
       "build/icon.png",
-      "package.json"
+      "package.json",
+      "dist-electron/**/*",
+      "native/build/Release/cal_audio.node"
     ],
     "asar": true,
     "win": {
@@ -109,7 +116,11 @@
       ],
       "category": "Audio",
       "icon": "build/icon.png"
-    }
+    },
+    "asarUnpack": [
+      "native/build/Release/*.node",
+      "dist-electron/**/*"
+    ]
   },
   "dependencies": {
     "ws": "^8.22.0"

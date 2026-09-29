@@ -4,3 +4,5 @@ dist/
 .DS_Store
 test-results/
 release/
+dist-electron/
+native/build/

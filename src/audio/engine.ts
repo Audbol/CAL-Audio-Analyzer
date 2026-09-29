@@ -1,11 +1,15 @@
 import processorUrl from './processor.ts?worker&url';
 import { RingBuffer } from '../dsp/ring';
 import type { GeneratorConfig, ProcessorEvent, ProcessorMessage } from './protocol';
+import { NativeAudio } from '../native/client';
+import type { NativeOpenOptions, NativeStreamInfo } from '../native/protocol';
 
 export interface EngineOptions {
   deviceId?: string;
   simulate: boolean;
   sampleRate?: number;
+  /** Desktop app: open a native (ASIO) device instead of the browser's audio. */
+  native?: NativeOpenOptions;
 }
 
 export interface ChannelLevel {
@@ -37,9 +41,29 @@ export class AudioEngine {
   protected listeners = new Set<(blocks: Float32Array[], gen: Float32Array) => void>();
   protected playWaiters = new Map<number, { start?: number; resolve: (r: { start: number; end: number }) => void }>();
   protected playId = 1;
+  /** Native audio (desktop app, ASIO): the connection to the audio host and the open stream. */
+  nativeLink: NativeAudio | null = null;
+  nativeInfo: NativeStreamInfo | null = null;
+  /** Called when a native stream is lost (driver removed, host process ended). */
+  onNativeLost?: (reason: string) => void;
 
   get running(): boolean {
+    if (this.nativeInfo) return true;
     return !!this.ctx && this.ctx.state === 'running';
+  }
+
+  get native(): NativeAudio {
+    if (!this.nativeLink) {
+      const link = new NativeAudio();
+      link.onEvent = (ev) => this.nativeInfo && this.onEvent(ev);
+      link.onLost = (reason) => {
+        if (!this.nativeInfo) return;
+        this.nativeInfo = null;
+        this.onNativeLost?.(reason);
+      };
+      this.nativeLink = link;
+    }
+    return this.nativeLink;
   }
 
   /** True for a remote client that analyses audio streamed from a measurement host. */
@@ -49,11 +73,11 @@ export class AudioEngine {
 
   /** Whether capture is active (audio keeps arriving). */
   protected get active(): boolean {
-    return !!this.ctx;
+    return !!this.ctx || !!this.nativeInfo;
   }
 
   get sampleRate(): number {
-    return this.ctx?.sampleRate ?? 48000;
+    return this.nativeInfo?.sampleRate ?? this.ctx?.sampleRate ?? 48000;
   }
 
   get channelCount(): number {
@@ -78,6 +102,7 @@ export class AudioEngine {
 
   async start(opts: EngineOptions): Promise<void> {
     await this.stop();
+    if (opts.native) return this.startNative(opts.native);
     this.simulate = opts.simulate;
     this.musicPos = null; // a new worklet starts without a song
     const ctx = new AudioContext({ latencyHint: 'interactive', sampleRate: opts.sampleRate });
@@ -129,7 +154,20 @@ export class AudioEngine {
     if (ctx.state !== 'running') await ctx.resume();
   }
 
+  /** Open a native (ASIO) device through the desktop app's audio host. */
+  private async startNative(opts: NativeOpenOptions): Promise<void> {
+    this.simulate = false;
+    this.musicPos = null;
+    const info = await this.native.open(opts);
+    this.inputs = Array.from({ length: info.inputs }, () => new RingBuffer(RING_SIZE));
+    this.levels = Array.from({ length: info.inputs }, () => ({ peak: 0, rms: 0, clipped: false }));
+    this.gen.clear();
+    this.deviceLabel = opts.api === 'asio' ? `ASIO: ${info.name}` : info.name;
+    this.nativeInfo = info;
+  }
+
   get outputChannels(): number {
+    if (this.nativeInfo) return this.nativeInfo.outputs;
     return this.ctx?.destination.channelCount ?? 2;
   }
 
@@ -187,6 +225,7 @@ export class AudioEngine {
   /** Load a decoded, level-normalised mono track into the music generator (the buffer is transferred). */
   loadMusic(id: number, data: Float32Array | null, pos = 0): void {
     this.musicPos = data ? { id, pos } : null;
+    if (this.nativeInfo) return this.nativeLink?.send({ type: 'music', id, data, pos });
     this.node?.port.postMessage({ type: 'music', id, data, pos } satisfies ProcessorMessage, data ? [data.buffer] : []);
   }
 
@@ -226,11 +265,16 @@ export class AudioEngine {
   }
 
   private post(m: ProcessorMessage): void {
-    this.node?.port.postMessage(m);
+    if (this.nativeInfo) this.nativeLink?.send(m);
+    else this.node?.port.postMessage(m);
   }
 
   async stop(): Promise<void> {
     this.stopPlayback();
+    if (this.nativeInfo) {
+      this.nativeInfo = null;
+      await this.nativeLink?.close();
+    }
     this.source?.disconnect();
     this.node?.disconnect();
     this.stream?.getTracks().forEach((t) => t.stop());
