@@ -6,6 +6,7 @@ import { SMOOTHING_OPTIONS, type Smoothing } from '../dsp/freq';
 import { AVG_OPTIONS, cohAlpha } from './meters';
 import { DockedView } from './docked';
 import { TargetOverlay } from './target-overlay';
+import { micAverageControl, micAverageSeries } from './mic-average-overlay';
 
 export function defaultTransferLayout(): DockLayout {
   return {
@@ -64,6 +65,7 @@ export class TransferView extends DockedView implements View {
       h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Smoothing'), select(SMOOTHING_OPTIONS.filter((o) => o.value !== 0), s.tfSmoothing, (v: Smoothing) => { s.tfSmoothing = v; app.save(); }), h('span', { class: 'tb-label' }, 'Avg'), select(AVG_OPTIONS, s.tfAveraging, (v) => { s.tfAveraging = v; app.applyAnalysisSettings(); }, { dataset: { setting: 'tfAveraging' } })),
       h('div', { class: 'tb-group' }, h('span', { class: 'tb-label', title: 'Fade data with coherence below this value' }, 'Blank <'), cohSlider, cohVal),
       this.target.controls(),
+      h('div', { class: 'tb-group' }, micAverageControl(app)),
       h('div', { class: 'spacer' }),
       ...this.layoutButtons(),
     );
@@ -89,7 +91,7 @@ export class TransferView extends DockedView implements View {
     const app = this.app;
     const s = app.settings;
     // Redraw only when what is shown changed
-    const key = `${app.traces.version}|${s.targetCurve}|${s.targetTolerance}|${s.coherenceThreshold}|${s.showCoherence}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.tfReady}:${m.tfShown}`).join(',')}`;
+    const key = `${app.traces.version}|${s.targetCurve}|${s.targetTolerance}|${s.micAverage}|${s.coherenceThreshold}|${s.showCoherence}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.tfReady}:${m.tfShown}`).join(',')}`;
     if (key === this.lastKey) return this.tickMeters();
     this.lastKey = key;
     const g = app.grid;
@@ -100,14 +102,17 @@ export class TransferView extends DockedView implements View {
       magS.push({ id: t.id, label: t.name, x: t.freqs, y: t.offset ? t.mag.map((v) => v + t.offset) : t.mag, color: t.color, width: 1.3, dash: [5, 3] });
       if (t.phase) phS.push({ id: t.id, label: t.name, x: t.freqs, y: t.phase, color: t.color, width: 1.1, dash: [5, 3], wrap: 180 });
     }
-    for (const m of app.measurements) {
-      if (!m.cfg.enabled || !m.tfReady) continue;
+    const live = app.measurements.filter((m) => m.cfg.enabled && m.tfReady);
+    const only = s.micAverage === 'only' && live.length > 1;
+    for (const m of only ? [] : live) {
       const c = m.cfg.color;
       const a = this.alpha(m.cfg.id, m.result.coh);
       magS.push({ id: m.cfg.id, label: m.cfg.name, x: g, y: m.mag, color: c, width: 2, alpha: a });
       if (s.showCoherence) magS.push({ id: `${m.cfg.id}-coh`, label: `${m.cfg.name} coh`, x: g, y: m.result.coh, color: `${c}66`, width: 1, secondary: true, unit: '%' });
       phS.push({ id: m.cfg.id, label: m.cfg.name, x: g, y: m.phase, color: c, width: 1.6, alpha: a, wrap: 180 });
     }
+    // Several mics: their coherence-weighted power average and spread
+    magS.push(...micAverageSeries(app, g, live.map((m) => m.mag), live.map((m) => m.result.coh)));
     // Target curve, levelled (coherence-weighted) to the first shown transfer function
     const ref = app.measurements.find((m) => m.cfg.enabled && m.tfReady);
     magS.unshift(...this.target.series(g, ref ? ref.mag : null, ref ? ref.result.coh : null));

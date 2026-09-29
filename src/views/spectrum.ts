@@ -6,6 +6,7 @@ import { octaveBandCentres, sampleLogGrid, type Smoothing } from '../dsp/freq';
 import { AVG_OPTIONS } from './meters';
 import { DockedView } from './docked';
 import { TargetOverlay } from './target-overlay';
+import { micAverageControl, micAverageSeries } from './mic-average-overlay';
 
 export function defaultSpectrumLayout(): DockLayout {
   return {
@@ -130,9 +131,25 @@ export class SpectrumView extends DockedView implements View {
           },
           { title: 'Average curve over the live RTA, for tuning', dataset: { setting: 'rtaAverageCurve' } },
         ),
+        select(
+          [
+            { value: 0, label: 'Unsmoothed' },
+            { value: 12, label: 'Smooth 1/12' },
+            { value: 6, label: 'Smooth 1/6' },
+            { value: 3, label: 'Smooth 1/3' },
+            { value: 1, label: 'Smooth 1/1' },
+          ],
+          s.rtaAverageSmoothing,
+          (v) => {
+            s.rtaAverageSmoothing = v;
+            app.save();
+          },
+          { title: 'Smoothing of the average curve (octave fraction)', dataset: { setting: 'rtaAverageSmoothing' } },
+        ),
         h('button', { class: 'btn small', title: 'Start the average curve again (R restarts it together with all averaging)', onclick: () => app.measurements.forEach((m) => m.resetAverage()) }, icon('reset', 14), 'Restart'),
       ),
       this.target.controls(),
+      h('div', { class: 'tb-group' }, micAverageControl(app)),
       h('div', { class: 'spacer' }),
       ...this.layoutButtons(),
     );
@@ -144,7 +161,7 @@ export class SpectrumView extends DockedView implements View {
     const s = app.settings;
     if (this.visible('rta')) {
       // Redraw only when what is shown changed (new analysis data arrives ~6–12 times a second)
-      const key = `${app.traces.version}|${s.rtaStyle}|${s.rtaSmoothing}|${s.peakHold}|${s.rtaAverageCurve}|${s.targetCurve}|${s.targetTolerance}|${s.theme}|${s.splCalibrated}|${s.splOffset}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.rtaShown}`).join(',')}`;
+      const key = `${app.traces.version}|${s.rtaStyle}|${s.rtaSmoothing}|${s.peakHold}|${s.rtaAverageCurve}|${s.rtaAverageSmoothing}|${s.micAverage}|${s.targetCurve}|${s.targetTolerance}|${s.theme}|${s.splCalibrated}|${s.splOffset}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.rtaShown}`).join(',')}`;
       if (key === this.lastKey) return this.tickMeters();
       this.lastKey = key;
       const g = app.grid;
@@ -169,8 +186,9 @@ export class SpectrumView extends DockedView implements View {
       }
       // Band levels at the exact band centres (the RTA is already band power at this resolution)
       const atBands = (y: Float64Array) => this.bands.map((f) => sampleLogGrid(g, y, f) + cal);
+      const only = s.micAverage === 'only' && app.measurements.filter((m) => m.cfg.enabled).length > 1;
       for (const m of app.measurements) {
-        if (!m.cfg.enabled) continue;
+        if (!m.cfg.enabled || only) continue;
         if (bars) {
           series.push({ id: m.cfg.id, label: m.cfg.name, x: this.bands, y: atBands(m.rtaOut), color: m.cfg.color, bars });
           if (s.peakHold) series.push({ id: `${m.cfg.id}-pk`, label: `${m.cfg.name} peak`, x: this.bands, y: atBands(m.rtaPeakOut), color: m.cfg.color, bars, cap: true });
@@ -181,12 +199,13 @@ export class SpectrumView extends DockedView implements View {
       }
       // Average curves (for tuning) on top of everything: the long-term balance behind the live RTA
       const day = s.theme === 'day';
+      series.push(...micAverageSeries(app, g, app.measurements.filter((m) => m.cfg.enabled && m.rtaShown > 0).map((m) => shift(m.rtaOut))));
       for (const m of app.measurements) {
-        const avg = m.cfg.enabled ? m.averageDb() : null;
+        const avg = m.cfg.enabled && !only ? m.averageDb() : null;
         if (!avg) continue;
         const label = `${m.cfg.name} average${s.rtaAverageCurve > 0 ? ` (${s.rtaAverageCurve} s)` : ''}`;
-        if (bars) series.push({ id: `${m.cfg.id}-avg`, label, x: this.bands, y: atBands(avg), color: day ? '#111111' : '#ffffff', width: 2, halo: day ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)' });
-        else series.push({ id: `${m.cfg.id}-avg`, label, x: g, y: shift(avg), color: day ? '#111111' : '#ffffff', width: 2, halo: day ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)' });
+        // Drawn as a smooth curve on the fine grid in both display styles (over bars too)
+        series.push({ id: `${m.cfg.id}-avg`, label, x: g, y: shift(avg), color: day ? '#111111' : '#ffffff', width: 2, halo: day ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)' });
       }
       // Target curve, levelled to the first shown measurement (its average curve when there is one)
       const ref = app.measurements.find((m) => m.cfg.enabled && m.rtaShown > 0);

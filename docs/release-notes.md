@@ -19,6 +19,15 @@ The builds are not code-signed yet:
 
 On first launch, choose **Explore with the demo room** to try every feature without hardware.
 
+## What's new in 1.8
+
+- **Smoother average curve:** the Spectrum's average line is now smoothed with a natural, bell-shaped window (1/6 octave by default; 1/12, 1/3, 1/1 or unsmoothed under *Average*), and it is drawn as a smooth curve over bars too.
+- **Several mics at once:** *Mic average* on the Spectrum and Transfer tabs shows the live power average of all measurement mics, with the spread between them as a band, or the average alone.
+- **Noise log (SPL tab):** log Leq and Lmax every 1 s to 15 min with the third-octave spectrum, for hours. Set a level limit on the rolling Leq (e.g. 100 dB LAeq,15min); the level readout turns amber near it and red above it, with a warning. Export CSV; included in sessions and reports.
+- **Waterfall (Sweep & Room):** cumulative spectral decay in 3-D, for room modes or the full range, also in the report.
+- **Trace notes and photos:** attach a note and a photo of the mic position to any trace; shown in reports and kept in sessions.
+- **Workspaces:** ready-made setups for live mixing, system tuning, sub alignment, voice systems, room surveys and noise monitoring, plus your own saved workspaces (with panel layouts), from the picker at the right of the tabs.
+
 ## What's new in 1.7
 
 - **Target curves:** choose a target (Flat, House, Tilt, X-curve or any stored trace) on the Spectrum or Transfer tab. It is drawn as a dashed line with a ±1–6 dB tolerance band and levels itself to the measurement, so you can see at a glance where the system is outside the target.

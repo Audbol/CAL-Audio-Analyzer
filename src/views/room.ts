@@ -7,6 +7,8 @@ import { roomAcoustics, energyTimeCurve, schroederFrequency, type AcousticsResul
 import { LogSmoother, type Smoothing } from '../dsp/freq';
 import { nextPow2 } from '../dsp/fft';
 import type { SweepMeta } from '../remote/protocol';
+import { waterfall, WATERFALL_PRESETS, type WaterfallResult } from '../dsp/waterfall';
+import { WaterfallPlot } from '../ui/waterfall-plot';
 
 interface SweepResult {
   spec: SweepSpec;
@@ -45,7 +47,10 @@ export class RoomView implements View {
   private decay: Plot;
   private table = h('div', { class: 'rt-table' });
   private cards = h('div', { class: 'cards' });
-  private tab: 'fr' | 'ir' | 'rt' = 'fr';
+  private tab: 'fr' | 'ir' | 'rt' | 'wf' = 'fr';
+  private wf = new WaterfallPlot('Waterfall: cumulative spectral decay');
+  private wfOpts: { preset: 'bass' | 'full'; range: number } = { preset: 'bass', range: 45 };
+  private wfFor: { result: unknown; preset: string } | null = null;
   private tabHost = h('div', { class: 'subtabs' });
   private content = h('div', { class: 'room-content' });
   private selHost = h('span', {});
@@ -98,10 +103,11 @@ export class RoomView implements View {
 
   private renderTabs(): void {
     clear(this.tabHost);
-    const tabs: { id: 'fr' | 'ir' | 'rt'; label: string }[] = [
+    const tabs: { id: 'fr' | 'ir' | 'rt' | 'wf'; label: string }[] = [
       { id: 'fr', label: 'Frequency response' },
       { id: 'ir', label: 'Impulse / ETC' },
       { id: 'rt', label: 'Reverberation (RT60)' },
+      { id: 'wf', label: 'Waterfall' },
     ];
     for (const t of tabs) {
       this.tabHost.append(h('button', { class: `chip${this.tab === t.id ? ' on' : ''}`, onclick: () => { this.tab = t.id; this.renderTabs(); this.showTab(); } }, t.label));
@@ -112,7 +118,37 @@ export class RoomView implements View {
     clear(this.content);
     if (this.tab === 'fr') this.content.append(h('div', { class: 'pane fill' }, this.fr.el));
     else if (this.tab === 'ir') this.content.append(h('div', { class: 'pane fill' }, this.irPlot.el));
-    else this.content.append(h('div', { class: 'rt-split' }, h('div', { class: 'pane' }, this.decay.el), this.table));
+    else if (this.tab === 'wf') {
+      const o = this.wfOpts;
+      const bar = h(
+        'div',
+        { class: 'toolbar wf-bar' },
+        h(
+          'div',
+          { class: 'tb-group' },
+          h('span', { class: 'tb-label' }, 'Range'),
+          select(
+            [
+              { value: 'bass' as const, label: 'Room modes (15–500 Hz, 400 ms)' },
+              { value: 'full' as const, label: 'Full range (100 Hz–20 kHz, 20 ms)' },
+            ],
+            o.preset,
+            (v) => {
+              o.preset = v;
+              this.dirty = true;
+            },
+            { dataset: { waterfall: 'preset' } },
+          ),
+          h('span', { class: 'tb-label' }, 'Depth'),
+          select([30, 45, 60].map((v) => ({ value: v, label: `${v} dB` })), o.range, (v) => {
+            o.range = v;
+            this.dirty = true;
+          }),
+        ),
+        h('span', { class: 'dim small' }, 'Ridges that reach far back are resonances that keep ringing: room modes in the bass, or cabinet and horn resonances higher up.'),
+      );
+      this.content.append(bar, h('div', { class: 'pane fill' }, this.wf.el));
+    } else this.content.append(h('div', { class: 'rt-split' }, h('div', { class: 'pane' }, this.decay.el), this.table));
     this.dirty = true;
   }
 
@@ -199,6 +235,18 @@ export class RoomView implements View {
     this.setProgress(1, `Loaded from the session · measured ${this.result!.when.toLocaleString()} · peak-to-noise ${this.result!.peakDb.toFixed(0)} dB`, false);
     this.app.shareSweep(state.meta, state.ir);
   }
+
+  /** Waterfall of the current sweep (computed once per sweep and range), or null. */
+  waterfallData(preset: 'bass' | 'full'): WaterfallResult | null {
+    const r = this.result;
+    if (!r) return null;
+    if (this.wfFor?.result !== r || this.wfFor.preset !== preset || !this.wfCache) {
+      this.wfCache = waterfall(r.ir, r.d.fs, r.t0, WATERFALL_PRESETS[preset]);
+      this.wfFor = { result: r, preset };
+    }
+    return this.wfCache;
+  }
+  private wfCache: WaterfallResult | null = null;
 
   /** Report data: the displayed (level-normalised) frequency response, the result cards and the RT table. */
   reportData(): { fr: Float64Array; cards: { label: string; value: string; sub: string }[]; tableHtml: string; when: Date; spec: SweepSpec; window: number; smoothing: number } | null {
@@ -472,6 +520,11 @@ export class RoomView implements View {
     this.fr.draw();
     this.irPlot.draw();
     this.decay.draw();
+    if (this.tab === 'wf') {
+      this.wf.data = this.waterfallData(this.wfOpts.preset);
+      this.wf.range = this.wfOpts.range;
+      this.wf.draw();
+    }
     if (!this.result) {
       this.table.innerHTML = `<div class="empty big">Run a sweep to see reverberation time, clarity and definition per ${this.opts.fraction === 1 ? 'octave' : 'third-octave'} band.</div>`;
     }

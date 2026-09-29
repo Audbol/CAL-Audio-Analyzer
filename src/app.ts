@@ -23,6 +23,9 @@ import { Dock } from './ui/dock';
 import { Plot } from './ui/plot';
 import { Playlist, RemotePlaylist, type PlaylistApi } from './audio/playlist';
 import { MusicControls, showPlaylist } from './ui/music';
+import { showTraceNotes } from './ui/trace-notes';
+import { SplLogger, LOG_BANDS } from './logger';
+import { BUILTIN_WORKSPACES, allWorkspaces, applyWorkspace, captureWorkspace, type Workspace } from './workspaces';
 import { RemoteEngine } from './remote/client';
 import { HostLink, desktopBridge, hubPageInfo } from './remote/host';
 import { sharedOf, type HostStatus, type RemoteCommand, type SharedSettings, type SweepMeta, type SweepRequest } from './remote/protocol';
@@ -103,6 +106,95 @@ export class App {
   busy = false;
   /** The last report created (tests and re-download). */
   lastReport: string | null = null;
+  private workspaceHost = h('div', { class: 'ws-ctl' });
+
+  /** Workspace picker at the end of the tab bar: built-in and saved workspaces, save and delete. */
+  renderWorkspaces(): void {
+    const s = this.settings;
+    const list = allWorkspaces(s);
+    const cur = list.find((w) => w.id === s.workspace);
+    const sel = h('select', { class: 'ws-select', title: 'Workspace: settings and tab for a kind of job', dataset: { workspace: '' } }) as HTMLSelectElement;
+    sel.append(h('option', { value: '' }, cur ? cur.name : 'Workspace…'));
+    const group = (label: string, items: Workspace[]) => {
+      if (!items.length) return;
+      const g = h('optgroup', { label });
+      for (const w of items) g.append(h('option', { value: w.id, title: w.description ?? '' }, w.name));
+      sel.append(g);
+    };
+    group('Ready-made', BUILTIN_WORKSPACES);
+    group('Saved', s.workspaces);
+    const act = h('optgroup', { label: 'Manage' });
+    act.append(h('option', { value: '__save' }, 'Save current as workspace…'));
+    if (cur && s.workspaces.includes(cur)) act.append(h('option', { value: '__update' }, `Update “${cur.name}” with the current setup`), h('option', { value: '__delete' }, `Delete “${cur.name}”`));
+    sel.append(act);
+    sel.value = '';
+    sel.addEventListener('change', () => {
+      const v = sel.value;
+      sel.value = '';
+      if (v === '__save') {
+        const name = prompt('Name for this workspace', cur && !BUILTIN_WORKSPACES.includes(cur) ? `${cur.name} 2` : 'My workspace')?.trim();
+        if (name) {
+          const ws = captureWorkspace(this, name);
+          s.workspaces.push(ws);
+          s.workspace = ws.id;
+          this.save();
+          this.toast(`Saved workspace “${name}”`, 'ok');
+        }
+      } else if (v === '__update' && cur) {
+        const i = s.workspaces.indexOf(cur);
+        s.workspaces[i] = { ...captureWorkspace(this, cur.name), id: cur.id };
+        this.save();
+        this.toast(`Updated workspace “${cur.name}”`, 'ok');
+      } else if (v === '__delete' && cur) {
+        if (!confirm(`Delete the workspace “${cur.name}”?`)) return this.renderWorkspaces();
+        s.workspaces = s.workspaces.filter((w) => w !== cur);
+        s.workspace = '';
+        this.save();
+      } else {
+        const ws = list.find((w) => w.id === v);
+        if (ws) {
+          applyWorkspace(this, ws);
+          this.toast(`Workspace: ${ws.name}`, 'ok');
+        }
+      }
+      this.renderWorkspaces();
+    });
+    this.workspaceHost.replaceChildren(icon('layout', 14), sel);
+  }
+
+  /** Continuous sound level log (SPL view). */
+  readonly logger = new SplLogger();
+  private logRtaShown = -1;
+  private logBandCache: number[] | null = null;
+
+  /**
+   * Third-octave band levels of the first shown measurement for the noise log (dB, calibrated), or null when
+   * the spectrum is narrow-band FFT. Recomputed only when the RTA changed.
+   */
+  private logBands(): number[] | null {
+    const s = this.settings;
+    const m = this.measurements.find((x) => x.cfg.enabled) ?? this.measurements[0];
+    if (!m || !s.rtaSmoothing || !m.rtaShown) return null;
+    if (m.rtaShown === this.logRtaShown && this.logBandCache) return this.logBandCache;
+    this.logRtaShown = m.rtaShown;
+    const g = this.grid;
+    const cal = s.splCalibrated ? s.splOffset : 0;
+    // The RTA holds band power at its own resolution: rescale to third-octave bandwidth
+    const scale = 10 * Math.log10(s.rtaSmoothing / 3);
+    const half = Math.pow(2, 1 / 6);
+    this.logBandCache = LOG_BANDS.map((fc) => {
+      let p = 0;
+      let n = 0;
+      for (let i = 0; i < g.length; i++) {
+        if (g[i] < fc / half) continue;
+        if (g[i] > fc * half) break;
+        p += Math.pow(10, m.rtaOut[i] / 10);
+        n++;
+      }
+      return n ? 10 * Math.log10(p / n) + scale + cal : -200;
+    });
+    return this.logBandCache;
+  }
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -374,6 +466,8 @@ export class App {
       n.tf ||= !!v.needs?.tf;
       n.tfLocal ||= !!v.needs?.tfLocal;
     }
+    // The noise log records the spectrum too
+    n.rta ||= this.logger.running;
     return n;
   }
 
@@ -730,6 +824,14 @@ export class App {
     });
     this.genControls = h('div', { class: 'gen-controls' });
     this.splMini = h('div', { class: 'spl-mini', title: 'Sound level (click for SPL meter)', onclick: () => this.setView('spl') });
+    // Noise-log limit: colour the level readout and warn when the rolling Leq nears or passes the limit
+    this.logger.onState = (st, lvl) => {
+      this.splMini.classList.toggle('log-near', st === 'near');
+      this.splMini.classList.toggle('log-over', st === 'over');
+      const w = `L${this.logger.weighting}eq,${this.logger.config.window}min`;
+      if (st === 'over') this.toast(`Level limit exceeded: ${w} ${lvl.toFixed(1)} dB (limit ${this.logger.config.limit} dB)`, 'warn');
+      else if (st === 'near') this.toast(`Approaching the level limit: ${w} ${lvl.toFixed(1)} dB`, 'info');
+    };
 
     // Controls that move into the "more" sheet on small screens
     this.sourceGroup = h('div', { class: 'group src-group' }, this.sourceSel);
@@ -780,6 +882,8 @@ export class App {
         h('button', { class: 'tab', dataset: { view: v.id }, onclick: () => this.setView(v.id), title: `${v.title} (${i + 1})` }, icon(v.icon, 15), h('span', {}, v.title)),
       );
     });
+    this.tabs.append(this.workspaceHost);
+    this.renderWorkspaces();
     this.viewHost = h('main', { class: 'view-host' });
     for (const v of this.views) {
       v.el.classList.add('view');
@@ -1130,6 +1234,7 @@ export class App {
           sel,
           color,
           h('div', { class: 'trace-main' }, name, h('div', { class: 'trace-meta' }, h('span', { class: `kind ${t.kind}` }, t.kind.toUpperCase()), off, h('span', { class: 'unit' }, 'dB'))),
+          h('button', { class: `btn tiny ghost${t.note || t.photo ? ' on' : ''}`, title: t.note ? `Note: ${t.note}${t.photo ? ' (with photo)' : ''}` : t.photo ? 'Photo of the position (click to edit)' : 'Add a note or photo of the mic position', onclick: () => showTraceNotes(this, t.id), dataset: { traceNote: t.id } }, icon(t.photo ? 'image' : 'note', 14)),
           h('button', { class: 'btn tiny ghost', title: t.visible ? 'Hide' : 'Show', onclick: () => this.traces.update(t.id, { visible: !t.visible }) }, icon(t.visible ? 'eye' : 'eyeOff', 14)),
           h('button', { class: 'btn tiny ghost', title: 'Export CSV', onclick: () => download(`${t.name.replace(/[^\w.-]+/g, '_')}.csv`, traceToCsv(t)) }, icon('download', 14)),
           h('button', { class: 'btn tiny ghost', title: 'Delete', onclick: () => this.traces.remove(t.id) }, icon('trash', 14)),
@@ -1214,6 +1319,7 @@ export class App {
         }
       }
       this.splReading = this.spl.read(this.settings.splTime);
+      if (this.logger.running) this.logger.sample(this.spl, this.logBands());
     }
     if (this.frameCount % 15 === 0) {
       if (this.playlist instanceof Playlist && this.settings.generator.type === 'music' && this.engine.running) this.playlist.ensureLoaded();

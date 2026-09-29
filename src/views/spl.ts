@@ -1,6 +1,6 @@
 import { CHART } from '../ui/theme';
 import type { App, View } from '../app';
-import { Plot } from '../ui/plot';
+import { Plot, type Series } from '../ui/plot';
 import { h, icon, select } from '../ui/dom';
 import type { Weighting } from '../dsp/weighting';
 
@@ -17,6 +17,11 @@ export class SplView implements View {
   private t0 = performance.now();
   private lastPush = 0;
   private chHost = h('span', {});
+  private logPlot!: Plot;
+  private logBtn = h('button', { class: 'btn small accent', dataset: { log: 'toggle' } });
+  private logStatus = h('div', { class: 'log-status' });
+  private logVersion = -1;
+  private logSpan = 10;
 
   constructor(private app: App) {
     const s = app.settings;
@@ -26,15 +31,161 @@ export class SplView implements View {
         'div',
         { class: 'toolbar' },
         h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Channel'), this.chHost),
-        h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Weighting'), select([{ value: 'A' as Weighting, label: 'A' }, { value: 'C' as Weighting, label: 'C' }, { value: 'Z' as Weighting, label: 'Z (flat)' }], s.splWeighting, (v) => { s.splWeighting = v; app.spl.setWeighting(v); app.save(); this.hist = []; })),
-        h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Time'), select([{ value: 'fast' as const, label: 'Fast (125 ms)' }, { value: 'slow' as const, label: 'Slow (1 s)' }], s.splTime, (v) => { s.splTime = v; app.save(); })),
+        h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Weighting'), select([{ value: 'A' as Weighting, label: 'A' }, { value: 'C' as Weighting, label: 'C' }, { value: 'Z' as Weighting, label: 'Z (flat)' }], s.splWeighting, (v) => { s.splWeighting = v; app.spl.setWeighting(v); app.save(); this.hist = []; }, { dataset: { setting: 'splWeighting' } })),
+        h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Time'), select([{ value: 'fast' as const, label: 'Fast (125 ms)' }, { value: 'slow' as const, label: 'Slow (1 s)' }], s.splTime, (v) => { s.splTime = v; app.save(); }, { dataset: { setting: 'splTime' } })),
         h('div', { class: 'spacer' }),
         h('button', { class: 'btn small', onclick: () => { app.spl.resetLeq(); this.hist = []; this.t0 = performance.now(); } }, icon('reset', 14), 'Reset Leq / Max'),
         h('button', { class: 'btn small', onclick: () => app.setView('tools') }, icon('settings', 14), 'Calibrate…'),
       ),
       h('div', { class: 'spl-top' }, this.big, this.stats),
       h('div', { class: 'pane fill' }, this.history.el),
+      this.logToolbar(),
+      this.logStatus,
+      h('div', { class: 'pane log-pane' }, this.logPlot.el),
     );
+    this.renderLogButton();
+  }
+
+  /** Noise log controls: start / stop, interval, limit and rolling window, export. */
+  private logToolbar(): HTMLElement {
+    const app = this.app;
+    const lg = app.logger;
+    this.logPlot = new Plot({
+      xType: 'lin',
+      xMin: 0,
+      xMax: 10,
+      yMin: 40,
+      yMax: 120,
+      yUnit: 'dB',
+      xUnit: 'min',
+      yStep: 10,
+      title: 'Noise log: Leq and Lmax per interval',
+      yLimits: [-200, 200],
+      formatX: (x) => {
+        const t = new Date((lg.started || Date.now()) + x * 60000);
+        const hm = `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
+        return this.logSpan < 10 ? `${hm}:${String(t.getSeconds()).padStart(2, '0')}` : hm;
+      },
+    });
+    this.logBtn.addEventListener('click', () => {
+      if (lg.running) lg.stop(app.spl);
+      else {
+        if (!app.engine.running) return app.toast('Start audio first, then start logging.', 'warn');
+        lg.start(app.spl, app.settings.splWeighting, app.settings.splCalibrated);
+        if (!app.settings.splCalibrated) app.toast('Logging uncalibrated levels (dBFS). Calibrate the mic in Tools for dB SPL.', 'info');
+      }
+      this.renderLogButton();
+      this.logVersion = -1;
+    });
+    const limit = h('input', { type: 'number', class: 'num', value: String(lg.config.limit || ''), placeholder: 'none', step: '0.5', title: 'Level limit (dB); empty = none', dataset: { log: 'limit' } });
+    limit.addEventListener('change', () => {
+      lg.config.limit = +limit.value || 0;
+      lg.save();
+      this.logVersion = -1;
+    });
+    return h(
+      'div',
+      { class: 'toolbar wrap log-bar' },
+      h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Noise log'), this.logBtn),
+      h(
+        'div',
+        { class: 'tb-group' },
+        h('span', { class: 'tb-label' }, 'Every'),
+        select(
+          [
+            { value: 1, label: '1 s' },
+            { value: 10, label: '10 s' },
+            { value: 60, label: '1 min' },
+            { value: 300, label: '5 min' },
+            { value: 900, label: '15 min' },
+          ],
+          lg.config.interval,
+          (v) => {
+            lg.config.interval = v;
+            lg.save();
+          },
+          { title: 'Logging interval: one Leq / Lmax row per interval', dataset: { log: 'interval' } },
+        ),
+      ),
+      h(
+        'div',
+        { class: 'tb-group' },
+        h('span', { class: 'tb-label' }, 'Limit'),
+        limit,
+        h('span', { class: 'unit' }, 'dB over'),
+        select(
+          [1, 5, 10, 15, 30, 60].map((v) => ({ value: v, label: `${v} min` })),
+          lg.config.window,
+          (v) => {
+            lg.config.window = v;
+            lg.save();
+            this.logVersion = -1;
+          },
+          { title: 'The limit applies to the rolling Leq over this time', dataset: { log: 'window' } },
+        ),
+      ),
+      h('div', { class: 'spacer' }),
+      h('button', { class: 'btn small', onclick: () => this.exportLog() }, icon('download', 14), 'Export log CSV'),
+      h('button', { class: 'btn small ghost', onclick: () => {
+        if (lg.rows.length && !confirm('Clear the noise log?')) return;
+        lg.clear();
+        this.logVersion = -1;
+      } }, icon('trash', 14), 'Clear'),
+    );
+  }
+
+  private renderLogButton(): void {
+    const on = this.app.logger.running;
+    this.logBtn.replaceChildren(icon(on ? 'stop' : 'play', 14), on ? 'Stop logging' : 'Start logging');
+    this.logBtn.classList.toggle('accent', !on);
+    this.logBtn.classList.toggle('rec', on);
+  }
+
+  private exportLog(): void {
+    const lg = this.app.logger;
+    if (!lg.rows.length) return this.app.toast('The noise log is empty.', 'warn');
+    const url = URL.createObjectURL(new Blob([lg.toCsv()], { type: 'text/csv' }));
+    const d = new Date(lg.started);
+    const a = h('a', { href: url, download: `noise-log-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}.csv` });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  /** Status line and log graph (the graph redraws when a row is added). */
+  private tickLog(): void {
+    const lg = this.app.logger;
+    if (this.logBtn.classList.contains('rec') !== lg.running) this.renderLogButton();
+    const unit = lg.calibrated ? 'dB' : 'dBFS';
+    const w = lg.weighting;
+    const sum = lg.summary();
+    const roll = lg.rolling();
+    const parts: string[] = [];
+    if (lg.running || lg.rows.length) {
+      const el = ((lg.running ? Date.now() : (lg.rows[lg.rows.length - 1]?.t ?? lg.started)) - lg.started) / 1000;
+      parts.push(`${lg.running ? '<span class="rec-dot"></span>Logging' : 'Stopped'} · ${Math.floor(el / 3600)}:${String(Math.floor((el % 3600) / 60)).padStart(2, '0')}:${String(Math.floor(el % 60)).padStart(2, '0')} · ${lg.rows.length} rows`);
+      if (Number.isFinite(roll)) parts.push(`L<sub>${w}eq,${lg.config.window}min</sub> <b class="log-${lg.state}">${roll.toFixed(1)} ${unit}</b>${lg.config.limit ? ` / limit ${lg.config.limit}` : ''}`);
+      if (sum) parts.push(`Overall L<sub>${w}eq</sub> <b>${sum.leq.toFixed(1)}</b> · L<sub>${w}Fmax</sub> <b>${Number.isFinite(sum.max) ? sum.max.toFixed(1) : '—'}</b>${lg.config.limit ? ` · over the limit ${sum.overMinutes.toFixed(1)} min` : ''}`);
+    } else parts.push('Log Leq, Lmax and the third-octave spectrum over hours, with a level limit and alarms. Press Start logging.');
+    const html = parts.join(' &nbsp;·&nbsp; ');
+    if (this.logStatus.innerHTML !== html) this.logStatus.innerHTML = html;
+    if (lg.version === this.logVersion) return;
+    this.logVersion = lg.version;
+    const x = lg.rows.map((r) => (r.t - lg.started) / 60000);
+    // At least 20 intervals wide, so a new log isn't squeezed against the left edge
+    const span = Math.max((lg.config.interval * 20) / 60, x.length ? x[x.length - 1] : 0);
+    this.logSpan = span;
+    this.logPlot.setDefaults({ xMin: 0, xMax: span * 1.02 });
+    const series: Series[] = [
+      { id: 'lmax', label: `L${w}Fmax`, x, y: lg.rows.map((r) => r.max), color: CHART.warn, width: 1.2, dash: [3, 3] },
+      { id: 'leq', label: `L${w}eq`, x, y: lg.rows.map((r) => r.leq), color: CHART.accent, width: 2, fill: true },
+    ];
+    if (lg.config.limit) series.push({ id: 'limit', label: 'Limit', x: [0, span * 1.02], y: [lg.config.limit, lg.config.limit], color: '#ff4d5e', width: 1.6, dash: [8, 4] });
+    this.logPlot.series = series;
+    if (lg.calibrated && this.logPlot.cfg.yMax < 60) this.logPlot.setDefaults({ yMin: 30, yMax: 120 });
+    if (!lg.calibrated && this.logPlot.cfg.yMin > -20) this.logPlot.setDefaults({ yMin: -100, yMax: 0 });
+    this.logPlot.draw();
   }
 
   show(): void {
@@ -77,5 +228,6 @@ export class SplView implements View {
     if (!s.splCalibrated && this.history.cfg.yMin > -20) this.history.setDefaults({ yMin: -100, yMax: 0 });
     if (s.splCalibrated && this.history.cfg.yMax < 60) this.history.setDefaults({ yMin: 20, yMax: 120 });
     this.history.draw();
+    this.tickLog();
   }
 }

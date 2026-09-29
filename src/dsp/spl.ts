@@ -29,6 +29,10 @@ export class SplMeter {
   private maxFast = -Infinity;
   private peakSinceRead = 0;
   private peakHoldLin = 0;
+  /** Energy integrated since the meter was created (never reset by the user), for logging. */
+  private totalSum = 0;
+  private totalCount = 0;
+  private maxSinceTake = -Infinity;
   private readonly aFast: number;
   private readonly aSlow: number;
   offsetDb = 0;
@@ -76,11 +80,31 @@ export class SplMeter {
     this.slowMs = slow;
     this.leqSum += sum;
     this.leqCount += n;
+    this.totalSum += sum;
+    this.totalCount += n;
     this.peakSinceRead = peak;
     if (peak > this.peakHoldLin) this.peakHoldLin = peak;
     // Mean-square*2 → sine referenced dBFS
     const fastDb = this.toDb(fast);
     if (fastDb > this.maxFast && this.leqCount > this.fs * 0.25) this.maxFast = fastDb;
+    if (fastDb > this.maxSinceTake && this.totalCount > this.fs * 0.25) this.maxSinceTake = fastDb;
+  }
+
+  /** Energy integrated since the meter was created: the logger takes differences for exact interval Leq. */
+  integrator(): { sum: number; count: number } {
+    return { sum: this.totalSum, count: this.totalCount };
+  }
+
+  /** Level (dB, calibrated) of a mean-square value. */
+  levelOf(meanSquare: number): number {
+    return this.toDb(meanSquare);
+  }
+
+  /** Highest Fast level since the last call (−∞ if none). */
+  takeMax(): number {
+    const m = this.maxSinceTake;
+    this.maxSinceTake = -Infinity;
+    return m;
   }
 
   private toDb(ms: number): number {

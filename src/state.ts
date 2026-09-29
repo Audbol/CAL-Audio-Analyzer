@@ -1,3 +1,4 @@
+import type { Workspace } from './workspaces';
 import type { PlaylistPrefs } from './audio/playlist';
 import type { LfResolution } from './dsp/decimate';
 import type { Smoothing } from './dsp/freq';
@@ -88,6 +89,13 @@ export interface Settings {
   spectrogramLayout: 'horizontal' | 'vertical';
   /** Spectrum average curve: averaging time in seconds (0 = off, -1 = everything since reset). */
   rtaAverageCurve: number;
+  /** Smoothing of the average curve: 1/n octave with a bell-shaped window (0 = none). */
+  rtaAverageSmoothing: number;
+  /** Several mics: show their live power average (and the spread between them) on Spectrum and Transfer. */
+  micAverage: 'off' | 'avg' | 'spread' | 'only';
+  /** Workspaces saved by the user (built-in ones live in workspaces.ts), and the last one chosen. */
+  workspaces: Workspace[];
+  workspace: string;
   /** Target curve on the Spectrum and Transfer views: 'off', a built-in target id or `trace:<id>`. */
   targetCurve: string;
   /** ± tolerance band around the target (dB, 0 = none). */
@@ -133,6 +141,10 @@ export function defaultSettings(): Settings {
     spectrogramRange: [-110, -20],
     spectrogramLayout: 'vertical',
     rtaAverageCurve: 10,
+    rtaAverageSmoothing: 6,
+    micAverage: 'off',
+    workspaces: [],
+    workspace: '',
     targetCurve: 'off',
     targetTolerance: 3,
     session: { name: '', venue: '', notes: '' },

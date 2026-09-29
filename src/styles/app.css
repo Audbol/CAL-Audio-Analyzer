@@ -2514,3 +2514,99 @@ textarea.text {
 textarea.text:focus {
   border-color: var(--accent);
 }
+
+/* Trace notes ------------------------------------------------------------ */
+.trace-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: min(440px, 80vw);
+}
+.note-photo img {
+  display: block;
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.note-photo .empty {
+  padding: 18px;
+  text-align: center;
+  border: 1px dashed var(--border-2);
+  border-radius: 8px;
+}
+.trace .btn.on {
+  color: var(--accent);
+}
+.spl-mini.log-near {
+  border-color: var(--warn);
+}
+.spl-mini.log-over {
+  border-color: #ff4d5e;
+  box-shadow: 0 0 0 2px rgba(255, 77, 94, 0.35);
+}
+.spl-mini.log-over b {
+  color: #ff4d5e;
+}
+
+/* Noise log -------------------------------------------------------------- */
+.log-bar {
+  border-top: 1px solid var(--border);
+}
+.log-status {
+  padding: 6px 14px;
+  font-size: 12px;
+  color: var(--text-2);
+  flex: none;
+}
+.log-status b {
+  font-family: var(--mono);
+  color: var(--text);
+}
+.log-status b.log-near {
+  color: var(--warn);
+}
+.log-status b.log-over {
+  color: #ff4d5e;
+}
+.log-pane {
+  flex: none;
+  height: 240px;
+}
+.rec-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff4d5e;
+  margin-right: 6px;
+  animation: rec-blink 1.2s infinite;
+}
+@keyframes rec-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+.btn.rec {
+  border-color: #ff4d5e;
+  color: #ff4d5e;
+}
+
+/* Workspaces ------------------------------------------------------------- */
+.ws-ctl {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 0 5px 12px;
+  color: var(--dim);
+  flex: none;
+}
+.ws-select {
+  min-height: 26px;
+  font-size: 12px;
+  max-width: 220px;
+}
+.tb-target select {
+  max-width: 230px;
+}

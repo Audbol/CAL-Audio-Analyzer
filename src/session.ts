@@ -5,12 +5,13 @@ import type { SharedSettings, SweepMeta } from './remote/protocol';
 import type { EqView, EqSnapshot } from './views/eq';
 import type { AlignView, AlignSnapshot } from './views/align';
 import type { RoomView } from './views/room';
+import type { LogFile } from './logger';
 
 export const SESSION_FORMAT = 'cal-session';
 export const SESSION_VERSION = 1;
 
 /** Analysis and display settings a session carries (device, layout and remote-access settings stay per computer). */
-const SESSION_SETTINGS = ['tfSmoothing', 'rtaSmoothing', 'tfAveraging', 'rtaAveraging', 'rtaFft', 'lfResolution', 'coherenceThreshold', 'rtaAverageCurve', 'targetCurve', 'targetTolerance'] as const;
+const SESSION_SETTINGS = ['tfSmoothing', 'rtaSmoothing', 'tfAveraging', 'rtaAveraging', 'rtaFft', 'lfResolution', 'coherenceThreshold', 'rtaAverageCurve', 'rtaAverageSmoothing', 'micAverage', 'targetCurve', 'targetTolerance'] as const;
 type SessionSettingKey = (typeof SESSION_SETTINGS)[number];
 
 /** A saved session: everything measured and set up for one job, as one JSON file. */
@@ -27,6 +28,8 @@ export interface SessionFile {
   sweep: { meta: SweepMeta; ir: string } | null;
   eq: EqSnapshot | null;
   align: AlignSnapshot | null;
+  /** Noise log (SPL view), if anything was logged. */
+  log?: LogFile | null;
 }
 
 function view<T>(app: App, id: string): T {
@@ -50,6 +53,7 @@ export function buildSession(app: App): SessionFile {
     sweep: sweep ? { meta: sweep.meta, ir: encodeFloat32(sweep.ir) } : null,
     eq: view<EqView>(app, 'eq').snapshot(),
     align: view<AlignView>(app, 'align').snapshot(),
+    log: app.logger.rows.length ? app.logger.snapshot() : null,
   };
 }
 
@@ -78,6 +82,7 @@ export function parseSession(text: string): SessionFile {
     sweep: f.sweep ?? null,
     eq: f.eq ?? null,
     align: f.align ?? null,
+    log: f.log && Array.isArray(f.log.rows) ? f.log : null,
   };
 }
 
@@ -93,6 +98,9 @@ export function applySession(app: App, f: SessionFile): void {
   view<RoomView>(app, 'room').restoreSweep(f.sweep ? { meta: f.sweep.meta, ir: Float64Array.from(decodeFloat32(f.sweep.ir)) } : null);
   view<EqView>(app, 'eq').restore(f.eq);
   view<AlignView>(app, 'align').restore(f.align);
+  if (app.logger.running) app.logger.stop(app.spl);
+  app.logger.load(f.log ?? null);
+  app.logger.save();
   app.save();
   app.syncSettingControls();
   for (const v of app.views) v.invalidate?.();

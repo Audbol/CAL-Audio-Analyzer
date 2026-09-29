@@ -99,6 +99,35 @@ export function smoothCurve(freqs: ArrayLike<number>, values: ArrayLike<number>,
   return out;
 }
 
+/**
+ * Gentle fractional-octave smoothing with a bell-shaped (near-Gaussian) window: three passes of a box average,
+ * whose combined width at half height is about 1/fraction octave. Unlike a single box it has no flat tops or
+ * steps, so curves look natural. `values` should be linear power; pass log-spaced frequencies.
+ */
+export function gaussianSmooth(freqs: ArrayLike<number>, values: ArrayLike<number>, fraction: number): Float64Array {
+  let out = Float64Array.from(values);
+  if (!fraction || freqs.length < 3) return out;
+  // Three boxes of width b have a standard deviation of b/2; FWHM = 2.355·σ
+  const box = 0.85 / fraction; // octaves
+  const half = Math.pow(2, box / 2);
+  const n = freqs.length;
+  for (let pass = 0; pass < 3; pass++) {
+    const src = out;
+    out = new Float64Array(n);
+    let lo = 0;
+    let hi = 0;
+    let sum = 0;
+    for (let i = 0; i < n; i++) {
+      const fLo = freqs[i] / half;
+      const fHi = freqs[i] * half;
+      while (hi < n && freqs[hi] <= fHi) sum += src[hi++];
+      while (lo < hi && freqs[lo] < fLo) sum -= src[lo++];
+      out[i] = hi > lo ? sum / (hi - lo) : src[i];
+    }
+  }
+  return out;
+}
+
 /** Linear interpolation of y(x) at xi, with x ascending. Values outside the range are clamped. */
 export function interp(x: ArrayLike<number>, y: ArrayLike<number>, xi: number): number {
   const n = x.length;

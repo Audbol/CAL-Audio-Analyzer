@@ -3,7 +3,7 @@ import { MultiSpectrum } from './dsp/spectrum';
 import { findDelay, type DelayEstimate } from './dsp/delay';
 import type { AudioEngine } from './audio/engine';
 import type { MeasurementConfig, Settings } from './state';
-import { gridPpo, regroupBands, smoothTransfer } from './dsp/freq';
+import { gaussianSmooth, gridPpo, regroupBands, smoothTransfer } from './dsp/freq';
 import type { AnalysisFrame } from './remote/protocol';
 
 /** Which analyses to run this frame (remote devices skip what no visible view shows). */
@@ -44,6 +44,8 @@ export class Measurement {
   private avgCount = 0;
   private avgAt = 0;
   private avgKey = '';
+  /** Smoothing of the average curve (1/n octave, 0 = none), from the settings. */
+  private avgSmoothing = 6;
 
   constructor(
     public cfg: MeasurementConfig,
@@ -155,6 +157,10 @@ export class Measurement {
    */
   private updateAverage(s: Settings, cal: Float64Array | null): void {
     const secs = s.rtaAverageCurve;
+    if (this.avgSmoothing !== s.rtaAverageSmoothing) {
+      this.avgSmoothing = s.rtaAverageSmoothing;
+      this.avgDb = null;
+    }
     if (!secs) {
       this.avgPow = null;
       return;
@@ -179,7 +185,11 @@ export class Measurement {
   /** The average curve in dB (same units as rtaOut), or null when off / no data yet. */
   averageDb(): Float64Array | null {
     if (!this.avgPow || !this.avgCount) return null;
-    if (!this.avgDb) this.avgDb = Float64Array.from(this.avgPow, (v) => 10 * Math.log10(Math.max(v, 1e-30)));
+    if (!this.avgDb) {
+      // Smoothed with a bell-shaped window so the curve reads like the overall tonal balance, without steps
+      const pow = gaussianSmooth(this.grid, this.avgPow, this.avgSmoothing);
+      this.avgDb = Float64Array.from(pow, (v) => 10 * Math.log10(Math.max(v, 1e-30)));
+    }
     return this.avgDb;
   }
 

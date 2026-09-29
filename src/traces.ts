@@ -18,6 +18,8 @@ export interface Trace {
   /** Display offset in dB. */
   offset: number;
   note?: string;
+  /** Photo of the measurement position (JPEG data URL, scaled down). */
+  photo?: string;
   /** RTA captured in the app: levels are dBFS and get the SPL calibration offset when shown in dB SPL. */
   dbfs?: boolean;
   /** Transfer functions: the measurement's delay compensation when captured (ms), for alignment. */

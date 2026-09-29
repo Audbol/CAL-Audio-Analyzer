@@ -16,6 +16,7 @@ export abstract class DockedView {
   protected spl: SplPanel;
   protected levels: LevelsPanel;
   private chips = new Map<string, HTMLButtonElement>();
+  private settingChips = new Map<'showCoherence' | 'peakHold', HTMLButtonElement>();
   private meterTick = 0;
 
   constructor(
@@ -66,12 +67,23 @@ export abstract class DockedView {
   protected settingChip(key: 'showCoherence' | 'peakHold', label: string, title: string): HTMLButtonElement {
     const s = this.app.settings;
     const b = h('button', { class: `chip${s[key] ? ' on' : ''}`, title }, label);
+    this.settingChips.set(key, b);
     b.addEventListener('click', () => {
       s[key] = !s[key];
       b.classList.toggle('on', s[key]);
       this.app.save();
     });
     return b;
+  }
+
+  /** Show a panel arrangement (e.g. from a workspace). */
+  applyLayout(layout: DockLayout): void {
+    this.dock.reset(JSON.parse(JSON.stringify(layout)));
+  }
+
+  /** Update the on/off chips after their settings changed elsewhere (e.g. a workspace). */
+  syncSettingChips(): void {
+    for (const [key, b] of this.settingChips) b.classList.toggle('on', !!this.app.settings[key]);
   }
 
   protected layoutButtons(): HTMLElement[] {

@@ -9,6 +9,8 @@ import { AlignView } from './views/align';
 import type { EqView } from './views/eq';
 import type { RoomView } from './views/room';
 import { downloadText, sessionFileName } from './session';
+import { WaterfallPlot } from './ui/waterfall-plot';
+import type { WaterfallResult } from './dsp/waterfall';
 
 const TARGET_COLOR = '#ffb020';
 
@@ -46,6 +48,23 @@ function figure(cfg: PlotConfig, series: Series[], opts: { fit?: boolean; maxSpa
   host.remove();
   const legend = series.filter((s) => s.label && !s.quiet).map((s) => ({ label: s.label, color: seriesColor(s.color.slice(0, 7)), dash: !!s.dash }));
   return { img, legend };
+}
+
+/** The waterfall drawn off screen (day scheme) as a PNG data URL. */
+function waterfallImage(data: WaterfallResult): string {
+  const host = document.createElement('div');
+  host.style.cssText = 'position:fixed;left:-20000px;top:0;width:960px;height:420px;';
+  const p = new WaterfallPlot();
+  p.forceDpr = 2;
+  p.el.style.cssText = 'position:absolute;inset:0;';
+  host.append(p.el);
+  document.body.append(host);
+  p.data = data;
+  p.resize();
+  const img = p.canvas.toDataURL('image/png');
+  p.dispose();
+  host.remove();
+  return img;
 }
 
 function figHtml(title: string, f: Figure, caption = ''): string {
@@ -192,11 +211,14 @@ function buildReportHtml(app: App): string {
     if (r) {
       const f = figure({ xType: 'log', xMin: 20, xMax: 20000, yMin: -30, yMax: 12, yUnit: 'dB', yStep: 6 }, [{ id: 'fr', label: 'Sweep frequency response', x: g, y: r.fr, color: '#00c8ff', width: 2 }], { fit: true });
       const cards = r.cards.map((c) => `<div class="card"><span>${escapeHtml(c.label)}</span><b>${escapeHtml(c.value)}</b><em>${escapeHtml(c.sub)}</em></div>`).join('');
+      const wfData = view<RoomView>(app, 'room').waterfallData('bass');
+      const wf = wfData ? waterfallImage(wfData) : null;
       sections.push(`<section><h2>Sweep &amp; room acoustics</h2>
         <p class="dim">${escapeHtml(`${r.spec.duration} s log sweep ${Math.round(r.spec.f1)} Hz – ${formatFreq(r.spec.f2)}, measured ${r.when.toLocaleString()} · ${r.window} ms window, 1/${r.smoothing} oct`)}</p>
         <div class="cards">${cards}</div>
         ${figHtml('Frequency response (level-normalised)', f)}
         <div class="rt">${r.tableHtml}</div>
+        ${wf ? figHtml('Waterfall: room modes (cumulative spectral decay, 15–500 Hz)', { img: wf, legend: [] }, 'ridges reaching far back are modes that keep ringing') : ''}
       </section>`);
     }
   }
@@ -255,11 +277,49 @@ function buildReportHtml(app: App): string {
     }
   }
 
+  // Noise log -------------------------------------------------------------------------------------------------
+  {
+    const lg = app.logger;
+    const sum = lg.summary();
+    if (sum) {
+      const unit = lg.calibrated ? 'dB' : 'dBFS';
+      const w = lg.weighting;
+      const x = lg.rows.map((r) => (r.t - lg.started) / 60000);
+      const span = Math.max(1, x[x.length - 1]);
+      const series: Series[] = [
+        { id: 'lmax', label: `L${w}Fmax`, x, y: lg.rows.map((r) => r.max), color: '#a64b00', width: 1.2, dash: [3, 3] },
+        { id: 'leq', label: `L${w}eq per ${lg.config.interval >= 60 ? `${lg.config.interval / 60} min` : `${lg.config.interval} s`}`, x, y: lg.rows.map((r) => r.leq), color: '#0047c2', width: 2 },
+      ];
+      if (lg.config.limit) series.push({ id: 'limit', label: `Limit ${lg.config.limit} ${unit} (L${w}eq,${lg.config.window}min)`, x: [0, span], y: [lg.config.limit, lg.config.limit], color: '#d0021b', width: 1.6, dash: [8, 4] });
+      const start = new Date(lg.started);
+      const f = figure(
+        { xType: 'lin', xMin: 0, xMax: span, yMin: 40, yMax: 120, yUnit: unit, xUnit: 'min', yStep: 10, formatX: (m) => { const t = new Date(lg.started + m * 60000); return `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`; } },
+        series,
+        { fit: true, maxSpan: 60 },
+      );
+      const hms = (secs: number) => `${Math.floor(secs / 3600)} h ${String(Math.floor((secs % 3600) / 60)).padStart(2, '0')} min`;
+      sections.push(`<section><h2>Noise log</h2>
+        <table class="kv">
+          <tr><th>Period</th><td>${start.toLocaleString()} · ${hms(sum.duration)} logged</td></tr>
+          <tr><th>Overall L<sub>${w}eq</sub></th><td>${fmt(sum.leq, 1, ` ${unit}`)}</td></tr>
+          <tr><th>Highest L<sub>${w}Fmax</sub></th><td>${fmt(sum.max, 1, ` ${unit}`)}</td></tr>
+          ${lg.config.limit ? `<tr><th>Limit</th><td>${lg.config.limit} ${unit} L<sub>${w}eq</sub> over ${lg.config.window} min · intervals above it: ${sum.overMinutes.toFixed(1)} min</td></tr>` : ''}
+        </table>
+        ${figHtml('Level over time', f)}
+      </section>`);
+    }
+  }
+
   // Traces ----------------------------------------------------------------------------------------------------
   if (app.traces.traces.length) {
     const kind = { tf: 'Transfer function', rta: 'Spectrum', sweep: 'Sweep' } as const;
     const rows = app.traces.traces.map((t) => `<tr><td><i class="sw" style="background:${seriesColor(t.color)}"></i>${escapeHtml(t.name)}</td><td>${kind[t.kind]}</td><td>${new Date(t.created).toLocaleString()}</td><td>${t.offset ? `${t.offset > 0 ? '+' : ''}${t.offset} dB` : ''}</td><td>${escapeHtml(t.note ?? '')}</td></tr>`).join('');
-    sections.push(`<section><h2>Stored traces</h2><table class="grid"><tr><th>Name</th><th>Type</th><th>Captured</th><th>Offset</th><th>Note</th></tr>${rows}</table></section>`);
+    // Photos of the measurement positions
+    const photos = app.traces.traces
+      .filter((t) => t.photo?.startsWith('data:image/'))
+      .map((t) => `<figure class="photo"><img src="${escapeHtml(t.photo!)}" alt="${escapeHtml(t.name)}"><figcaption><b>${escapeHtml(t.name)}</b>${t.note ? ` · ${escapeHtml(t.note)}` : ''}</figcaption></figure>`)
+      .join('');
+    sections.push(`<section><h2>Stored traces</h2><table class="grid"><tr><th>Name</th><th>Type</th><th>Captured</th><th>Offset</th><th>Note</th></tr>${rows}</table>${photos ? `<h3>Measurement positions</h3><div class="photos">${photos}</div>` : ''}</section>`);
   }
 
   if (sess.notes.trim()) sections.push(`<section><h2>Notes</h2><p class="notes">${escapeHtml(sess.notes)}</p></section>`);
@@ -336,6 +396,10 @@ table.kv td{padding:2px 0}
 .card span,.card em{font-size:11px;color:#555;font-style:normal}
 .card b{font-size:18px}
 .notes{white-space:pre-wrap}
+h3{font-size:14px;margin:14px 0 6px}
+.photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+figure.photo img{border-radius:6px;max-height:260px;object-fit:cover}
+figure.photo figcaption{font-size:12px;margin-top:4px}
 .bar{position:sticky;top:0;display:flex;gap:8px;justify-content:flex-end;padding:8px 0;background:#fff}
 .bar button{font:inherit;padding:6px 12px;border:1px solid #111;border-radius:6px;background:#111;color:#fff;cursor:pointer}
 .bar button+button{background:#fff;color:#111}
