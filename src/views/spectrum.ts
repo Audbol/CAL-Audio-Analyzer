@@ -5,6 +5,7 @@ import type { DockLayout } from '../ui/dock';
 import { octaveBandCentres, sampleLogGrid, type Smoothing } from '../dsp/freq';
 import { AVG_OPTIONS } from './meters';
 import { DockedView } from './docked';
+import { optionsMenu, optRow, optHead } from '../ui/popover';
 import { TargetOverlay } from './target-overlay';
 import { micAverageControl, micAverageSeries } from './mic-average-overlay';
 
@@ -87,14 +88,48 @@ export class SpectrumView extends DockedView implements View {
     this.renderResolution();
     const s = this.app.settings;
     const app = this.app;
+    // Everyday controls stay in the toolbar; the rest live in the Options panel
+    const options = optionsMenu(
+      [
+        optHead('Panels'),
+        h('div', { class: 'opt-ctl' }, this.panelChip('rta', 'Spectrum', 'spectrum'), this.panelChip('spl', 'SPL meter', 'SPL meter'), this.panelChip('levels', 'Input levels', 'input level')),
+        optHead('Analysis'),
+        optRow('FFT size', select([4096, 8192, 16384, 32768, 65536].map((n) => ({ value: n, label: `${n / 1024}k` })), s.rtaFft, (v) => { s.rtaFft = v; app.applyAnalysisSettings(); }, { dataset: { setting: 'rtaFft' }, title: 'Longer FFTs resolve lower frequencies but react more slowly' })),
+        optRow('Averaging', select(AVG_OPTIONS, s.rtaAveraging, (v) => { s.rtaAveraging = v; app.applyAnalysisSettings(); }, { dataset: { setting: 'rtaAveraging' } })),
+        optHead('Average curve'),
+        optRow(
+          'Smoothing',
+          select(
+            [
+              { value: 0, label: 'None' },
+              { value: 12, label: '1/12 octave' },
+              { value: 6, label: '1/6 octave' },
+              { value: 3, label: '1/3 octave' },
+              { value: 1, label: '1/1 octave' },
+            ],
+            s.rtaAverageSmoothing,
+            (v) => {
+              s.rtaAverageSmoothing = v;
+              app.save();
+            },
+            { title: 'Smoothing of the average curve', dataset: { setting: 'rtaAverageSmoothing' } },
+          ),
+        ),
+        optRow('', h('button', { class: 'btn small', title: 'Start only the average curve again', onclick: () => app.measurements.forEach((m) => m.resetAverage()) }, icon('reset', 14), 'Restart average curve')),
+        optHead('Target & mics'),
+        optRow('Target tolerance', this.target.toleranceControl()),
+        optRow('Several mics', micAverageControl(app)),
+        optHead('Layout'),
+        h('div', { class: 'opt-ctl' }, this.resetLayoutButton()),
+      ],
+      { title: 'Spectrum options: panels, FFT, averaging, curve smoothing, tolerance, several mics', id: 'spectrum' },
+    );
     return h(
       'div',
       { class: 'toolbar' },
-      h('div', { class: 'tb-group' }, this.panelChip('rta', 'RTA', 'spectrum'), this.panelChip('spl', 'SPL', 'SPL meter'), this.panelChip('levels', 'Levels', 'input level')),
       h(
         'div',
         { class: 'tb-group' },
-        h('span', { class: 'tb-label' }, 'Display'),
         select(
           [
             { value: 'line' as const, label: 'Line' },
@@ -105,10 +140,6 @@ export class SpectrumView extends DockedView implements View {
           { dataset: { setting: 'rtaStyle' }, title: 'Draw the spectrum as a line or as fractional-octave bars (B)' },
         ),
         this.resHost,
-        select([4096, 8192, 16384, 32768, 65536].map((n) => ({ value: n, label: `${n / 1024}k FFT` })), s.rtaFft, (v) => { s.rtaFft = v; app.applyAnalysisSettings(); }, { dataset: { setting: 'rtaFft' } }),
-        h('span', { class: 'tb-label' }, 'Avg'),
-        select(AVG_OPTIONS, s.rtaAveraging, (v) => { s.rtaAveraging = v; app.applyAnalysisSettings(); }, { dataset: { setting: 'rtaAveraging' } }),
-        this.settingChip('peakHold', 'Peak hold', 'Peak hold (P)'),
       ),
       h(
         'div',
@@ -121,7 +152,7 @@ export class SpectrumView extends DockedView implements View {
             { value: 3, label: '3 s' },
             { value: 10, label: '10 s' },
             { value: 30, label: '30 s' },
-            { value: -1, label: 'All (since reset)' },
+            { value: -1, label: 'All' },
           ],
           s.rtaAverageCurve,
           (v) => {
@@ -129,29 +160,14 @@ export class SpectrumView extends DockedView implements View {
             for (const m of app.measurements) m.resetAverage();
             app.save();
           },
-          { title: 'Average curve over the live RTA, for tuning', dataset: { setting: 'rtaAverageCurve' } },
+          { title: 'Average curve over the live spectrum, for tuning (All: everything since Reset)', dataset: { setting: 'rtaAverageCurve' } },
         ),
-        select(
-          [
-            { value: 0, label: 'Unsmoothed' },
-            { value: 12, label: 'Smooth 1/12' },
-            { value: 6, label: 'Smooth 1/6' },
-            { value: 3, label: 'Smooth 1/3' },
-            { value: 1, label: 'Smooth 1/1' },
-          ],
-          s.rtaAverageSmoothing,
-          (v) => {
-            s.rtaAverageSmoothing = v;
-            app.save();
-          },
-          { title: 'Smoothing of the average curve (octave fraction)', dataset: { setting: 'rtaAverageSmoothing' } },
-        ),
-        h('button', { class: 'btn small', title: 'Start the average curve again (R restarts it together with all averaging)', onclick: () => app.measurements.forEach((m) => m.resetAverage()) }, icon('reset', 14), 'Restart'),
       ),
-      this.target.controls(),
-      h('div', { class: 'tb-group' }, micAverageControl(app)),
+      this.target.targetControl(),
+      this.settingChip('peakHold', 'Peak hold', 'Peak hold (P)'),
       h('div', { class: 'spacer' }),
-      ...this.layoutButtons(),
+      options,
+      this.resetButton(),
     );
   }
 

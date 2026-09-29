@@ -97,7 +97,9 @@ await page.screenshot({ path: `${out}/dock-01-default.png` });
 
 // 4. Drag a docked panel out of the stack → it floats where dropped
 {
-  await page.locator('.view:visible .chip', { hasText: 'Levels' }).click(); // hide the meter so the drop area is clear
+  await page.locator('.view:visible [data-options]').click(); // panel chips live in the Options panel
+  await page.locator('.view:visible .opt-panel .chip', { hasText: 'Levels' }).click(); // hide the meter so the drop area is clear
+  await page.keyboard.press('Escape');
   const hd = await head('phase').boundingBox();
   await page.mouse.move(hd.x + 100, hd.y + 12);
   await page.mouse.down();
@@ -107,8 +109,10 @@ await page.screenshot({ path: `${out}/dock-01-default.png` });
   const lay = await layout();
   check(lay.hidden.includes('spl') && lay.hidden.includes('levels'), 'panels hidden from the toolbar chips');
   await vis('.dpanel[data-panel="phase"] [data-act="float"]').click();
-  await page.locator('.view:visible .chip', { hasText: 'SPL' }).click();
-  await page.locator('.view:visible .chip', { hasText: 'Levels' }).click();
+  await page.locator('.view:visible [data-options]').click();
+  await page.locator('.view:visible .opt-panel .chip', { hasText: 'SPL' }).click();
+  await page.locator('.view:visible .opt-panel .chip', { hasText: 'Levels' }).click();
+  await page.keyboard.press('Escape');
   check(JSON.stringify(await docked()) === '["phase","mag"]', 'docking back restores the panel to its place in the order');
 }
 
@@ -198,7 +202,9 @@ await page.waitForTimeout(300);
   await page.waitForSelector('.view:visible .dock');
   const after = await layout();
   check(JSON.stringify(before.order) === JSON.stringify(after.order) && JSON.stringify(await docked()) === '["phase","mag"]', 'layout persists across reloads');
+  await page.locator('.view:visible [data-options]').click();
   await page.locator('.view:visible').getByRole('button', { name: 'Reset layout' }).click();
+  await page.keyboard.press('Escape');
   check(JSON.stringify(await docked()) === '["mag","phase"]', 'Reset layout restores the default arrangement');
 }
 await page.screenshot({ path: `${out}/dock-04-final.png` });

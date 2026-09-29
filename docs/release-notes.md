@@ -22,11 +22,12 @@ On first launch, choose **Explore with the demo room** to try every feature with
 ## What's new in 1.8
 
 - **ASIO (Windows):** choose *ASIO: <your interface>* as the input source to use the interface's ASIO driver directly: every input and output channel, the driver's low latency, no system mixer or resampling. Set the sample rate, buffer size and safety margin, and open the driver's control panel, in *Tools → Audio interface (ASIO)*. The generator signal that was actually played is recorded in the same driver callback as the inputs, so the internal reference stays sample-aligned with your microphones.
-- **Smoother average curve:** the Spectrum's average line is now smoothed with a natural, bell-shaped window (1/6 octave by default; 1/12, 1/3, 1/1 or unsmoothed under *Average*), and it is drawn as a smooth curve over bars too.
-- **Several mics at once:** *Mic average* on the Spectrum and Transfer tabs shows the live power average of all measurement mics, with the spread between them as a band, or the average alone.
+- **Smoother average curve:** the Spectrum's average line is now smoothed with a natural, bell-shaped window (1/6 octave by default; 1/12, 1/3, 1/1 or none under *Options → Average curve*), and it is drawn as a smooth curve over bars too.
+- **Several mics at once:** *Options → Several mics* on the Spectrum and Transfer tabs shows the live power average of all measurement mics, with the spread between them as a band, or the average alone.
 - **Noise log (SPL tab):** log Leq and Lmax every 1 s to 15 min with the third-octave spectrum, for hours. Set a level limit on the rolling Leq (e.g. 100 dB LAeq,15min); the level readout turns amber near it and red above it, with a warning. Export CSV; included in sessions and reports.
 - **Waterfall (Sweep & Room):** cumulative spectral decay in 3-D, for room modes or the full range, also in the report.
 - **Trace notes and photos:** attach a note and a photo of the mic position to any trace; shown in reports and kept in sessions.
+- **Cleaner screens:** every tab now fits its controls in one row, even on a laptop. Everyday controls stay in the toolbar; less-used settings (FFT size, averaging, curve smoothing, target tolerance, several mics, panels, sweep options, EQ limits, alignment region) moved under *Options*. The SPL tab shows the 2-minute history or the noise log, one at a time; shorter tab names (EQ, SPL) and a compact workspace button make room in the tab bar.
 - **Workspaces:** ready-made setups for live mixing, system tuning, sub alignment, voice systems, room surveys and noise monitoring, plus your own saved workspaces (with panel layouts), from the picker at the right of the tabs.
 
 ## What's new in 1.7

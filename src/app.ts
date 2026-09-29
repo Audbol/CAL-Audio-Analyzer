@@ -161,7 +161,9 @@ export class App {
       }
       this.renderWorkspaces();
     });
-    this.workspaceHost.replaceChildren(icon('layout', 14), sel);
+    // A compact face (icon + current workspace) over the native select, which opens the list
+    this.workspaceHost.title = cur ? `Workspace: ${cur.name}` : 'Workspace: one-click setups for a kind of job';
+    this.workspaceHost.replaceChildren(h('span', { class: 'ws-face' }, icon('layout', 15), h('span', { class: 'ws-name' }, cur ? cur.name : 'Workspace'), h('span', { class: 'opt-caret' })), sel);
   }
 
   /** Continuous sound level log (SPL view). */

@@ -9,6 +9,7 @@ import { nextPow2 } from '../dsp/fft';
 import type { SweepMeta } from '../remote/protocol';
 import { waterfall, WATERFALL_PRESETS, type WaterfallResult } from '../dsp/waterfall';
 import { WaterfallPlot } from '../ui/waterfall-plot';
+import { optionsMenu, optRow, optHead } from '../ui/popover';
 
 interface SweepResult {
   spec: SweepSpec;
@@ -69,30 +70,44 @@ export class RoomView implements View {
     this.setMeasureLabel();
     const lvl = h('input', { type: 'number', class: 'num', value: String(o.level), min: '-60', max: '0', step: '1' });
     lvl.addEventListener('change', () => (o.level = Math.min(0, Math.max(-60, +lvl.value))));
+    const sweepOptions = optionsMenu(
+      [
+        optHead('Sweep'),
+        optRow('Repeats', select([1, 2, 4, 8].map((v) => ({ value: v, label: `${v}× (averaged)` })), o.repeats, (v) => (o.repeats = v), { title: 'More repeats lower the noise floor' })),
+        optRow(
+          'Range',
+          select([{ value: 20, label: '20 Hz' }, { value: 10, label: '10 Hz' }, { value: 40, label: '40 Hz' }, { value: 80, label: '80 Hz' }], o.f1, (v) => (o.f1 = v)),
+          '–',
+          select([{ value: 20000, label: '20 kHz' }, { value: 16000, label: '16 kHz' }, { value: 10000, label: '10 kHz' }, { value: 1000, label: '1 kHz (sub)' }], o.f2, (v) => (o.f2 = v)),
+        ),
+      ],
+      { label: 'Sweep options', title: 'Sweep options: repeats and frequency range', id: 'sweep' },
+    );
     const settings = h(
       'div',
-      { class: 'toolbar wrap' },
+      { class: 'toolbar' },
       h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Measurement'), this.selHost),
       h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Sweep'), select([1, 2, 4, 8, 16].map((v) => ({ value: v, label: `${v} s` })), o.duration, (v) => (o.duration = v))),
       h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Level'), lvl, h('span', { class: 'unit' }, 'dBFS')),
-      h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Repeats'), select([1, 2, 4, 8].map((v) => ({ value: v, label: `${v}×` })), o.repeats, (v) => (o.repeats = v))),
-      h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Range'), select([{ value: 20, label: '20 Hz' }, { value: 10, label: '10 Hz' }, { value: 40, label: '40 Hz' }, { value: 80, label: '80 Hz' }], o.f1, (v) => (o.f1 = v)), select([{ value: 20000, label: '20 kHz' }, { value: 16000, label: '16 kHz' }, { value: 10000, label: '10 kHz' }, { value: 1000, label: '1 kHz (sub)' }], o.f2, (v) => (o.f2 = v))),
+      sweepOptions,
       h('div', { class: 'spacer' }),
       this.measureBtn,
     );
-    const analysis = h(
-      'div',
-      { class: 'toolbar' },
-      h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'FR window'), select([{ value: 5, label: '5 ms (gated)' }, { value: 20, label: '20 ms' }, { value: 100, label: '100 ms' }, { value: 500, label: '500 ms' }, { value: 2000, label: 'Full' }], o.window, (v) => { o.window = v; this.recompute(); })),
-      h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Smoothing'), select([48, 24, 12, 6, 3, 1].map((v) => ({ value: v as Smoothing, label: `1/${v} oct` })), o.smoothing, (v) => { o.smoothing = v; this.recompute(); })),
-      h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Bands'), select([{ value: 1 as const, label: 'Octave' }, { value: 3 as const, label: '1/3 octave' }], o.fraction, (v) => { o.fraction = v; this.recompute(true); })),
-      h('div', { class: 'spacer' }),
-      h('button', { class: 'btn small', onclick: () => this.saveTrace(), title: 'Store the frequency response as a trace' }, icon('camera', 14), 'Save FR as trace'),
-      h('button', { class: 'btn small', onclick: () => this.exportIr(), title: 'Download the impulse response as a WAV file' }, icon('download', 14), 'IR .wav'),
+    const analysisOptions = optionsMenu(
+      [
+        optHead('Analysis'),
+        optRow('FR window', select([{ value: 5, label: '5 ms (gated)' }, { value: 20, label: '20 ms' }, { value: 100, label: '100 ms' }, { value: 500, label: '500 ms' }, { value: 2000, label: 'Full' }], o.window, (v) => { o.window = v; this.recompute(); }, { title: 'Time window for the frequency response: short windows leave out room reflections' })),
+        optRow('Smoothing', select([48, 24, 12, 6, 3, 1].map((v) => ({ value: v as Smoothing, label: `1/${v} octave` })), o.smoothing, (v) => { o.smoothing = v; this.recompute(); })),
+        optRow('RT bands', select([{ value: 1 as const, label: 'Octave' }, { value: 3 as const, label: '1/3 octave' }], o.fraction, (v) => { o.fraction = v; this.recompute(true); })),
+        optHead('Export'),
+        h('div', { class: 'opt-ctl' }, h('button', { class: 'btn small', onclick: () => this.exportIr(), title: 'Download the impulse response as a WAV file' }, icon('download', 14), 'Impulse response .wav')),
+      ],
+      { label: 'Analysis', title: 'Analysis: FR window, smoothing, RT bands, IR export', id: 'room-analysis' },
     );
     const bar = h('div', { class: 'progress-row' }, this.progress, this.statusText);
     this.renderTabs();
-    this.el.append(settings, bar, analysis, this.cards, this.tabHost, this.content);
+    const tabsRow = h('div', { class: 'room-tabs-row' }, this.tabHost, h('div', { class: 'spacer' }), analysisOptions, h('button', { class: 'btn small', onclick: () => this.saveTrace(), title: 'Store the frequency response as a trace' }, icon('camera', 14), 'Save FR as trace'));
+    this.el.append(settings, bar, this.cards, tabsRow, this.content);
     this.showTab();
   }
 

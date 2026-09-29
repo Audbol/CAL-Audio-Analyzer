@@ -10,8 +10,8 @@ export function micAverageControl(app: App): HTMLElement {
   const s = app.settings;
   return select(
     [
-      { value: 'off' as const, label: 'Mic average: off' },
-      { value: 'avg' as const, label: 'Mic average' },
+      { value: 'off' as const, label: 'Off' },
+      { value: 'avg' as const, label: 'Average' },
       { value: 'spread' as const, label: 'Average + spread' },
       { value: 'only' as const, label: 'Average only' },
     ],

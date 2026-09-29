@@ -2603,10 +2603,136 @@ textarea.text:focus {
   flex: none;
 }
 .ws-select {
-  min-height: 26px;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.ws-ctl {
+  position: relative;
+  padding: 0;
+  margin-bottom: 5px;
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+}
+.ws-ctl:hover {
+  color: var(--text);
+  border-color: var(--border-3);
+}
+.ws-face {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
   font-size: 12px;
-  max-width: 220px;
+}
+.ws-name {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 1500px) {
+  .ws-name {
+    display: none;
+  }
 }
 .tb-target select {
   max-width: 230px;
+}
+
+/* Options pop-over (secondary toolbar settings) --------------------------- */
+.opt-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.opt-caret {
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 4px solid currentColor;
+  margin-left: 2px;
+  opacity: 0.7;
+}
+.opt-wrap.open .opt-btn {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.opt-panel {
+  display: none;
+  position: fixed;
+  z-index: 60;
+  min-width: 260px;
+  max-width: min(380px, calc(100vw - 16px));
+  overflow: auto;
+  padding: 10px 12px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.opt-wrap.open .opt-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.opt-head {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-top: 4px;
+}
+.opt-head:first-child {
+  margin-top: 0;
+}
+.opt-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+.opt-label {
+  color: var(--text-2);
+}
+.opt-ctl {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.opt-ctl select {
+  max-width: 100%;
+}
+.spl-subtabs {
+  padding: 0 14px 8px;
+}
+.spl-box {
+  flex: 1;
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+}
+.spl-box .log-bar {
+  border-top: 1px solid var(--border);
+}
+
+/* Compact toolbars: long option names don't stretch the controls */
+.toolbar select {
+  max-width: 190px;
+}
+.room-tabs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  flex: none;
+  flex-wrap: wrap;
+}
+.room-tabs-row .subtabs {
+  padding: 0;
 }

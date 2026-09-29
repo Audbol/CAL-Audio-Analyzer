@@ -18,31 +18,30 @@ export class TargetOverlay {
 
   constructor(private app: App) {}
 
-  /** Toolbar group: target select (built-ins and stored traces) and tolerance. */
-  controls(): HTMLElement {
-    const s = this.app.settings;
+  /** Toolbar group: the target select (built-ins and stored traces). */
+  targetControl(): HTMLElement {
     this.renderSelect();
-    return h(
-      'div',
-      { class: 'tb-group' },
-      h('span', { class: 'tb-label' }, 'Target'),
-      this.selHost,
-      select(
-        [
-          { value: 0, label: 'No band' },
-          { value: 1, label: '±1 dB' },
-          { value: 2, label: '±2 dB' },
-          { value: 3, label: '±3 dB' },
-          { value: 6, label: '±6 dB' },
-        ],
-        s.targetTolerance,
-        (v) => {
-          s.targetTolerance = v;
-          this.app.save();
-          this.app.syncSettingControls();
-        },
-        { title: 'Tolerance band around the target', dataset: { setting: 'targetTolerance' } },
-      ),
+    return h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Target'), this.selHost);
+  }
+
+  /** Tolerance band select (for the options panel). */
+  toleranceControl(): HTMLElement {
+    const s = this.app.settings;
+    return select(
+      [
+        { value: 0, label: 'No band' },
+        { value: 1, label: '±1 dB' },
+        { value: 2, label: '±2 dB' },
+        { value: 3, label: '±3 dB' },
+        { value: 6, label: '±6 dB' },
+      ],
+      s.targetTolerance,
+      (v) => {
+        s.targetTolerance = v;
+        this.app.save();
+        this.app.syncSettingControls();
+      },
+      { title: 'Tolerance band around the target', dataset: { setting: 'targetTolerance' } },
     );
   }
 

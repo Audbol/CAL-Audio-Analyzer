@@ -5,6 +5,7 @@ import type { DockLayout } from '../ui/dock';
 import { SMOOTHING_OPTIONS, type Smoothing } from '../dsp/freq';
 import { AVG_OPTIONS, cohAlpha } from './meters';
 import { DockedView } from './docked';
+import { optionsMenu, optRow, optHead } from '../ui/popover';
 import { TargetOverlay } from './target-overlay';
 import { micAverageControl, micAverageSeries } from './mic-average-overlay';
 
@@ -50,24 +51,35 @@ export class TransferView extends DockedView implements View {
   private toolbar(): HTMLElement {
     const s = this.app.settings;
     const app = this.app;
-    const cohSlider = h('input', { type: 'range', min: '0', max: '0.95', step: '0.05', value: String(s.coherenceThreshold), class: 'mini-range', title: 'Coherence blanking threshold' });
+    const cohSlider = h('input', { type: 'range', min: '0', max: '0.95', step: '0.05', value: String(s.coherenceThreshold), class: 'mini-range', title: 'Fade data with coherence below this value' });
     const cohVal = h('span', { class: 'dim small' }, `${Math.round(s.coherenceThreshold * 100)}%`);
     cohSlider.addEventListener('input', () => {
       s.coherenceThreshold = +cohSlider.value;
       cohVal.textContent = `${Math.round(s.coherenceThreshold * 100)}%`;
       app.save();
     });
+    const options = optionsMenu(
+      [
+        optHead('Panels'),
+        h('div', { class: 'opt-ctl' }, this.panelChip('mag', 'Magnitude', 'magnitude'), this.panelChip('phase', 'Phase', 'phase'), this.panelChip('spl', 'SPL meter', 'SPL meter'), this.panelChip('levels', 'Input levels', 'input level')),
+        optHead('Display'),
+        optRow('Blank below', cohSlider, cohVal),
+        optRow('Target tolerance', this.target.toleranceControl()),
+        optRow('Several mics', micAverageControl(app)),
+        optHead('Layout'),
+        h('div', { class: 'opt-ctl' }, this.resetLayoutButton()),
+      ],
+      { title: 'Transfer options: panels, coherence blanking, tolerance, several mics', id: 'transfer' },
+    );
     return h(
       'div',
       { class: 'toolbar' },
-      h('div', { class: 'tb-group' }, this.panelChip('mag', 'Magnitude', 'magnitude'), this.panelChip('phase', 'Phase', 'phase'), this.panelChip('spl', 'SPL', 'SPL meter'), this.panelChip('levels', 'Levels', 'input level')),
-      h('div', { class: 'tb-group' }, this.settingChip('showCoherence', 'Coherence', 'Show coherence trace on the magnitude plot')),
       h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Smoothing'), select(SMOOTHING_OPTIONS.filter((o) => o.value !== 0), s.tfSmoothing, (v: Smoothing) => { s.tfSmoothing = v; app.save(); }), h('span', { class: 'tb-label' }, 'Avg'), select(AVG_OPTIONS, s.tfAveraging, (v) => { s.tfAveraging = v; app.applyAnalysisSettings(); }, { dataset: { setting: 'tfAveraging' } })),
-      h('div', { class: 'tb-group' }, h('span', { class: 'tb-label', title: 'Fade data with coherence below this value' }, 'Blank <'), cohSlider, cohVal),
-      this.target.controls(),
-      h('div', { class: 'tb-group' }, micAverageControl(app)),
+      this.target.targetControl(),
+      this.settingChip('showCoherence', 'Coherence', 'Show coherence trace on the magnitude plot'),
       h('div', { class: 'spacer' }),
-      ...this.layoutButtons(),
+      options,
+      this.resetButton(),
     );
   }
 

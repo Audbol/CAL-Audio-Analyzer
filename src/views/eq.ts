@@ -4,6 +4,7 @@ import { Plot } from '../ui/plot';
 import { h, icon, select, clear } from '../ui/dom';
 import { autoEq, eqResponse, TARGETS, type AutoEqResult, type PeqFilter } from '../dsp/eq';
 import { smoothCurve } from '../dsp/freq';
+import { optionsMenu, optRow, optHead } from '../ui/popover';
 
 export interface EqSnapshot {
   source: string;
@@ -27,7 +28,7 @@ export interface EqSnapshot {
 export class EqView implements View {
   id = 'eq' as const;
   readonly needs = { tf: true };
-  title = 'EQ Assistant';
+  title = 'EQ';
   icon = 'sliders' as const;
   el = h('div', { class: 'eq' });
   private plot: Plot;
@@ -47,19 +48,28 @@ export class EqView implements View {
     // Start from the target chosen for the Spectrum / Transfer views, when it is a built-in one
     if (TARGETS.some((t) => t.id === app.settings.targetCurve)) this.target = app.settings.targetCurve;
     this.plot = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: -18, yMax: 18, yUnit: 'dB', yStep: 3, title: 'Deviation from target, EQ and predicted result', showNote: true, yLimits: [-60, 60] });
-    const num = (key: keyof typeof this.opt, label: string, step: string, unit = '') => {
-      const i = h('input', { type: 'number', class: 'num', value: String(this.opt[key]), step });
+    const numIn = (key: keyof typeof this.opt, step: string) => {
+      const i = h('input', { type: 'number', class: 'num', value: String(this.opt[key]), step, dataset: { eqOpt: key } });
       i.addEventListener('change', () => ((this.opt[key] as number) = +i.value));
-      return h('label', { class: 'inline' }, h('span', { class: 'tb-label' }, label), i, unit ? h('span', { class: 'unit' }, unit) : null);
+      return i;
     };
     this.el.append(
       h(
         'div',
-        { class: 'toolbar wrap' },
+        { class: 'toolbar' },
         h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Source'), this.srcHost),
         h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Target'), select(TARGETS.map((t) => ({ value: t.id, label: t.label })), this.target, (v) => { this.target = v; })),
-        h('div', { class: 'tb-group' }, num('fMin', 'From', '1', 'Hz'), num('fMax', 'to', '100', 'Hz')),
-        h('div', { class: 'tb-group' }, num('maxFilters', 'Filters', '1'), num('maxBoost', 'Max boost', '0.5', 'dB'), num('maxCut', 'Max cut', '0.5', 'dB')),
+        optionsMenu(
+          [
+            optHead('Range'),
+            optRow('Frequencies', numIn('fMin', '1'), '–', numIn('fMax', '100'), h('span', { class: 'unit' }, 'Hz')),
+            optHead('Filters'),
+            optRow('Number of filters', numIn('maxFilters', '1')),
+            optRow('Max boost', numIn('maxBoost', '0.5'), h('span', { class: 'unit' }, 'dB')),
+            optRow('Max cut', numIn('maxCut', '0.5'), h('span', { class: 'unit' }, 'dB')),
+          ],
+          { title: 'EQ options: frequency range, number of filters, boost and cut limits', id: 'eq' },
+        ),
         h('div', { class: 'spacer' }),
         h('button', { class: 'btn accent', onclick: () => this.run() }, icon('sparkle', 15), 'Calculate EQ'),
       ),

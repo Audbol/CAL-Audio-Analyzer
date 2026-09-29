@@ -27,6 +27,7 @@ await page.waitForTimeout(4000);
 
 // --- Average curve: bell-shaped smoothing makes it smooth (small curvature) compared with unsmoothed
 await page.keyboard.press('1');
+await page.locator('.view:visible [data-options]').click();
 const roughness = async (smooth) => {
   await page.locator('select[data-setting="rtaAverageSmoothing"]').selectOption(String(smooth));
   await page.waitForTimeout(1500);
@@ -55,12 +56,14 @@ const mic = await page.evaluate(() => {
 });
 check(mic.n === 2 && mic.ids.includes('mic-avg') && mic.ids.includes('mic-spread'), `spectrum shows the average and spread of ${mic.n} mics`);
 await page.keyboard.press('2');
+await page.locator('.view:visible [data-options]').click();
 await page.locator('select[data-setting="micAverage"]').nth(1).selectOption('only');
 await page.waitForTimeout(1500);
 const tfIds = await page.evaluate(() => window.calApp.views.find((v) => v.id === 'transfer').mag.series.map((s) => s.id));
 check(tfIds.includes('mic-avg') && !tfIds.some((id) => /^m\d/.test(id)), 'transfer function: “average only” hides the individual mics');
 await page.screenshot({ path: `${out}/feat2-02-mic-average.png` });
 await page.locator('select[data-setting="micAverage"]').nth(1).selectOption('off');
+await page.keyboard.press('Escape');
 
 // --- Trace note and photo
 await page.keyboard.press('c');
@@ -83,7 +86,7 @@ check(tr.size < 400_000, 'photo scaled down for storage');
 await page.keyboard.press('5');
 await page.getByRole('button', { name: 'Measure sweep' }).click();
 await page.waitForFunction(() => window.calApp.views.find((v) => v.id === 'room').result !== null, null, { timeout: 30000 });
-await page.getByRole('button', { name: 'Waterfall' }).click();
+await page.locator('.room-tabs-row').getByRole('button', { name: 'Waterfall' }).click();
 await page.waitForTimeout(600);
 const wf = await page.evaluate(() => {
   const d = window.calApp.views.find((v) => v.id === 'room').waterfallData('bass');
@@ -97,6 +100,7 @@ await page.screenshot({ path: `${out}/feat2-03-waterfall.png` });
 
 // --- Noise log: 1 s rows, a limit below the level → alarm
 await page.keyboard.press('8');
+await page.locator('.spl-subtabs [data-sub="log"]').click();
 await page.locator('select[data-log="interval"]').selectOption('1');
 await page.locator('select[data-log="window"]').selectOption('1');
 await page.locator('input[data-log="limit"]').fill('-80');

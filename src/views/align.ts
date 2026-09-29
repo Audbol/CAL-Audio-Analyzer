@@ -3,6 +3,7 @@ import { Plot, type Series } from '../ui/plot';
 import { h, icon, select } from '../ui/dom';
 import { alignSubMain, type AlignInput, type AlignResult } from '../dsp/align';
 import { speedOfSound } from '../dsp/delay';
+import { optionsMenu, optRow, optHead } from '../ui/popover';
 
 const MAIN_COLOR = '#4da3ff';
 const SUB_COLOR = '#ff6b6b';
@@ -78,26 +79,28 @@ export class AlignView implements View {
         { class: 'toolbar wrap' },
         h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Mains'), this.srcHost.main, h('button', { class: 'btn small', title: 'Store the live transfer function as the mains measurement', onclick: () => this.capture('main') }, icon('camera', 14), 'Capture mains')),
         h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Sub'), this.srcHost.sub, h('button', { class: 'btn small', title: 'Store the live transfer function as the sub measurement', onclick: () => this.capture('sub') }, icon('camera', 14), 'Capture sub')),
-        h(
-          'div',
-          { class: 'tb-group' },
-          h('span', { class: 'tb-label' }, 'Region'),
-          select(
-            [
-              { value: 'auto' as const, label: 'Automatic' },
-              { value: 'manual' as const, label: 'Manual' },
-            ],
-            this.regionMode,
-            (v) => {
-              this.regionMode = v;
-              manual.style.display = v === 'manual' ? '' : 'none';
-            },
-            { title: 'Crossover region to optimise (automatic: where the two are within 10 dB of each other)' },
-          ),
-          manual,
-          h('span', { class: 'tb-label' }, 'Range ±'),
-          num(this.rangeMs, '1', (v) => (this.rangeMs = Math.min(50, Math.max(1, v || 20))), { min: '1', max: '50', title: 'Delay search range' }),
-          h('span', { class: 'unit' }, 'ms'),
+        optionsMenu(
+          [
+            optHead('Crossover region'),
+            optRow(
+              'Region',
+              select(
+                [
+                  { value: 'auto' as const, label: 'Automatic' },
+                  { value: 'manual' as const, label: 'Manual' },
+                ],
+                this.regionMode,
+                (v) => {
+                  this.regionMode = v;
+                  manual.style.display = v === 'manual' ? '' : 'none';
+                },
+                { title: 'Crossover region to optimise (automatic: where the two are within 10 dB of each other)' },
+              ),
+              manual,
+            ),
+            optRow('Search range', h('span', { class: 'row gap4' }, '±', num(this.rangeMs, '1', (v) => (this.rangeMs = Math.min(50, Math.max(1, v || 20))), { min: '1', max: '50', title: 'Delay search range' }), h('span', { class: 'unit' }, 'ms'))),
+          ],
+          { title: 'Alignment options: crossover region and delay search range', id: 'align' },
         ),
         h('div', { class: 'spacer' }),
         h('button', { class: 'btn small', title: 'Store the predicted aligned sum as a trace', onclick: () => this.saveSum() }, icon('download', 14), 'Save sum'),
@@ -108,7 +111,7 @@ export class AlignView implements View {
       h('div', { class: 'panes align-panes' }, h('div', { class: 'pane big' }, this.mag.el), h('div', { class: 'pane' }, this.phase.el)),
     );
     this.summary.innerHTML =
-      'Measure at the same mic position with the same reference: <b>mains alone</b> (sub muted) and capture, then <b>sub alone</b> (mains muted) and capture, then press Calculate alignment. Leave the measurement delay as found for the mains; both captures remember it.';
+      'Same mic position and reference: capture the <b>mains alone</b>, then the <b>sub alone</b>, then press Calculate alignment.';
   }
 
   show(): void {

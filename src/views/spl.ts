@@ -7,7 +7,7 @@ import type { Weighting } from '../dsp/weighting';
 /** Sound level meter with Leq, Lmax, peak and a scrolling history graph. */
 export class SplView implements View {
   id = 'spl' as const;
-  title = 'SPL Meter';
+  title = 'SPL';
   icon = 'clock' as const;
   el = h('div', { class: 'spl' });
   private big = h('div', { class: 'spl-big' });
@@ -38,13 +38,33 @@ export class SplView implements View {
         h('button', { class: 'btn small', onclick: () => app.setView('tools') }, icon('settings', 14), 'Calibrate…'),
       ),
       h('div', { class: 'spl-top' }, this.big, this.stats),
-      h('div', { class: 'pane fill' }, this.history.el),
-      this.logToolbar(),
-      this.logStatus,
-      h('div', { class: 'pane log-pane' }, this.logPlot.el),
+      this.subtabs,
+      this.historyBox,
+      this.logBox,
     );
+    this.historyBox.append(h('div', { class: 'pane fill' }, this.history.el));
+    this.logBox.append(this.logToolbar(), this.logStatus, h('div', { class: 'pane fill' }, this.logPlot.el));
     this.renderLogButton();
+    this.renderSubtabs();
   }
+
+  /** History and noise log share the space below the meter: one at a time. */
+  private sub: 'history' | 'log' = 'history';
+  private subtabs = h('div', { class: 'subtabs spl-subtabs' });
+  private historyBox = h('div', { class: 'spl-box' });
+  private logBox = h('div', { class: 'spl-box' });
+
+  private renderSubtabs(): void {
+    const rec = this.app.logger.running;
+    const tab = (id: 'history' | 'log', ...label: (string | HTMLElement)[]) =>
+      h('button', { class: `chip${this.sub === id ? ' on' : ''}`, dataset: { sub: id }, onclick: () => { this.sub = id; this.renderSubtabs(); } }, ...label);
+    this.subtabs.replaceChildren(tab('history', 'History (2 min)'), tab('log', rec ? h('span', { class: 'rec-dot' }) : '', 'Noise log'));
+    this.subRec = rec;
+    this.historyBox.style.display = this.sub === 'history' ? '' : 'none';
+    this.logBox.style.display = this.sub === 'log' ? '' : 'none';
+    if (this.sub === 'log') this.logVersion = -1;
+  }
+  private subRec = false;
 
   /** Noise log controls: start / stop, interval, limit and rolling window, export. */
   private logToolbar(): HTMLElement {
@@ -227,7 +247,8 @@ export class SplView implements View {
     ];
     if (!s.splCalibrated && this.history.cfg.yMin > -20) this.history.setDefaults({ yMin: -100, yMax: 0 });
     if (s.splCalibrated && this.history.cfg.yMax < 60) this.history.setDefaults({ yMin: 20, yMax: 120 });
-    this.history.draw();
-    this.tickLog();
+    if (this.app.logger.running !== this.subRec) this.renderSubtabs();
+    if (this.sub === 'history') this.history.draw();
+    else this.tickLog();
   }
 }

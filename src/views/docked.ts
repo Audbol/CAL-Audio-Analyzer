@@ -86,11 +86,14 @@ export abstract class DockedView {
     for (const [key, b] of this.settingChips) b.classList.toggle('on', !!this.app.settings[key]);
   }
 
-  protected layoutButtons(): HTMLElement[] {
-    return [
-      h('button', { class: 'btn small ghost', title: 'Restore the default panel arrangement', onclick: () => this.dock.reset(this.defaultLayout()) }, icon('layout', 14), 'Reset layout'),
-      h('button', { class: 'btn small', title: 'Reset all averages (R)', onclick: () => this.app.resetAverages() }, icon('reset', 14), 'Reset'),
-    ];
+  /** Restore the default panel arrangement (for the options panel). */
+  protected resetLayoutButton(): HTMLElement {
+    return h('button', { class: 'btn small ghost', title: 'Restore the default panel arrangement', onclick: () => this.dock.reset(this.defaultLayout()) }, icon('layout', 14), 'Reset layout');
+  }
+
+  /** Restart all averaging, including the average curve (R). */
+  protected resetButton(): HTMLElement {
+    return h('button', { class: 'btn small', title: 'Restart all averaging, including the average curve (R)', onclick: () => this.app.resetAverages() }, icon('reset', 14), 'Reset');
   }
 
   private syncChips(): void {

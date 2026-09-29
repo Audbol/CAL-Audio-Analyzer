@@ -147,7 +147,7 @@ export function defaultSettings(): Settings {
     micAverage: 'off',
     workspaces: [],
     workspace: '',
-    nativeAudio: { sampleRate: 48000, bufferFrames: 0, safetyMs: 40 },
+    nativeAudio: { sampleRate: 48000, bufferFrames: 0, safetyMs: 80 },
     targetCurve: 'off',
     targetTolerance: 3,
     session: { name: '', venue: '', notes: '' },
