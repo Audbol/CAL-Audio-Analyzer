@@ -4,10 +4,10 @@ import { Plot } from '../ui/plot';
 import { h, icon, numberInput, clear, select } from '../ui/dom';
 import { roomModes, schroederFrequency, criticalDistance, type RoomMode } from '../dsp/acoustics';
 import { speedOfSound } from '../dsp/delay';
-import { parseMicCal } from '../dsp/calibration';
 import { weightingDb } from '../dsp/weighting';
 import { RemoteCard } from './remote-card';
 import { NativeCard } from './native-card';
+import { MicsCard } from './mics-card';
 import { modal } from '../ui/dialogs';
 import { applySession, buildSession, downloadText, parseSession, sessionFileName, type SessionFile } from '../session';
 import { openReport } from '../report';
@@ -21,8 +21,7 @@ export class ToolsView implements View {
   private room = { L: 6.5, W: 4.2, H: 2.7, rt: 0.5 };
   private modesPlot: Plot;
   private modesTable = h('div', { class: 'modes-table' });
-  private calStatus = h('div', { class: 'dim small' });
-  private micStatus = h('div', { class: 'dim small' });
+  readonly micsCard: MicsCard;
   private delayOut = h('div', { class: 'calc-out' });
   private dirty = true;
   private remoteCard: RemoteCard;
@@ -32,6 +31,7 @@ export class ToolsView implements View {
   constructor(private app: App) {
     this.remoteCard = new RemoteCard(app);
     this.nativeCard = new NativeCard(app);
+    this.micsCard = new MicsCard(app);
     this.modesPlot = new Plot({ xType: 'log', xMin: 15, xMax: 400, yMin: 0, yMax: 3.4, yUnit: '', title: 'Room modes (axial ▮ tangential ▮ oblique ▮)', yLimits: [0, 4] });
     this.build();
   }
@@ -124,42 +124,6 @@ export class ToolsView implements View {
 
   private build(): void {
     const s = this.app.settings;
-    // --- SPL calibration
-    const calLevel = h('input', { type: 'number', class: 'num', value: '94', step: '0.1' });
-    const calCard = h(
-      'section',
-      { class: 'tool-card' },
-      h('h4', {}, icon('mic', 15), ' SPL calibration'),
-      h('p', { class: 'dim small' }, 'Fit an acoustic calibrator (94 or 114 dB, 1 kHz) to the measurement mic, switch it on, then press Calibrate. Or place a reference SLM next to the mic and enter its reading.'),
-      h('div', { class: 'row gap8' }, h('span', {}, 'Reference level'), calLevel, h('span', { class: 'unit' }, 'dB SPL'), h('button', { class: 'btn accent small', onclick: () => this.calibrate(+calLevel.value) }, icon('target', 14), 'Calibrate')),
-      h('div', { class: 'row gap8' }, h('button', { class: 'btn small ghost', onclick: () => { s.splOffset = 0; s.splCalibrated = false; this.app.spl.offsetDb = 0; this.app.save(); this.renderStatus(); } }, 'Reset calibration')),
-      this.calStatus,
-    );
-    // --- Mic calibration file
-    const file = h('input', { type: 'file', accept: '.txt,.cal,.frd,.csv', style: 'display:none' });
-    file.addEventListener('change', async () => {
-      const f = file.files?.[0];
-      if (!f) return;
-      try {
-        s.micCal = parseMicCal(await f.text(), f.name);
-        this.app.updateCal();
-        this.app.save();
-        this.app.toast(`Loaded mic calibration ${f.name} (${s.micCal.freqs.length} points)`, 'ok');
-      } catch (e) {
-        this.app.toast((e as Error).message, 'warn');
-      }
-      file.value = '';
-      this.renderStatus();
-    });
-    const micCard = h(
-      'section',
-      { class: 'tool-card' },
-      h('h4', {}, icon('upload', 15), ' Microphone calibration file'),
-      h('p', { class: 'dim small' }, 'Load the frequency response file supplied with your measurement mic (.txt, .cal, .frd or .csv: frequency, dB and optionally phase). The correction is applied to RTA, transfer function and sweep results.'),
-      h('div', { class: 'row gap8' }, h('button', { class: 'btn small', onclick: () => file.click() }, icon('upload', 14), 'Load file…'), h('button', { class: 'btn small ghost', onclick: () => { s.micCal = null; this.app.updateCal(); this.app.save(); this.renderStatus(); } }, 'Remove')),
-      this.micStatus,
-      file,
-    );
     // --- Delay / distance
     const dInput = h('input', { type: 'number', class: 'num', value: '10', step: '0.01' });
     const mInput = h('input', { type: 'number', class: 'num', value: '3.43', step: '0.01' });
@@ -266,34 +230,12 @@ export class ToolsView implements View {
         ? h('p', { class: 'dim small' }, 'On the host: the measurement computer runs the FFTs and sends finished spectra, so every device shows the same result and slow devices only draw. Averaging and FFT size then follow the host. On this device: the full analysis runs here with its own averaging.')
         : null,
     );
-    this.el.append(h('div', { class: 'tool-grid' }, this.sessionCard(), this.nativeCard.el, this.remoteCard.el, perfCard, calCard, micCard, delayCard, wCard, modesCard, dataCard));
-    this.renderStatus();
-  }
-
-  private calibrate(level: number): void {
-    const app = this.app;
-    const r = app.splReading;
-    if (!app.engine.running || !r || !Number.isFinite(r.slow)) return app.toast('Start audio with the calibrator running first', 'warn');
-    const raw = r.slow - app.spl.offsetDb;
-    if (raw < -80) return app.toast('Input level too low for calibration — check the mic channel and gain', 'warn');
-    const s = app.settings;
-    s.splOffset = level - raw;
-    s.splCalibrated = true;
-    app.spl.offsetDb = s.splOffset;
-    app.spl.resetLeq();
-    app.save();
-    app.toast(`Calibrated: ${raw.toFixed(1)} dBFS = ${level.toFixed(1)} dB SPL (offset ${s.splOffset.toFixed(1)} dB)`, 'ok');
+    this.el.append(h('div', { class: 'tool-grid' }, this.sessionCard(), this.micsCard.el, this.nativeCard.el, this.remoteCard.el, perfCard, delayCard, wCard, modesCard, dataCard));
     this.renderStatus();
   }
 
   private renderStatus(): void {
-    const s = this.app.settings;
-    this.calStatus.innerHTML = s.splCalibrated
-      ? `<span class="ok-text">Calibrated</span> · 0 dBFS = ${s.splOffset.toFixed(1)} dB SPL (input ${s.splChannel + 1}). Don't change the preamp gain after calibrating.`
-      : 'Not calibrated — levels are shown in dBFS.';
-    this.micStatus.innerHTML = s.micCal
-      ? `<span class="ok-text">Active:</span> ${s.micCal.name} · ${s.micCal.freqs.length} points${s.micCal.sensitivity !== undefined ? ` · sens. factor ${s.micCal.sensitivity} dB` : ''}`
-      : 'No calibration file loaded.';
+    this.micsCard.render();
   }
 
   show(): void {

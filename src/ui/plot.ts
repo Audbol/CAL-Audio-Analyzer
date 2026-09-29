@@ -436,7 +436,7 @@ export class Plot {
       ctx.setLineDash([]);
       if (m.label) {
         ctx.fillStyle = seriesColor(m.color);
-        ctx.font = '10px Inter, system-ui, sans-serif';
+        ctx.font = "10px 'Inter Variable', Inter, system-ui, sans-serif";
         ctx.fillText(m.label, x + 3, H - pad.b - 5);
       }
     }
@@ -448,7 +448,7 @@ export class Plot {
     const ctx = this.ctx;
     const { w, hgt: H, pad } = this;
     const { xMin, xMax, yMin, yMax, xType } = this.cfg;
-    ctx.font = '10px Inter, system-ui, sans-serif';
+    ctx.font = "10px 'Inter Variable', Inter, system-ui, sans-serif";
     ctx.lineWidth = 1;
     // X grid
     ctx.textAlign = 'center';

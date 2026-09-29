@@ -212,6 +212,7 @@ export class SplView implements View {
     this.chHost.replaceChildren(
       select(this.app.channelOptions(false), this.app.settings.splChannel, (v) => {
         this.app.settings.splChannel = v;
+        this.app.syncCal(); // the meter uses the calibration of the mic on this input
         this.app.spl.resetLeq();
         this.app.save();
       }),

@@ -87,8 +87,8 @@ await page.evaluate(() => {
 await page.keyboard.press('7');
 await page.waitForTimeout(400);
 const ids = await page.evaluate(() => window.calApp.traces.traces.slice(-2).map((t) => t.id));
-await page.locator('select[data-align="main"]').selectOption(`trace:${ids[0]}`);
-await page.locator('select[data-align="sub"]').selectOption(`trace:${ids[1]}`);
+await page.locator('select[data-align="ref"]').selectOption(`trace:${ids[0]}`);
+await page.locator('select[data-align-el]').first().selectOption(`trace:${ids[1]}`);
 await page.getByRole('button', { name: 'Calculate alignment' }).click();
 await page.waitForTimeout(500);
 const al = await page.evaluate(() => {
@@ -167,7 +167,7 @@ const rep = await popup.evaluate(() => ({
   text: document.body.innerText,
 }));
 check(rep.title.includes('Main PA tuning') && rep.title.includes('Test Hall'), `report title (${rep.title})`);
-for (const s of ['Setup', 'Spectrum', 'Transfer function', 'Sweep & room acoustics', 'EQ', 'Sub / main alignment', 'Stored traces', 'Notes']) check(rep.sections.includes(s), `report section “${s}”`);
+for (const s of ['Setup', 'Spectrum', 'Transfer function', 'Sweep & room acoustics', 'EQ', 'System alignment', 'Stored traces', 'Notes']) check(rep.sections.includes(s), `report section “${s}”`);
 check(rep.imgs >= 7, `report plots rendered (${rep.imgs})`);
 check(rep.text.includes('Delay the mains by 3.0') && rep.text.includes('Within ±3 dB'), 'report states the alignment and target deviation');
 await popup.setViewportSize({ width: 1100, height: 1400 });

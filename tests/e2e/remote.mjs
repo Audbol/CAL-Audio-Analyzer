@@ -122,7 +122,7 @@ await phone.goto(`http://127.0.0.1:${PORT}/?pin=${PIN}`);
 await phone.waitForFunction(() => window.calApp.engine.running === true, null, { timeout: 15000 });
 
 // The host is SPL-calibrated (the RTA switches from dBFS to dB SPL, ~120 dB higher)
-await host.evaluate(() => { const s = window.calApp.settings; s.splCalibrated = true; s.splOffset = 120; window.calApp.spl.offsetDb = 120; window.calApp.save(); });
+await host.evaluate(() => { const a = window.calApp; a.settings.mics = [{ id: 't1', name: 'Test mic', channel: a.settings.splChannel, micCal: null, splOffset: 120, splCalibrated: true }]; a.syncCal(); a.save(); });
 // Spectrum on a remote: the data is inside the plot (not an off-scale fill) and the zoom buttons work
 await phone.keyboard.press('1');
 await phone.waitForTimeout(2500);

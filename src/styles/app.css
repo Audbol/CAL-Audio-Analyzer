@@ -1,20 +1,20 @@
 :root {
-  /* OLED black base with neutral graphite surfaces and a single restrained accent */
+  /* OLED black base with cool graphite surfaces and a single restrained accent */
   --bg: #000000;
-  --panel: #050505;
-  --panel-2: #0b0b0c;
-  --panel-3: #131315;
-  --hover: #1b1b1e;
-  --border: #19191b;
-  --border-2: #26262a;
-  --border-3: #34343a;
-  --text: #ececee;
-  --text-2: #b9b9bf;
-  --dim: #7d7d85;
+  --panel: #07080a;
+  --panel-2: #0d0f12;
+  --panel-3: #15181d;
+  --hover: #1c2027;
+  --border: #1a1d22;
+  --border-2: #272b32;
+  --border-3: #363b44;
+  --text: #e9ebee;
+  --text-2: #b6bbc4;
+  --dim: #7b818c;
   --accent: #4d9fff;
   --accent-hi: #7ab8ff;
   --accent-rgb: 77, 159, 255;
-  --accent-ink: #000000;
+  --accent-ink: #00101f;
   --warn: #ffb020;
   --warn-rgb: 255, 176, 32;
   --danger: #ff4d5e;
@@ -30,12 +30,14 @@
   --meter-hold: #ffffff;
   --overlay: rgba(0, 0, 0, 0.72);
   --scrim: rgba(0, 0, 0, 0.78);
-  --tip-bg: rgba(10, 10, 12, 0.96);
+  --tip-bg: rgba(12, 14, 18, 0.96);
   --shadow-rgb: 0, 0, 0;
   --start-on: #ff8a96;
   --gen-on: #ffc857;
   --radius: 6px;
-  --font: Inter, 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --radius-lg: 10px;
+  --ctl-h: 28px;
+  --font: 'Inter Variable', Inter, 'Segoe UI', system-ui, -apple-system, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   color-scheme: dark;
 }
@@ -120,7 +122,9 @@ body {
   background: var(--bg);
   color: var(--text);
   font: 13px/1.4 var(--font);
+  font-feature-settings: 'cv11', 'ss01', 'tnum';
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #app {
@@ -2735,4 +2739,365 @@ textarea.text:focus {
 }
 .room-tabs-row .subtabs {
   padding: 0;
+}
+
+/* Microphones card ------------------------------------------------------- */
+.mic-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mic-row {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--panel);
+}
+.mic-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mic-head .mic-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}
+.mic-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  min-height: 24px;
+}
+.mic-label {
+  width: 64px;
+  color: var(--dim);
+  flex: none;
+}
+.mic-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--dim);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mic-state.ok {
+  color: var(--text);
+}
+.mic-state.ok svg {
+  color: var(--ok, #3ddc84);
+  flex: none;
+}
+.mic-state em {
+  font-style: normal;
+  color: var(--dim);
+}
+
+/* System alignment ------------------------------------------------------- */
+.align-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+}
+.align-side {
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+  overflow: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.align-side-head {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.align-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.align-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: auto;
+}
+.align-el {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-2);
+  border-radius: 8px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--panel-2);
+  cursor: pointer;
+}
+.align-el.on {
+  border-color: rgba(var(--accent-rgb), 0.55);
+  border-left-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.06);
+}
+.align-el-head,
+.align-el-src,
+.align-el-prec {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.align-el-head .align-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}
+.align-el-src select {
+  flex: 1;
+  min-width: 0;
+}
+.align-el-prec {
+  justify-content: space-between;
+}
+.align-res {
+  font-size: 12px;
+  line-height: 1.35;
+}
+.align-res b {
+  color: var(--accent);
+}
+.align-res.warn,
+.align-res.warn b {
+  color: var(--warn);
+}
+.kind-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--panel-3);
+  color: var(--text-2);
+  flex: none;
+}
+.kind-badge.k-sub {
+  background: rgba(255, 107, 107, 0.16);
+  color: #ff8a8a;
+}
+.kind-badge.k-frontfill,
+.kind-badge.k-outfill {
+  background: rgba(77, 163, 255, 0.16);
+  color: #7cbcff;
+}
+.kind-badge.k-delay {
+  background: rgba(255, 176, 32, 0.16);
+  color: #ffc24d;
+}
+.align-help {
+  margin: 4px 2px 0;
+}
+.opt-panel .align-add {
+  justify-content: flex-start;
+}
+html.compact .align-body {
+  grid-template-columns: 1fr;
+}
+html.compact .align-side {
+  border-right: none;
+  border-bottom: 1px solid var(--border);
+  max-height: 45vh;
+}
+.align-vs {
+  flex: none;
+  width: 72px;
+}
+
+
+/* ======================================================================================================
+   Professional polish: typography, surfaces, controls
+   ====================================================================================================== */
+:focus-visible {
+  outline: 2px solid rgba(var(--accent-rgb), 0.8);
+  outline-offset: 1px;
+}
+b,
+strong {
+  font-weight: 600;
+}
+.num,
+.mono,
+input[type='number'] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Thin, quiet scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-3) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-2);
+  border: 3px solid transparent;
+  border-radius: 10px;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-3);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Controls share one height and radius */
+select,
+input[type='number'],
+input[type='text'],
+input:not([type]) {
+  min-height: var(--ctl-h);
+  border-radius: var(--radius);
+  transition: border-color 0.12s;
+}
+select:hover,
+input[type='number']:hover,
+input[type='text']:hover {
+  border-color: var(--border-3);
+}
+.btn {
+  transition: background-color 0.12s, border-color 0.12s, color 0.12s;
+}
+.btn.accent {
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12) inset, 0 4px 14px rgba(var(--accent-rgb), 0.18);
+}
+
+/* Top bar: groups divided by hairlines */
+.topbar {
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+}
+.topbar .group + .group {
+  position: relative;
+}
+.topbar .gen,
+.topbar .extra-group {
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+}
+
+/* Tabs: quieter inactive tabs, clear active state */
+.tab {
+  border-radius: 6px 6px 0 0;
+  transition: color 0.12s, background-color 0.12s;
+}
+.tab:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+.tab.active {
+  font-weight: 600;
+}
+.tab svg {
+  opacity: 0.8;
+}
+.tab.active svg {
+  opacity: 1;
+}
+
+/* Toolbars and info strips */
+.toolbar {
+  background: var(--panel);
+  min-height: 46px;
+}
+.tb-label,
+.opt-label {
+  letter-spacing: 0.01em;
+}
+.info-strip {
+  background: var(--panel-2);
+}
+
+/* Cards and tool cards */
+.card,
+.stat,
+.tool-card {
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset;
+}
+.card b,
+.stat b {
+  letter-spacing: -0.01em;
+}
+.tool-card h4 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* Sidebar: sections share the height; the trace list scrolls instead of running under the assistant */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.sidebar > * {
+  flex: none;
+}
+.sidebar > .grow {
+  flex: 1 1 auto;
+  min-height: 80px;
+  overflow: auto;
+}
+.sidebar > .assistant {
+  max-height: 34vh;
+  overflow: auto;
+}
+
+/* Status bar */
+.statusbar {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Trace rows: the name gets the full width; actions sit on the second line */
+.trace {
+  align-items: flex-start;
+  padding: 6px 6px 6px 8px;
+}
+.trace > input[type='checkbox'],
+.trace > .swatch {
+  margin-top: 4px;
+}
+.trace-main {
+  gap: 2px;
+}
+.trace-main input.name {
+  width: 100%;
+  background: transparent;
+  border-color: transparent;
+  padding-left: 4px;
+}
+.trace-main input.name:hover,
+.trace-main input.name:focus {
+  background: var(--panel-3);
+  border-color: var(--border-2);
+}
+.trace-meta .btn.tiny {
+  padding: 2px 3px;
+  opacity: 0.75;
+}
+.trace:hover .trace-meta .btn.tiny,
+.trace-meta .btn.tiny.on {
+  opacity: 1;
 }

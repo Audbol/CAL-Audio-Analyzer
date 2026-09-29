@@ -88,7 +88,7 @@ export class SpectrogramView implements View {
     this.sg.dbMax = r[1] + this.appliedCal;
     this.sg.invalidate();
     this.inputs.forEach((el, i) => (el.value = String(Math.round(r[i] + this.appliedCal))));
-    this.unit.textContent = this.app.settings.splCalibrated ? 'dB SPL' : 'dBFS';
+    this.unit.textContent = this.app.isCalibrated(this.channel) ? 'dB SPL' : 'dBFS';
   }
 
   /** Colour range from the recent signal: floor a little under the typical level, top just above the peaks. */
@@ -123,7 +123,8 @@ export class SpectrogramView implements View {
           this.sa.averaging = 1;
           this.sa.window = 'blackman-harris';
         }
-        const offset = this.app.settings.splCalibrated ? this.app.settings.splOffset : 0;
+        // The shown input's own mic calibration
+        const offset = this.app.splOffsetFor(this.channel);
         // Calibration (possibly adopted from the measurement host) moves the levels: move the colour range with it
         if (offset !== this.appliedCal || !this.inputs[0].value) {
           this.appliedCal = offset;

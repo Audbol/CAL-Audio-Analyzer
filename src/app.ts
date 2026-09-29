@@ -27,6 +27,7 @@ import { showTraceNotes } from './ui/trace-notes';
 import { SplLogger, LOG_BANDS } from './logger';
 import { NativeAudio } from './native/client';
 import type { NativeDevice, NativeOpenOptions } from './native/protocol';
+import type { MicProfile } from './state';
 import { BUILTIN_WORKSPACES, allWorkspaces, applyWorkspace, captureWorkspace, type Workspace } from './workspaces';
 import { RemoteEngine } from './remote/client';
 import { HostLink, desktopBridge, hubPageInfo } from './remote/host';
@@ -182,7 +183,7 @@ export class App {
     if (m.rtaShown === this.logRtaShown && this.logBandCache) return this.logBandCache;
     this.logRtaShown = m.rtaShown;
     const g = this.grid;
-    const cal = s.splCalibrated ? s.splOffset : 0;
+    const cal = this.splOffsetFor(m.cfg.mic);
     // The RTA holds band power at its own resolution: rescale to third-octave bandwidth
     const scale = 10 * Math.log10(s.rtaSmoothing / 3);
     const half = Math.pow(2, 1 / 6);
@@ -261,17 +262,13 @@ export class App {
   applyShared(shared: SharedSettings): void {
     const s = this.settings;
     const measChanged = JSON.stringify(s.measurements) !== JSON.stringify(shared.measurements);
-    if (s.splOffset !== shared.splOffset) this.spl.resetLeq();
-    s.splOffset = shared.splOffset;
-    s.splCalibrated = shared.splCalibrated;
-    s.micCal = shared.micCal;
+    this.adoptMics(shared);
     s.tempC = shared.tempC;
     if (measChanged) {
       s.measurements = JSON.parse(JSON.stringify(shared.measurements));
       if (this.engine.running) this.rebuildMeasurements();
     }
-    this.spl.offsetDb = s.splOffset;
-    this.updateCal();
+    this.syncCal();
     this.renderMeasurements();
     this.save();
   }
@@ -335,7 +332,7 @@ export class App {
       if (this.settings.splChannel >= nCh) this.settings.splChannel = 0;
       this.rebuildMeasurements();
       this.spl = new SplMeter(this.fs, this.settings.splWeighting);
-      this.spl.offsetDb = this.settings.splOffset;
+      this.syncCal();
       this.splUnsub?.();
       this.splUnsub = this.engine.onData((blocks) => {
         const b = blocks[this.settings.splChannel];
@@ -514,9 +511,65 @@ export class App {
     this.toast('Averages reset');
   }
 
+  // Measurement microphones ------------------------------------------------------------------------------
+
+  /** The mic connected to an input, or null. */
+  micOn(channel: number): MicProfile | null {
+    return this.settings.mics.find((m) => m.channel === channel) ?? null;
+  }
+
+  private calCache = new Map<string, Float64Array>();
+
+  /** The mic correction on the analysis grid for an input (null: no correction file for that input). */
+  calFor(channel: number): Float64Array | null {
+    const mic = this.micOn(channel);
+    const cal = mic?.micCal;
+    if (!cal) return null;
+    const key = `${mic.id}|${cal.name}|${cal.freqs.length}|${this.grid.length}`;
+    let c = this.calCache.get(key);
+    if (!c) {
+      c = Float64Array.from(this.grid, (f) => calCorrection(cal, f));
+      this.calCache.set(key, c);
+    }
+    return c;
+  }
+
+  /** dB to add to dBFS for dB SPL on an input (0 when that input's mic isn't calibrated). */
+  splOffsetFor(channel: number): number {
+    const m = this.micOn(channel);
+    return m?.splCalibrated ? m.splOffset : 0;
+  }
+
+  isCalibrated(channel: number): boolean {
+    return !!this.micOn(channel)?.splCalibrated;
+  }
+
+  /** Bring the SPL meter's values (and the legacy single-calibration fields) in step with the mic on its input. */
+  syncCal(): void {
+    const s = this.settings;
+    const m = this.micOn(s.splChannel);
+    const off = m?.splCalibrated ? m.splOffset : 0;
+    if (off !== s.splOffset || !!m?.splCalibrated !== s.splCalibrated) this.spl.resetLeq();
+    s.splOffset = off;
+    s.splCalibrated = !!m?.splCalibrated;
+    s.micCal = m?.micCal ?? null;
+    this.spl.offsetDb = off;
+    this.calCache.clear();
+    this.cal = this.calFor(s.splChannel);
+  }
+
   updateCal(): void {
-    const cal = this.settings.micCal;
-    this.cal = cal ? Float64Array.from(this.grid, (f) => calCorrection(cal, f)) : null;
+    this.syncCal();
+  }
+
+  /** Adopt shared mic settings from the host or a remote (older versions only send one calibration). */
+  private adoptMics(shared: SharedSettings): void {
+    const s = this.settings;
+    s.mics = shared.mics
+      ? JSON.parse(JSON.stringify(shared.mics))
+      : shared.splCalibrated || shared.micCal
+        ? [{ id: 'mic1', name: 'Mic 1', channel: s.splChannel, micCal: shared.micCal, splOffset: shared.splOffset, splCalibrated: shared.splCalibrated }]
+        : [];
   }
 
   setGenerator(patch: Partial<Settings['generator']>): void {
@@ -586,6 +639,7 @@ export class App {
             name: `${m.cfg.name} RTA ${stamp}`,
             kind: 'rta',
             dbfs: true,
+            channel: m.cfg.mic,
             freqs: Array.from(this.grid),
             mag: Array.from(m.rtaOut, (v) => +v.toFixed(2)),
           });
@@ -681,14 +735,10 @@ export class App {
     if (force || shared !== this.sharedApplied) {
       this.sharedApplied = shared;
       changed = true;
-      if (s.splOffset !== st.shared.splOffset) this.spl.resetLeq(); // Leq / Lmax were in the old units
-      s.splOffset = st.shared.splOffset;
-      s.splCalibrated = st.shared.splCalibrated;
-      s.micCal = st.shared.micCal;
+      this.adoptMics(st.shared);
       s.tempC = st.shared.tempC;
       s.measurements = JSON.parse(JSON.stringify(st.shared.measurements));
-      this.spl.offsetDb = s.splOffset;
-      this.updateCal();
+      this.syncCal(); // resets Leq / Lmax when the units changed
       if (this.engine.running) this.rebuildMeasurements();
       this.renderMeasurements();
     }
@@ -982,6 +1032,10 @@ export class App {
   })();
 
   toast(text: string, level: 'info' | 'ok' | 'warn' = 'info'): void {
+    // A repeated message refreshes instead of stacking; at most three are shown
+    for (const old of this.toastHost.querySelectorAll('.toast')) if (old.textContent === text) old.remove();
+    const shown = this.toastHost.querySelectorAll('.toast:not(.out)');
+    if (shown.length >= 3) shown[0].remove();
     const t = h('div', { class: `toast ${level}` }, icon(level === 'warn' ? 'alert' : level === 'ok' ? 'check' : 'info', 16), h('span', {}, text));
     this.toastHost.append(t);
     setTimeout(() => t.classList.add('out'), level === 'warn' ? 5200 : 3200);
@@ -1057,14 +1111,14 @@ export class App {
     if (this.remote) {
       const st = (this.engine as RemoteEngine).status;
       clear(this.sourceSel);
-      this.sourceSel.append(h('option', { value: '' }, `📡 Remote host: ${st ? st.deviceLabel : location.host}`));
+      this.sourceSel.append(h('option', { value: '' }, `Remote host: ${st ? st.deviceLabel : location.host}`));
       this.sourceSel.disabled = true;
       return;
     }
     const devices = await AudioEngine.listDevices().catch(() => []);
     const cur = this.settings.simulate ? '__demo' : this.settings.deviceId || '__default';
     clear(this.sourceSel);
-    this.sourceSel.append(h('option', { value: '__demo' }, '🎧 Demo: virtual room'));
+    this.sourceSel.append(h('option', { value: '__demo' }, 'Demo: virtual room'));
     this.sourceSel.append(h('option', { value: '__default' }, 'System default input'));
     devices
       .filter((d) => d.deviceId && d.deviceId !== 'default')
@@ -1194,7 +1248,10 @@ export class App {
     const n = Math.max(this.engine.channelCount, this.engine.running ? 1 : 2);
     const out: { value: number; label: string }[] = [];
     if (includeGen) out.push({ value: GEN_CHANNEL, label: 'Generator (internal)' });
-    for (let c = 0; c < n; c++) out.push({ value: c, label: this.engine.simulate && c === 1 ? 'In 2 (loopback)' : `In ${c + 1}` });
+    for (let c = 0; c < n; c++) {
+      const mic = this.micOn(c);
+      out.push({ value: c, label: `${this.engine.simulate && c === 1 ? 'In 2 (loopback)' : `In ${c + 1}`}${mic ? ` · ${mic.name}` : ''}` });
+    }
     return out;
   }
 
@@ -1286,11 +1343,23 @@ export class App {
           { class: `trace${t.visible ? '' : ' hidden'}` },
           sel,
           color,
-          h('div', { class: 'trace-main' }, name, h('div', { class: 'trace-meta' }, h('span', { class: `kind ${t.kind}` }, t.kind.toUpperCase()), off, h('span', { class: 'unit' }, 'dB'))),
-          h('button', { class: `btn tiny ghost${t.note || t.photo ? ' on' : ''}`, title: t.note ? `Note: ${t.note}${t.photo ? ' (with photo)' : ''}` : t.photo ? 'Photo of the position (click to edit)' : 'Add a note or photo of the mic position', onclick: () => showTraceNotes(this, t.id), dataset: { traceNote: t.id } }, icon(t.photo ? 'image' : 'note', 14)),
-          h('button', { class: 'btn tiny ghost', title: t.visible ? 'Hide' : 'Show', onclick: () => this.traces.update(t.id, { visible: !t.visible }) }, icon(t.visible ? 'eye' : 'eyeOff', 14)),
-          h('button', { class: 'btn tiny ghost', title: 'Export CSV', onclick: () => download(`${t.name.replace(/[^\w.-]+/g, '_')}.csv`, traceToCsv(t)) }, icon('download', 14)),
-          h('button', { class: 'btn tiny ghost', title: 'Delete', onclick: () => this.traces.remove(t.id) }, icon('trash', 14)),
+          h(
+            'div',
+            { class: 'trace-main' },
+            name,
+            h(
+              'div',
+              { class: 'trace-meta' },
+              h('span', { class: `kind ${t.kind}` }, t.kind.toUpperCase()),
+              off,
+              h('span', { class: 'unit' }, 'dB'),
+              h('div', { class: 'spacer' }),
+              h('button', { class: `btn tiny ghost${t.note || t.photo ? ' on' : ''}`, title: t.note ? `Note: ${t.note}${t.photo ? ' (with photo)' : ''}` : t.photo ? 'Photo of the position (click to edit)' : 'Add a note or photo of the mic position', onclick: () => showTraceNotes(this, t.id), dataset: { traceNote: t.id } }, icon(t.photo ? 'image' : 'note', 13)),
+              h('button', { class: 'btn tiny ghost', title: t.visible ? 'Hide' : 'Show', onclick: () => this.traces.update(t.id, { visible: !t.visible }) }, icon(t.visible ? 'eye' : 'eyeOff', 13)),
+              h('button', { class: 'btn tiny ghost', title: 'Export CSV', onclick: () => download(`${t.name.replace(/[^\w.-]+/g, '_')}.csv`, traceToCsv(t)) }, icon('download', 13)),
+              h('button', { class: 'btn tiny ghost', title: 'Delete', onclick: () => this.traces.remove(t.id) }, icon('trash', 13)),
+            ),
+          ),
         ),
       );
     }
@@ -1367,8 +1436,9 @@ export class App {
         const fromHost = this.hostProcessing && !!m.hostFrame && now - m.hostFrameAt < 1500;
         if (!this.busy) m.process(this.engine, fromHost ? { rta: false, tf: needs.tfLocal } : { rta: needs.rta, tf: needs.tf || needs.tfLocal });
         if (draw) {
-          if (fromHost) m.renderHost(this.settings, this.cal);
-          else m.render(this.settings, this.cal);
+          const cal = this.calFor(m.cfg.mic);
+          if (fromHost) m.renderHost(this.settings, cal);
+          else m.render(this.settings, cal);
         }
       }
       this.splReading = this.spl.read(this.settings.splTime);
@@ -1518,7 +1588,7 @@ export class App {
     }
     if (this.hostLink?.connected && this.hostLink.clients.length) out.push({ level: 'ok', text: `${this.hostLink.clients.length} remote client${this.hostLink.clients.length > 1 ? 's are' : ' is'} connected and receiving live audio.` });
     if (e.simulate) out.push({ level: 'info', text: 'Demo mode: a virtual loudspeaker in a reverberant room with modes at 47, 94 and 142 Hz. Nothing is played through your speakers.' });
-    if (!this.settings.splCalibrated && this.settings.view === 'spl') out.push({ level: 'info', text: 'SPL readings are in dBFS until you calibrate with a 94 dB or 114 dB calibrator (Tools → SPL calibration).' });
+    if (!this.settings.splCalibrated && this.settings.view === 'spl') out.push({ level: 'info', text: 'SPL readings are in dBFS until you calibrate with a 94 dB or 114 dB calibrator (Tools → Microphones & calibration).' });
     return out;
   }
 

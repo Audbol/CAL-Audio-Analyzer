@@ -47,7 +47,7 @@ export function buildSession(app: App): SessionFile {
     app: `CAL Audio Analyzer ${__APP_VERSION__}`,
     saved: new Date().toISOString(),
     session: { ...s.session },
-    shared: JSON.parse(JSON.stringify({ splOffset: s.splOffset, splCalibrated: s.splCalibrated, micCal: s.micCal, tempC: s.tempC, measurements: s.measurements })),
+    shared: JSON.parse(JSON.stringify({ splOffset: s.splOffset, splCalibrated: s.splCalibrated, micCal: s.micCal, tempC: s.tempC, measurements: s.measurements, mics: s.mics })),
     settings: settings as SessionFile['settings'],
     traces: JSON.parse(JSON.stringify(app.traces.traces)),
     sweep: sweep ? { meta: sweep.meta, ir: encodeFloat32(sweep.ir) } : null,

@@ -29,6 +29,22 @@ export interface RemoteServerSettings {
   allowControl: boolean;
 }
 
+/** A measurement microphone: the input it is plugged into, its correction file and its SPL calibration. */
+export interface MicProfile {
+  id: string;
+  name: string;
+  /** Input channel the mic is connected to (−1 = not connected). */
+  channel: number;
+  /** Frequency-response correction file supplied with the mic. */
+  micCal: MicCalibration | null;
+  /** dB to add to dBFS to get dB SPL on this input (0 → uncalibrated). */
+  splOffset: number;
+  splCalibrated: boolean;
+  /** When and with which reference level it was SPL-calibrated. */
+  calibratedAt?: number;
+  calLevel?: number;
+}
+
 export interface MeasurementConfig {
   id: string;
   name: string;
@@ -74,10 +90,15 @@ export interface Settings {
   peakHold: boolean;
   splWeighting: Weighting;
   splTime: 'fast' | 'slow';
-  /** dB to add to dBFS readings to get dB SPL (from calibration). 0 → uncalibrated dBFS. */
+  /**
+   * SPL calibration and mic correction of the SPL meter's input. Derived from `mics` (App.syncCal); kept so the
+   * meters, logger and older sessions have one value to use.
+   */
   splOffset: number;
   splCalibrated: boolean;
   micCal: MicCalibration | null;
+  /** Measurement microphones: per-input correction files and SPL calibrations. */
+  mics: MicProfile[];
   tempC: number;
   measurements: MeasurementConfig[];
   wizardDone: boolean;
@@ -134,6 +155,7 @@ export function defaultSettings(): Settings {
     splOffset: 0,
     splCalibrated: false,
     micCal: null,
+    mics: [],
     tempC: 20,
     measurements: [{ id: 'm1', name: 'Mic 1', color: PALETTE[0], mic: 0, ref: 1, delay: 0, enabled: true, invert: false }],
     wizardDone: false,
@@ -174,6 +196,10 @@ export function loadSettings(): Settings {
     for (const m of s.measurements ?? []) {
       const i = LEGACY_PALETTE.indexOf(m.color);
       if (i >= 0) m.color = PALETTE[i];
+    }
+    // Before 1.9 there was one calibration for everything: it becomes the first mic, on the SPL meter's input
+    if (!Array.isArray(s.mics)) {
+      s.mics = s.splCalibrated || s.micCal ? [{ id: 'mic1', name: 'Mic 1', channel: s.splChannel ?? 0, micCal: s.micCal ?? null, splOffset: s.splOffset ?? 0, splCalibrated: !!s.splCalibrated }] : [];
     }
     return { ...d, ...s, generator: { ...d.generator, ...(s.generator ?? {}) }, remoteServer: { ...d.remoteServer, ...(s.remoteServer ?? {}) }, playlist: { ...d.playlist, ...(s.playlist ?? {}) }, session: { ...d.session, ...(s.session ?? {}) }, nativeAudio: { ...d.nativeAudio, ...(s.nativeAudio ?? {}) } } as Settings;
   } catch {

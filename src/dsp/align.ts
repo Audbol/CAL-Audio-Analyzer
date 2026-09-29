@@ -16,10 +16,19 @@ export interface AlignInput {
 }
 
 export interface AlignOptions {
-  /** Search range for the sub delay, ± ms. */
+  /** Search range for the delay, ± ms around `centerMs`. */
   rangeMs?: number;
+  /** Centre of the search (ms), e.g. the arrival difference known from the measurement delays. */
+  centerMs?: number;
   /** Crossover region to optimise; null = automatic (where the two are within 10 dB of each other). */
   region?: [number, number] | null;
+  /** Frequency span for the automatic region (default 20 Hz – 1 kHz: a sub crossover). */
+  span?: [number, number];
+  /**
+   * Which of several near-equal solutions to take: 'nearest' = the smallest delay change (subs: a period
+   * later sums the same at the crossover but smears the transient), 'best' = the highest summation (full-range).
+   */
+  prefer?: 'nearest' | 'best';
 }
 
 export interface AlignResult {
@@ -37,6 +46,8 @@ export interface AlignResult {
   gainDb: number;
   /** Frequencies near the crossover where the aligned sum still falls ≥ 3 dB below the louder part. */
   cancellations: number[];
+  /** Level of the second part relative to the first over the region (dB, power average). */
+  levelDb: number;
   freqs: Float64Array;
   mainDb: Float64Array;
   subDb: Float64Array;
@@ -45,6 +56,15 @@ export interface AlignResult {
   /** Phase (deg, wrapped) of the mains and of the aligned sub, on the common time reference. */
   mainPhase: Float64Array;
   subPhase: Float64Array;
+}
+
+/**
+ * Time alignment of a full-range part (fill, delay speaker) to the main system at a listening position where
+ * both cover: the delay and polarity that make them add up best across their whole overlap band.
+ * Searches ±rangeMs (default 30) around the arrival difference known from the two captures' delays.
+ */
+export function alignFullRange(main: AlignInput, part: AlignInput, opts: AlignOptions = {}): AlignResult {
+  return alignSubMain(main, part, { span: [100, 12000], prefer: 'best', rangeMs: 30, centerMs: main.delayMs - part.delayMs, ...opts });
 }
 
 export function alignSubMain(main: AlignInput, sub: AlignInput, opts: AlignOptions = {}): AlignResult {
@@ -66,13 +86,15 @@ export function alignSubMain(main: AlignInput, sub: AlignInput, opts: AlignOptio
     for (let i = 0; i < n; i++) peak = Math.max(peak, mDb[i], sDb[i]);
     let lo = Infinity;
     let hi = 0;
+    const [fLo, fHi] = opts.span ?? [20, 1000];
     for (let i = 0; i < n; i++) {
       const f = freqs[i];
-      if (f < 20 || f > 1000 || Math.abs(mDb[i] - sDb[i]) > 10 || Math.min(mDb[i], sDb[i]) < peak - 30) continue;
+      if (f < fLo || f > fHi || Math.abs(mDb[i] - sDb[i]) > 10 || Math.min(mDb[i], sDb[i]) < peak - 30) continue;
       lo = Math.min(lo, f);
       hi = Math.max(hi, f);
     }
-    if (!Number.isFinite(lo) || hi / lo < 1.2) throw new Error('The two responses do not overlap in level anywhere below 1 kHz. Check that the mains and the sub were measured at the same position and level.');
+    if (!Number.isFinite(lo) || hi / lo < 1.2)
+      throw new Error(`The two responses do not overlap in level between ${Math.round(fLo)} Hz and ${fHi >= 1000 ? `${fHi / 1000} kHz` : `${fHi} Hz`}. Check that both were measured at the same position, with the same reference and level.`);
     region = [lo, hi];
   }
   const idx: number[] = [];
@@ -98,20 +120,24 @@ export function alignSubMain(main: AlignInput, sub: AlignInput, opts: AlignOptio
     return s / denom;
   };
   const range = (opts.rangeMs ?? 20) / 1000;
-  const step = 0.00002; // 20 µs
+  const center = (opts.centerMs ?? 0) / 1000;
+  // Step: a fraction of the shortest period in the region (20 µs for subs), refined afterwards
+  const step = Math.min(0.00002, 1 / (freqs[idx[idx.length - 1]] * 8));
   // The efficiency over delay has one peak per period of the crossover frequency: collect the peaks
   const peaks: { tau: number; pol: 1 | -1; e: number }[] = [];
   const steps = Math.round((2 * range) / step);
+  const t0 = center - range;
   for (const pol of [1, -1] as const) {
-    const e = Array.from({ length: steps + 1 }, (_, k) => efficiency(-range + k * step, pol));
+    const e = Array.from({ length: steps + 1 }, (_, k) => efficiency(t0 + k * step, pol));
     for (let k = 0; k <= steps; k++) {
-      if ((k === 0 || e[k] >= e[k - 1]) && (k === steps || e[k] > e[k + 1])) peaks.push({ tau: -range + k * step, pol, e: e[k] });
+      if ((k === 0 || e[k] >= e[k - 1]) && (k === steps || e[k] > e[k + 1])) peaks.push({ tau: t0 + k * step, pol, e: e[k] });
     }
   }
   const best = Math.max(...peaks.map((c) => c.e));
   // Several peaks can be almost equally good (one period apart): prefer the smallest change, normal polarity
-  const good = peaks.filter((c) => c.e >= best - 0.003);
-  good.sort((a, b) => Math.abs(a.tau) - Math.abs(b.tau) || b.pol - a.pol);
+  const good = peaks.filter((c) => c.e >= best - (opts.prefer === 'best' ? 1e-9 : 0.003));
+  if (opts.prefer === 'best') good.sort((a, b) => b.e - a.e || b.pol - a.pol);
+  else good.sort((a, b) => Math.abs(a.tau) - Math.abs(b.tau) || b.pol - a.pol);
   // Refine around the chosen delay
   let pick = good[0];
   for (let t = pick.tau - step; t <= pick.tau + step; t += step / 20) {
@@ -144,7 +170,14 @@ export function alignSubMain(main: AlignInput, sub: AlignInput, opts: AlignOptio
     const ph = -2 * Math.PI * f * pick.tau;
     return phaseOf(pick.pol * (S.re[i] * Math.cos(ph) - S.im[i] * Math.sin(ph)), pick.pol * (S.re[i] * Math.sin(ph) + S.im[i] * Math.cos(ph)));
   });
+  let pm = 0;
+  let ps = 0;
+  for (const i of idx) {
+    pm += Math.pow(10, mDb[i] / 10);
+    ps += Math.pow(10, sDb[i] / 10);
+  }
   return {
+    levelDb: 10 * Math.log10(Math.max(ps, 1e-30) / Math.max(pm, 1e-30)),
     delayMs: pick.tau * 1000,
     polarity: pick.pol,
     region,

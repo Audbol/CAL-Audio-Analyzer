@@ -179,7 +179,7 @@ export class Spectrogram {
     ctx.restore();
     // Frequency grid and labels
     const fPos = (f: number) => Math.log(f / this.fMin) / Math.log(this.fMax / this.fMin); // 0…1 low → high
-    ctx.font = '10px Inter, system-ui, sans-serif';
+    ctx.font = "10px 'Inter Variable', Inter, system-ui, sans-serif";
     for (const f of [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]) {
       if (f < this.fMin || f > this.fMax) continue;
       const label = f >= 1000 ? `${f / 1000}k` : `${f}`;

@@ -19,6 +19,12 @@ The builds are not code-signed yet:
 
 On first launch, choose **Explore with the demo room** to try every feature without hardware.
 
+## What's new in 1.9
+
+- **Several microphones, each calibrated:** *Tools → Microphones & calibration* keeps a list of your measurement mics: the input each one is plugged into, its correction file and its own SPL calibration (calibrator or reference meter, through the meter's weighting). Every view uses the mic on its input: the spectrum shows each measurement in dB SPL with its own calibration, the SPL meter and noise log follow the mic on their input, and the input lists show the mic names. Settings from earlier versions become the first mic.
+- **System alignment:** the Align tab now aligns the whole system to the mains: subs, front fills, out fills and delay speakers. Subs are aligned for summation through the crossover; fills and delay speakers for arrival across their overlap band (also 100+ ms for delay towers), with a precedence setting so the sound stays on stage. Each part can use the mains measured at its own handoff position. The result is an alignment plan (delay, polarity, level vs mains, summation) that goes into sessions and reports, with a warning when a speaker already arrives too late to fix with delay.
+- **A more polished look:** bundled Inter and JetBrains Mono fonts (sharper, consistent on every system, also offline), refined graphite surfaces, consistent control sizes, focus rings, quieter scrollbars, clearer trace rows, fewer stacked messages, and no more emoji in the input list. Fixed: with many traces, the trace list ran under the assistant.
+
 ## What's new in 1.8
 
 - **ASIO (Windows):** choose *ASIO: <your interface>* as the input source to use the interface's ASIO driver directly: every input and output channel, the driver's low latency, no system mixer or resampling. Set the sample rate, buffer size and safety margin, and open the driver's control panel, in *Tools → Audio interface (ASIO)*. The generator signal that was actually played is recorded in the same driver callback as the inputs, so the internal reference stays sample-aligned with your microphones.

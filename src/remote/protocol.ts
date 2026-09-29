@@ -21,7 +21,7 @@
  */
 
 import type { GeneratorConfig } from '../audio/protocol';
-import type { MeasurementConfig } from '../state';
+import type { MeasurementConfig, MicProfile } from '../state';
 import type { MicCalibration } from '../dsp/calibration';
 import type { Trace, TraceOp } from '../traces';
 import type { Settings } from '../state';
@@ -31,13 +31,15 @@ import type { PlaylistAction, PlaylistState } from '../audio/playlist';
 
 /** The subset of settings that belongs to the measurement setup and is shared by every device. */
 export function sharedOf(s: Settings): SharedSettings {
-  return { splOffset: s.splOffset, splCalibrated: s.splCalibrated, micCal: s.micCal, tempC: s.tempC, measurements: s.measurements };
+  return { splOffset: s.splOffset, splCalibrated: s.splCalibrated, micCal: s.micCal, tempC: s.tempC, measurements: s.measurements, mics: s.mics };
 }
 
 export interface SharedSettings {
   splOffset: number;
   splCalibrated: boolean;
   micCal: MicCalibration | null;
+  /** Measurement mics (older hosts don't send them). */
+  mics?: MicProfile[];
   tempC: number;
   measurements: MeasurementConfig[];
 }

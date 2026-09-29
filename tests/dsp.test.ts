@@ -13,7 +13,7 @@ import { filterDb, autoEq, TARGETS, eqResponse } from '../src/dsp/eq';
 import { parseMicCal, calCorrection } from '../src/dsp/calibration';
 import { SplMeter } from '../src/dsp/spl';
 import { PinkNoise } from '../src/audio/noise';
-import { alignSubMain } from '../src/dsp/align';
+import { alignSubMain, alignFullRange } from '../src/dsp/align';
 import { targetShape, targetLevel, targetDeviation } from '../src/dsp/target';
 import { Biquad } from '../src/audio/biquad';
 
@@ -625,5 +625,43 @@ describe('target curves', () => {
     expect(dev.rms).toBeLessThan(1e-9);
     expect(dev.within).toBe(1);
     expect(targetShape('off', grid)).toBeNull();
+  });
+});
+
+describe('full-range alignment (fills and delay speakers)', () => {
+  const grid = Array.from(logGrid(20, 20000, 48));
+  /** A full-range speaker (2nd-order high-pass at 80 Hz) arriving `arrivalMs` after the reference signal. */
+  const speaker = (arrivalMs: number, compensatedMs: number, gainDb = 0, invert = false) => {
+    const mag: number[] = [];
+    const phase: number[] = [];
+    for (const f of grid) {
+      const w = f / 80;
+      // H = s² / (s² + √2 s + 1) at s = jw
+      const dre = 1 - w * w;
+      const dim = Math.SQRT2 * w;
+      const d = dre * dre + dim * dim;
+      const hre = (-w * w * dre) / d;
+      const him = (w * w * dim) / d;
+      // The measurement's delay compensation (captured with the delay finder) is taken out of the phase
+      const ph = Math.atan2(him, hre) - 2 * Math.PI * f * ((arrivalMs - compensatedMs) / 1000) + (invert ? Math.PI : 0);
+      mag.push(20 * Math.log10(Math.hypot(hre, him)) + gainDb);
+      phase.push((((ph * 180) / Math.PI + 540) % 360) - 180);
+    }
+    return { freqs: grid, mag, phase, delayMs: compensatedMs };
+  };
+
+  it('delays a delay tower that is 68 ms closer to the listener (arrival known from the captures)', () => {
+    // Mains arrive 80 ms after the reference, the tower 12 ms: both measured with the delay finder
+    const r = alignFullRange(speaker(80, 80), speaker(12, 12, -4));
+    expect(r.delayMs).toBeCloseTo(68, 2);
+    expect(r.polarity).toBe(1);
+    expect(r.after).toBeGreaterThan(0.99);
+    expect(r.levelDb).toBeCloseTo(-4, 1);
+  });
+
+  it('finds a small offset in the phase alone, and an inverted fill', () => {
+    const r = alignFullRange(speaker(5, 0), speaker(2.4, 0, 0, true));
+    expect(r.delayMs).toBeCloseTo(2.6, 2);
+    expect(r.polarity).toBe(-1);
   });
 });

@@ -97,7 +97,7 @@ check(await page.evaluate(() => window.calApp.settings.spectrogramLayout === 've
 
 // Captured RTA traces line up with the live RTA when calibrated in dB SPL
 await page.keyboard.press('1');
-await page.evaluate(() => { const s = window.calApp.settings; s.splCalibrated = true; s.splOffset = 110; window.calApp.save(); });
+await page.evaluate(() => { const a = window.calApp; a.settings.mics = [{ id: 't1', name: 'Test mic', channel: 0, micCal: null, splOffset: 110, splCalibrated: true }]; a.syncCal(); a.save(); });
 await page.waitForTimeout(600);
 await page.evaluate(() => window.calApp.captureTrace(window.calApp.measurements[0], 'rta'));
 await page.waitForTimeout(400);
@@ -109,7 +109,7 @@ const align = await page.evaluate(() => {
   return { live: at(live, 1000), trace: at(tr, 1000) };
 });
 check(Math.abs(align.live - align.trace) < 3, `captured RTA trace lines up with the live RTA in dB SPL (${align.trace.toFixed(1)} vs ${align.live.toFixed(1)})`);
-await page.evaluate(() => { const s = window.calApp.settings; s.splCalibrated = false; s.splOffset = 0; const t = window.calApp.traces.traces; window.calApp.traces.remove(t[t.length - 1].id); window.calApp.save(); });
+await page.evaluate(() => { const a = window.calApp; a.settings.mics = []; a.syncCal(); const t = window.calApp.traces.traces; window.calApp.traces.remove(t[t.length - 1].id); window.calApp.save(); });
 check(Math.abs(peak) < 1, `impulse peak at ~0 ms relative to delay (${peak.toFixed(2)})`);
 
 // EQ assistant on live data

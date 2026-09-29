@@ -404,7 +404,7 @@ export class RoomView implements View {
     const pow = Float64Array.from(sp.mag, (m) => m * m);
     const grid = this.app.grid;
     new LogSmoother(grid, fs / size, sp.mag.length).apply(pow, this.opts.smoothing, r.fr);
-    const cal = this.app.cal;
+    const cal = this.app.calFor(r.channel);
     for (let i = 0; i < grid.length; i++) {
       r.fr[i] = 10 * Math.log10(Math.max(r.fr[i], 1e-30)) + (cal ? cal[i] : 0);
       if (grid[i] < r.spec.f1 || grid[i] > r.spec.f2) r.fr[i] = NaN;

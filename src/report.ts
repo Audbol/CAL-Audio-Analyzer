@@ -5,7 +5,7 @@ import { applyChartTheme, chartTheme, seriesColor } from './ui/theme';
 import { targetDeviation, targetLevel, targetShape } from './dsp/target';
 import { eqResponse, TARGETS } from './dsp/eq';
 import { formatFreq } from './dsp/freq';
-import { AlignView } from './views/align';
+import { KIND_INFO, recommend, type AlignView } from './views/align';
 import type { EqView } from './views/eq';
 import type { RoomView } from './views/room';
 import { downloadText, sessionFileName } from './session';
@@ -112,7 +112,7 @@ function buildReportHtml(app: App): string {
   const now = new Date();
   const running = app.engine.running;
   const sections: string[] = [];
-  const cal = s.splCalibrated ? s.splOffset : 0;
+  const spl = app.measurements.some((m) => m.cfg.enabled && app.isCalibrated(m.cfg.mic));
 
   // Setup -----------------------------------------------------------------------------------------------------
   const measRows = s.measurements
@@ -124,7 +124,13 @@ function buildReportHtml(app: App): string {
     .join('');
   sections.push(`<section><h2>Setup</h2>
     <table class="kv">
-      <tr><th>Calibration</th><td>${s.splCalibrated ? `SPL calibrated (offset ${fmt(s.splOffset, 1, ' dB')})` : 'Not SPL calibrated (levels in dBFS)'}${s.micCal ? ` · mic correction “${escapeHtml(s.micCal.name)}”` : ''}</td></tr>
+      <tr><th>Microphones</th><td>${
+        s.mics.length
+          ? s.mics
+              .map((m) => `${escapeHtml(m.name)} on ${m.channel >= 0 ? `In ${m.channel + 1}` : '—'}: ${m.splCalibrated ? `SPL calibrated (0 dBFS = ${fmt(m.splOffset, 1, ' dB SPL')}${m.calibratedAt ? `, ${new Date(m.calibratedAt).toLocaleDateString()}` : ''})` : 'not SPL calibrated'}${m.micCal ? ` · correction “${escapeHtml(m.micCal.name)}”` : ''}`)
+              .join('<br>')
+          : 'No microphones set up (levels in dBFS, no correction)'
+      }</td></tr>
       <tr><th>Temperature</th><td>${fmt(s.tempC, 1, ' °C')}</td></tr>
       <tr><th>Sample rate</th><td>${running ? `${app.fs} Hz` : '—'}</td></tr>
       <tr><th>Analysis</th><td>Transfer function 1/${s.tfSmoothing} oct, ${s.tfAveraging === 0 ? 'no' : s.tfAveraging} averages · RTA ${s.rtaSmoothing ? `1/${s.rtaSmoothing} oct` : 'narrow band'}, ${s.rtaFft / 1024}k FFT</td></tr>
@@ -137,7 +143,7 @@ function buildReportHtml(app: App): string {
     const series: Series[] = [];
     for (const t of app.traces.traces) {
       if (!t.visible || t.kind !== 'rta') continue;
-      const add = t.offset + (t.dbfs ? cal : 0);
+      const add = t.offset + (t.dbfs ? app.splOffsetFor(t.channel ?? s.splChannel) : 0);
       series.push({ id: t.id, label: t.name, x: t.freqs, y: t.mag.map((v) => v + add), color: t.color, width: 1.4, dash: [5, 3] });
     }
     let ref: Float64Array | null = null;
@@ -145,7 +151,8 @@ function buildReportHtml(app: App): string {
       for (const m of app.measurements) {
         if (!m.cfg.enabled || !m.rtaShown) continue;
         const avg = m.averageDb();
-        const y = Float64Array.from(avg ?? m.rtaOut, (v) => v + cal);
+        const off = app.splOffsetFor(m.cfg.mic);
+        const y = Float64Array.from(avg ?? m.rtaOut, (v) => v + off);
         ref ??= y;
         series.push({ id: m.cfg.id, label: `${m.cfg.name}${avg ? ' (average)' : ''}`, x: g, y, color: m.cfg.color, width: 1.8 });
       }
@@ -154,8 +161,8 @@ function buildReportHtml(app: App): string {
       const t = targetInfo(app, g);
       const ts = t && ref ? targetSeries(t, g, ref) : null;
       if (ts) series.unshift(...ts.series);
-      const f = figure({ xType: 'log', xMin: 20, xMax: 20000, yMin: -100, yMax: 0, yUnit: s.splCalibrated ? 'dB SPL' : 'dBFS', yStep: 10 }, series, { fit: true });
-      sections.push(`<section><h2>Spectrum</h2>${figHtml('Spectrum (RTA)', f, s.splCalibrated ? 'dB SPL' : 'dBFS')}</section>`);
+      const f = figure({ xType: 'log', xMin: 20, xMax: 20000, yMin: -100, yMax: 0, yUnit: spl ? 'dB SPL' : 'dBFS', yStep: 10 }, series, { fit: true });
+      sections.push(`<section><h2>Spectrum</h2>${figHtml('Spectrum (RTA)', f, spl ? 'dB SPL' : 'dBFS')}</section>`);
     }
   }
 
@@ -248,31 +255,35 @@ function buildReportHtml(app: App): string {
   // Alignment -------------------------------------------------------------------------------------------------
   {
     const av = view<AlignView>(app, 'align');
-    const r = av.result;
-    if (r) {
-      const d = AlignView.describe(r, s.tempC);
-      const shades = [{ x0: r.region[0], x1: r.region[1], color: 'rgba(0,160,90,0.08)' }];
-      const markers = [{ x: r.crossover, label: `${Math.round(r.crossover)} Hz`, color: '#00a05a' }];
-      const f = figure({ xType: 'log', xMin: 20, xMax: 1000, yMin: -30, yMax: 12, yUnit: 'dB', yStep: 6 }, [
-        { id: 'main', label: 'Mains', x: r.freqs, y: r.mainDb, color: '#4da3ff', width: 1.6 },
-        { id: 'sub', label: 'Sub', x: r.freqs, y: r.subDb, color: '#ff6b6b', width: 1.6 },
-        { id: 'before', label: 'Sum as measured', x: r.freqs, y: r.sumBeforeDb, color: '#9aa4b2', width: 1.4, dash: [5, 3] },
-        { id: 'after', label: 'Sum aligned', x: r.freqs, y: r.sumAfterDb, color: '#3ddc84', width: 2.4 },
-      ], { fit: true, maxSpan: 42, shades, markers });
-      const fp = figure({ xType: 'log', xMin: 20, xMax: 1000, yMin: -180, yMax: 180, yUnit: 'deg', yStep: 45 }, [
-        { id: 'main', label: 'Mains', x: r.freqs, y: r.mainPhase, color: '#4da3ff', width: 1.6, wrap: 180 },
-        { id: 'sub', label: 'Sub (aligned)', x: r.freqs, y: r.subPhase, color: '#ff6b6b', width: 1.6, dash: [6, 4], wrap: 180 },
-      ], { shades, markers });
+    const done = av.elements.filter((e) => e.result);
+    if (done.length) {
       const pct = (v: number) => `${Math.round(v * 100)}%`;
-      sections.push(`<section><h2>Sub / main alignment</h2>
-        <p><b>${escapeHtml(d.where)}${Math.abs(r.delayMs) >= 0.05 ? ` by ${d.delay} (${d.distance})` : ''}, ${r.polarity === 1 ? 'normal' : 'inverted'} sub polarity.</b></p>
-        <table class="kv">
-          <tr><th>Mains / sub</th><td>${escapeHtml(av.resultNames?.main ?? '')} / ${escapeHtml(av.resultNames?.sub ?? '')}</td></tr>
-          <tr><th>Crossover</th><td>${Math.round(r.crossover)} Hz (optimised ${Math.round(r.region[0])}–${Math.round(r.region[1])} Hz)</td></tr>
-          <tr><th>Summation</th><td>${pct(r.before)} → ${pct(r.after)}</td></tr>
-          <tr><th>Gain at crossover</th><td>${r.gainDb >= 0 ? '+' : ''}${fmt(r.gainDb, 1, ' dB')} over the louder part</td></tr>
-        </table>
-        ${figHtml('Magnitude', f)}${figHtml('Phase', fp)}
+      const rows = done
+        .map((e) => {
+          const r = e.result!;
+          const rec = recommend(e, r, s.tempC);
+          return `<tr><td>${escapeHtml(e.name)}</td><td>${escapeHtml(KIND_INFO[e.kind].label)}</td><td><b>${escapeHtml(rec.action)}</b>${rec.where === 'impossible' ? ' ⚠' : ''}</td><td>${escapeHtml(rec.polarity)}</td><td>${e.kind === 'sub' ? `${Math.round(r.crossover)} Hz crossover` : `${r.levelDb >= 0 ? '+' : ''}${fmt(r.levelDb, 1, ' dB')} vs mains`}</td><td>${pct(r.before)} → ${pct(r.after)}</td></tr>`;
+        })
+        .join('');
+      const figs = done
+        .map((e) => {
+          const r = e.result!;
+          const sub = e.kind === 'sub';
+          const shades = [{ x0: r.region[0], x1: r.region[1], color: 'rgba(0,160,90,0.08)' }];
+          const markers = sub ? [{ x: r.crossover, label: `${Math.round(r.crossover)} Hz`, color: '#00a05a' }] : [];
+          const f = figure({ xType: 'log', xMin: 20, xMax: sub ? 1000 : 20000, yMin: -30, yMax: 12, yUnit: 'dB', yStep: 6 }, [
+            { id: 'main', label: 'Mains', x: r.freqs, y: r.mainDb, color: '#4da3ff', width: 1.6 },
+            { id: 'sub', label: e.name, x: r.freqs, y: r.subDb, color: '#ff6b6b', width: 1.6 },
+            { id: 'before', label: 'Sum as measured', x: r.freqs, y: r.sumBeforeDb, color: '#9aa4b2', width: 1.4, dash: [5, 3] },
+            { id: 'after', label: 'Sum aligned', x: r.freqs, y: r.sumAfterDb, color: '#3ddc84', width: 2.4 },
+          ], { fit: true, maxSpan: 42, shades, markers });
+          return figHtml(`${e.name}: magnitude with the mains`, f, e.names ? `${e.names.main} / ${e.names.sub}` : '');
+        })
+        .join('');
+      sections.push(`<section><h2>System alignment</h2>
+        <p class="dim">Each part aligned to the mains, measured alone at the position where it meets the mains.${done.some((e) => e.kind !== 'sub' && e.precedenceMs) ? ' Fill and delay settings include the chosen precedence (arriving a little after the mains).' : ''}</p>
+        <table class="grid"><tr><th>Part</th><th>Type</th><th>Setting</th><th>Polarity</th><th>At the position</th><th>Summation</th></tr>${rows}</table>
+        ${figs}
       </section>`);
     }
   }

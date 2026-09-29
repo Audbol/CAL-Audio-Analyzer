@@ -177,16 +177,21 @@ export class SpectrumView extends DockedView implements View {
     const s = app.settings;
     if (this.visible('rta')) {
       // Redraw only when what is shown changed (new analysis data arrives ~6–12 times a second)
-      const key = `${app.traces.version}|${s.rtaStyle}|${s.rtaSmoothing}|${s.peakHold}|${s.rtaAverageCurve}|${s.rtaAverageSmoothing}|${s.micAverage}|${s.targetCurve}|${s.targetTolerance}|${s.theme}|${s.splCalibrated}|${s.splOffset}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.rtaShown}`).join(',')}`;
+      const key = `${app.traces.version}|${s.rtaStyle}|${s.rtaSmoothing}|${s.peakHold}|${s.rtaAverageCurve}|${s.rtaAverageSmoothing}|${s.micAverage}|${s.targetCurve}|${s.targetTolerance}|${s.theme}|${s.splCalibrated}|${s.splOffset}|${JSON.stringify(s.mics.map((mc) => [mc.channel, mc.splCalibrated && mc.splOffset]))}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.rtaShown}`).join(',')}`;
       if (key === this.lastKey) return this.tickMeters();
       this.lastKey = key;
       const g = app.grid;
       const series: Series[] = [];
-      const cal = s.splCalibrated ? s.splOffset : 0;
+      // Each mic has its own SPL calibration: every curve is shifted by the offset of its own input
+      const shown = app.measurements.filter((m) => m.cfg.enabled);
+      const spl = shown.some((m) => app.isCalibrated(m.cfg.mic));
+      const offOf = (channel: number) => app.splOffsetFor(channel);
+      const cal = shown.length ? offOf(shown[0].cfg.mic) : 0;
+      const nameOf = (m: (typeof shown)[number]) => (spl && !app.isCalibrated(m.cfg.mic) ? `${m.cfg.name} (uncal.)` : m.cfg.name);
       for (const t of app.traces.traces) {
         if (!t.visible || t.kind !== 'rta') continue;
-        // Captured RTAs are stored in dBFS: show them in the same units as the live curves
-        const add = t.offset + (t.dbfs ? cal : 0);
+        // Captured RTAs are stored in dBFS: show them in the same units as the live curves (their input's mic)
+        const add = t.offset + (t.dbfs ? offOf(t.channel ?? s.splChannel) : 0);
         series.push({ id: t.id, label: t.name, x: t.freqs, y: add ? t.mag.map((v) => v + add) : t.mag, color: t.color, width: 1.2, dash: [5, 3] });
       }
       if (cal !== this.appliedCal) {
@@ -194,42 +199,43 @@ export class SpectrumView extends DockedView implements View {
         this.rta.shiftY(cal - this.appliedCal);
         this.appliedCal = cal;
       }
-      const shift = (y: Float64Array) => (cal ? Array.from(y, (v) => v + cal) : y);
+      const shiftBy = (y: Float64Array, off: number) => (off ? Array.from(y, (v) => v + off) : y);
       const bars = s.rtaStyle === 'bars' && s.rtaSmoothing > 0 && s.rtaSmoothing < 48 ? s.rtaSmoothing : 0;
       if (bars && this.bandFraction !== bars) {
         this.bandFraction = bars;
         this.bands = octaveBandCentres(bars, 20, 20000);
       }
       // Band levels at the exact band centres (the RTA is already band power at this resolution)
-      const atBands = (y: Float64Array) => this.bands.map((f) => sampleLogGrid(g, y, f) + cal);
+      const atBands = (y: Float64Array, off: number) => this.bands.map((f) => sampleLogGrid(g, y, f) + off);
       const only = s.micAverage === 'only' && app.measurements.filter((m) => m.cfg.enabled).length > 1;
       for (const m of app.measurements) {
         if (!m.cfg.enabled || only) continue;
+        const off = offOf(m.cfg.mic);
         if (bars) {
-          series.push({ id: m.cfg.id, label: m.cfg.name, x: this.bands, y: atBands(m.rtaOut), color: m.cfg.color, bars });
-          if (s.peakHold) series.push({ id: `${m.cfg.id}-pk`, label: `${m.cfg.name} peak`, x: this.bands, y: atBands(m.rtaPeakOut), color: m.cfg.color, bars, cap: true });
+          series.push({ id: m.cfg.id, label: nameOf(m), x: this.bands, y: atBands(m.rtaOut, off), color: m.cfg.color, bars });
+          if (s.peakHold) series.push({ id: `${m.cfg.id}-pk`, label: `${m.cfg.name} peak`, x: this.bands, y: atBands(m.rtaPeakOut, off), color: m.cfg.color, bars, cap: true });
           continue;
         }
-        if (s.peakHold) series.push({ id: `${m.cfg.id}-pk`, label: `${m.cfg.name} peak`, x: g, y: shift(m.rtaPeakOut), color: m.cfg.color, width: 1, dash: [2, 2] });
-        series.push({ id: m.cfg.id, label: m.cfg.name, x: g, y: shift(m.rtaOut), color: m.cfg.color, width: 1.6, fill: true });
+        if (s.peakHold) series.push({ id: `${m.cfg.id}-pk`, label: `${m.cfg.name} peak`, x: g, y: shiftBy(m.rtaPeakOut, off), color: m.cfg.color, width: 1, dash: [2, 2] });
+        series.push({ id: m.cfg.id, label: nameOf(m), x: g, y: shiftBy(m.rtaOut, off), color: m.cfg.color, width: 1.6, fill: true });
       }
       // Average curves (for tuning) on top of everything: the long-term balance behind the live RTA
       const day = s.theme === 'day';
-      series.push(...micAverageSeries(app, g, app.measurements.filter((m) => m.cfg.enabled && m.rtaShown > 0).map((m) => shift(m.rtaOut))));
+      series.push(...micAverageSeries(app, g, app.measurements.filter((m) => m.cfg.enabled && m.rtaShown > 0).map((m) => shiftBy(m.rtaOut, offOf(m.cfg.mic)))));
       for (const m of app.measurements) {
         const avg = m.cfg.enabled && !only ? m.averageDb() : null;
         if (!avg) continue;
         const label = `${m.cfg.name} average${s.rtaAverageCurve > 0 ? ` (${s.rtaAverageCurve} s)` : ''}`;
         // Drawn as a smooth curve on the fine grid in both display styles (over bars too)
-        series.push({ id: `${m.cfg.id}-avg`, label, x: g, y: shift(avg), color: day ? '#111111' : '#ffffff', width: 2, halo: day ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)' });
+        series.push({ id: `${m.cfg.id}-avg`, label, x: g, y: shiftBy(avg, offOf(m.cfg.mic)), color: day ? '#111111' : '#ffffff', width: 2, halo: day ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)' });
       }
       // Target curve, levelled to the first shown measurement (its average curve when there is one)
       const ref = app.measurements.find((m) => m.cfg.enabled && m.rtaShown > 0);
       if (ref) {
         const data = ref.averageDb() ?? ref.rtaOut;
-        series.unshift(...this.target.series(g, shift(data)));
+        series.unshift(...this.target.series(g, shiftBy(data, offOf(ref.cfg.mic))));
       } else this.target.series(g, null);
-      this.rta.cfg.yUnit = s.splCalibrated ? 'dB SPL' : 'dBFS';
+      this.rta.cfg.yUnit = spl ? 'dB SPL' : 'dBFS';
       this.rta.series = series;
       this.rta.draw();
       return this.tickMeters();

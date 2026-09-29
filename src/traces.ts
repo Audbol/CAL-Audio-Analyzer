@@ -22,6 +22,8 @@ export interface Trace {
   photo?: string;
   /** RTA captured in the app: levels are dBFS and get the SPL calibration offset when shown in dB SPL. */
   dbfs?: boolean;
+  /** Input the trace was captured from (its mic's SPL calibration applies to dBFS RTA traces). */
+  channel?: number;
   /** Transfer functions: the measurement's delay compensation when captured (ms), for alignment. */
   delayMs?: number;
 }

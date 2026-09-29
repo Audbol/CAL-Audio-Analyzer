@@ -59,7 +59,7 @@ export class WaterfallPlot {
     ctx.fillStyle = CHART.bg;
     ctx.fillRect(0, 0, w, H);
     const d = this.data;
-    ctx.font = '11px Inter, system-ui, sans-serif';
+    ctx.font = "11px 'Inter Variable', Inter, system-ui, sans-serif";
     if (!d || !d.slices.length) {
       ctx.fillStyle = CHART.text;
       ctx.textAlign = 'center';
