@@ -19,6 +19,9 @@ describe('sessions', () => {
     expect(() => parseSession('{"format":"other"}')).toThrow(/not a CAL/);
     expect(() => parseSession(JSON.stringify({ format: SESSION_FORMAT, version: 99, traces: [] }))).toThrow(/newer version/);
     expect(() => parseSession(JSON.stringify({ format: SESSION_FORMAT, version: 1, traces: [{ id: 'x' }] }))).toThrow(/damaged/);
+    // A damaged sweep is refused before anything is applied
+    expect(() => parseSession(JSON.stringify({ format: SESSION_FORMAT, version: 1, traces: [], sweep: { meta: {}, ir: '%%%not base64' } }))).toThrow(/sweep/);
+    expect(() => parseSession(JSON.stringify({ format: SESSION_FORMAT, version: 1, traces: [], sweep: { meta: {} } }))).toThrow(/sweep/);
   });
 
   it('builds safe file names', () => {

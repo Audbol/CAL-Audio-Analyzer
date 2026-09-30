@@ -19,6 +19,29 @@ The builds are not code-signed yet:
 
 On first launch, choose **Explore with the demo room** to try every feature without hardware.
 
+## What's new in 1.10
+
+- **Average curve your way:** hide or show the average curve with the eye button next to *Average* (it keeps averaging while hidden, so the target stays levelled), and choose its colour and thickness under *Options → Average curve*.
+- **Battery saver:** *Tools → Display & performance → Battery saver*. *Auto* (the default) turns it on while a laptop, tablet or phone runs on battery; *On* keeps it on. It draws about 15 times per second instead of 60, computes 10 new spectra per second instead of 25, draws graphs at standard resolution and sends remote devices 10 updates per second. Measurements stay exact: every audio sample is still analysed, and the SPL meter and noise log are not affected. The status bar shows when it is on.
+- **Target curves on Sweep & Room:** pick a target (built-in or a stored trace) next to the result tabs. It is drawn with its tolerance band over the swept frequency response, levelled to the response, and has its own choice separate from the live views.
+- **Reset to defaults:** *Tools → Reset analysis & display to* resets the analysis and display settings to the *App defaults* or to a *Classic dual-FFT* setup (1/12-octave transfer function, 16 averages, coherence, ±18 dB scale, high-resolution spectrum). Microphones, calibrations, inputs, remote access and saved workspaces stay as they are. *Reset all settings* still starts completely fresh.
+- **Fixes and tuning:**
+  - The average curve took each new spectrum into account twice when analysing locally, so its time constant differed slightly from what remote devices showed.
+  - Changing the noise log interval no longer drops the unfinished row. At sample rates below 44.1 kHz the log's band columns stay aligned in the CSV (bands the sample rate can't measure are left blank).
+  - The remote-access server no longer stops when a device sends a message over its size limit. Song uploads over 60 MB are refused on the device with a message instead.
+  - Reconnecting a remote device, or restarting remote access, no longer leaves a stale connection behind.
+  - A sweep started from a remote device now reports an error if it can't be played, instead of waiting forever.
+  - A sweep interrupted by an audio restart now stops with a message instead of producing a wrong result.
+  - With ASIO, generator samples the driver couldn't take at once are played later instead of skipped, so sweeps stay intact.
+  - Averaging RTA traces from mics with different calibrations converts each to dB SPL first.
+  - Calibrating a mic with an empty reference level is refused instead of calibrating to 0 dB SPL.
+  - The EQ source now follows the measurement itself, not its position in the list.
+  - A session file with a damaged sweep is refused before anything is changed.
+  - Opening sessions with many traces is faster.
+  - The audio thread does less work per sample.
+  - A second launch of the desktop app only brings the running one to the front.
+  - Unused code has been removed.
+
 ## What's new in 1.9.1
 
 - **SPL meter and noise log measured sample-exactly:** the meter and log are now computed entirely from the audio samples, independent of the screen, its refresh rate and the analysis settings. Each log row covers exactly its interval (to the sample), Lmax is tracked on every sample, the 2-minute history is recorded every 100 ms of audio, and the log's third-octave bands come from their own IEC 61260-style band filters instead of the spectrum display. The numbers update at a steady 4 per second so they are easy to read. While a noise log runs, its weighting and input are locked, and switching workspace no longer changes them; every row records its weighting, which is also in the CSV.

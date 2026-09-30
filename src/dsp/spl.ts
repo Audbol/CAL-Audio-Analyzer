@@ -1,5 +1,7 @@
 import { WeightingFilter, type Weighting } from './weighting';
-import { ThirdOctaveBank } from './octave-bank';
+import { ThirdOctaveBank, thirdOctaveCentres } from './octave-bank';
+
+const LOG_CENTRES = thirdOctaveCentres(25, 16000);
 
 export interface SplReading {
   /** Time-weighted level (Fast or Slow) in dB. */
@@ -86,9 +88,9 @@ export class SplMeter {
     return this.filter.weighting;
   }
 
-  /** Centres of the logging band filters (when rows are on). */
+  /** Centres of the logging bands (rows always carry all of them; NaN where the sample rate can't measure). */
   get bandCentres(): number[] {
-    return this.bank?.centres ?? new ThirdOctaveBank(this.fs).centres;
+    return LOG_CENTRES;
   }
 
   setWeighting(w: Weighting): void {
@@ -131,7 +133,9 @@ export class SplMeter {
 
   private emitRow(): void {
     const n = this.rowCount;
-    const bands = this.bank ? Array.from(this.bank.take(), (e) => this.toDb(e / n)) : null;
+    // Always the full band list: bands above the sample rate's range (e.g. at 32 kHz) are NaN
+    const e = this.bank?.take();
+    const bands = e ? LOG_CENTRES.map((_, k) => (k < e.length ? this.toDb(e[k] / n) : NaN)) : null;
     const row: SplRow = { samples: n, leq: this.toDb(this.rowSum / n), max: this.toDb(this.rowMaxMs), weighting: this.filter.weighting, bands };
     this.rowSum = 0;
     this.rowCount = 0;

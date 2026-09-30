@@ -140,20 +140,27 @@ export class TraceStore {
   /** Replace every trace (opening a session), keeping their ids so references to them stay valid. */
   replaceAll(list: Trace[]): void {
     this.clear();
-    for (const t of list) {
-      const trace: Trace = { ...t, visible: t.visible ?? true, offset: t.offset ?? 0, created: t.created ?? Date.now() };
-      this.traces.push(trace);
-      this.emit({ op: 'add', trace });
-    }
+    const added = list.map((t): Trace => ({ ...t, visible: t.visible ?? true, offset: t.offset ?? 0, created: t.created ?? Date.now() }));
+    this.traces.push(...added);
+    // One store and one redraw for the whole list (a remote device still sends each trace to the host)
+    if (this.sink) for (const trace of added) this.sink({ op: 'add', trace });
+    this.emit();
   }
 
   /**
    * Average the selected traces. Magnitudes are power-averaged (spatial average, as used for multi-position
    * system EQ); phase is vector-averaged; coherence is averaged.
    */
-  average(ids: string[], name = 'Average'): Trace | null {
+  average(ids: string[], name = 'Average', splOffsetOf: (channel: number | undefined) => number = () => 0): Trace | null {
     const src = this.traces.filter((t) => ids.includes(t.id));
     if (src.length < 2) return null;
+    // Spectra stored in dBFS belong to the calibration of their input. From one input they stay in dBFS (with
+    // that input); from inputs with different calibrations each is converted to dB SPL first, so the average is
+    // physically right and needs no further calibration.
+    const allDbfs = src.every((t) => t.dbfs);
+    const channels = new Set(src.map((t) => t.channel));
+    const toSpl = allDbfs && channels.size > 1;
+    const channel = allDbfs && channels.size === 1 ? src[0].channel : undefined;
     const freqs = src[0].freqs;
     const n = freqs.length;
     const mag: number[] = new Array(n).fill(0);
@@ -164,7 +171,7 @@ export class TraceStore {
     const hasCoh = src.every((t) => t.coh);
     for (const t of src) {
       for (let i = 0; i < n; i++) {
-        const m = interpAt(t.freqs, t.mag, freqs[i]) + t.offset;
+        const m = interpAt(t.freqs, t.mag, freqs[i]) + t.offset + (toSpl ? splOffsetOf(t.channel) : 0);
         mag[i] += Math.pow(10, m / 10);
         if (hasPhase) {
           const p = (interpAt(t.freqs, t.phase!, freqs[i]) * Math.PI) / 180;
@@ -182,7 +189,8 @@ export class TraceStore {
       phase: hasPhase ? re.map((r, i) => (Math.atan2(im[i], r) * 180) / Math.PI) : undefined,
       coh: hasCoh ? coh.map((c) => c / src.length) : undefined,
       note: `Power average of ${src.length} traces`,
-      dbfs: src.every((t) => t.dbfs) || undefined,
+      dbfs: (allDbfs && !toSpl) || undefined,
+      channel,
     });
   }
 }

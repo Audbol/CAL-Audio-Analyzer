@@ -332,11 +332,6 @@ export function schroederFrequency(rt60: number, volume: number): number {
   return 2000 * Math.sqrt(rt60 / volume);
 }
 
-/** Sabine RT60 estimate from volume (m³) and total absorption area (m² Sabine). */
-export function sabineRT(volume: number, absorption: number): number {
-  return (0.161 * volume) / Math.max(absorption, 1e-9);
-}
-
 /** Critical distance (m) for directivity factor Q. */
 export function criticalDistance(volume: number, rt60: number, Q = 2): number {
   return 0.057 * Math.sqrt((Q * volume) / rt60);

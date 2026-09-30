@@ -1413,7 +1413,7 @@ export class App {
   private averageSelected(): void {
     const ids = [...this.selectedTraces];
     if (ids.length < 2) return this.toast('Select two or more traces (checkboxes) to average', 'warn');
-    const t = this.traces.average(ids, `Average (${ids.length})`);
+    const t = this.traces.average(ids, `Average (${ids.length})`, (ch) => this.splOffsetFor(ch ?? this.settings.splChannel));
     if (t) this.toast(`Created “${t.name}”`, 'ok');
     this.selectedTraces.clear();
   }
@@ -1436,6 +1436,8 @@ export class App {
 
   private frameToken = 0;
   private frameTimer = 0;
+  /** The window whose timer `frameTimer` is (timer ids are per window). */
+  private frameTimerWin: Window = window;
   private frameCount = 0;
   private lastDrawAt = 0;
 
@@ -1450,12 +1452,27 @@ export class App {
     const run = () => {
       if (token !== this.frameToken) return;
       this.frameToken++;
-      clearTimeout(this.frameTimer);
+      try {
+        this.frameTimerWin.clearTimeout(this.frameTimer);
+      } catch {
+        /* window closed */
+      }
       this.loop();
     };
-    // Battery saver: wake on a timer only (about 16 times a second), not on every display refresh
+    // Battery saver: wake on a timer (about 16 times a second), not on every display refresh. The timer runs in a
+    // visible window: a hidden main window's timers are slowed to once a second, a detached panel on another
+    // screen would almost stop.
     if (this.saving) {
-      this.frameTimer = window.setTimeout(run, 60);
+      const host = document.visibilityState === 'visible' ? window : (Dock.openWindows().find((w) => !w.closed && w.document.visibilityState === 'visible') ?? window);
+      try {
+        this.frameTimer = host.setTimeout(run, 60);
+        this.frameTimerWin = host;
+      } catch {
+        this.frameTimer = window.setTimeout(run, 60);
+        this.frameTimerWin = window;
+      }
+      // If that window closes before its timer fires, a main-window timer keeps the loop going
+      if (this.frameTimerWin !== window) window.setTimeout(run, 250);
       return;
     }
     requestAnimationFrame(run);
@@ -1467,6 +1484,7 @@ export class App {
       }
     }
     this.frameTimer = window.setTimeout(run, 40);
+    this.frameTimerWin = window;
   }
 
   private loop = (): void => {
@@ -1477,7 +1495,7 @@ export class App {
     const drawEvery = avg > 30 ? 3 : avg > 15 ? 2 : 1;
     // At most ~60 draws per second: high-refresh displays (120/144 Hz) would otherwise draw 2–3× as often
     // Battery saver: about 15 draws per second
-    const draw = this.frameCount++ % drawEvery === 0 && t0 - this.lastDrawAt >= (this.saving ? 62 : 15);
+    const draw = this.frameCount++ % drawEvery === 0 && t0 - this.lastDrawAt >= (this.saving ? 50 : 15);
     if (draw) this.lastDrawAt = t0;
     if (this.engine.running) {
       const needs = this.analysisNeeds();

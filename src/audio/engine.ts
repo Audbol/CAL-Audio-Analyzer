@@ -39,7 +39,7 @@ export class AudioEngine {
   simulate = false;
   deviceLabel = '';
   protected listeners = new Set<(blocks: Float32Array[], gen: Float32Array) => void>();
-  protected playWaiters = new Map<number, { start?: number; resolve: (r: { start: number; end: number }) => void }>();
+  protected playWaiters = new Map<number, { start?: number; resolve: (r: { start: number; end: number }) => void; reject?: (e: Error) => void }>();
   protected playId = 1;
   /** Native audio (desktop app, ASIO): the connection to the audio host and the open stream. */
   nativeLink: NativeAudio | null = null;

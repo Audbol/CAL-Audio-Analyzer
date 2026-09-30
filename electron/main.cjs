@@ -26,9 +26,9 @@ app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
-if (!app.requestSingleInstanceLock()) {
-  app.quit();
-}
+// A second launch only brings the running app to the front (see 'second-instance'); it sets nothing up itself
+const primaryInstance = app.requestSingleInstanceLock();
+if (!primaryInstance) app.quit();
 
 let win = null;
 /** Detached panel windows by frame name (cal-panel-<id>). */
@@ -232,6 +232,7 @@ app.on('second-instance', () => {
 });
 
 app.whenReady().then(() => {
+  if (!primaryInstance) return;
   // Allow microphone / audio-interface access for the app itself only
   const trusted = (origin) => origin.startsWith(`${SCHEME}://${HOST}`) || (DEV_URL && origin.startsWith(DEV_URL));
   session.defaultSession.setPermissionRequestHandler((wc, permission, callback, details) => {

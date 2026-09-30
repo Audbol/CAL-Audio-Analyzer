@@ -142,7 +142,7 @@ export type HubMessage =
   | { t: 'dropped'; blocks: number }
   | { t: 'traces'; traces: Trace[] }
   | SweepProgress
-  | { t: 'event'; to: number; ev: { type: 'played'; id: number; start: number; end: number } }
+  | { t: 'event'; to: number; ev: { type: 'played'; id: number; start: number; end: number } | { type: 'playFailed'; id: number; message: string } }
   | (RemoteCommand & { from: number });
 
 export const AUDIO_HEADER = 16;

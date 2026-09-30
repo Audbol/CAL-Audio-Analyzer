@@ -72,13 +72,20 @@ export class HostLink {
       };
       ws.onerror = () => reject(new Error('Could not connect to the remote-access server'));
       ws.onclose = () => {
+        // A socket replaced by a newer connection must not tear the new one down
+        if (this.ws !== ws) return;
         this.cleanup();
         if (!this.closing) this.app.toast('Remote-access server connection closed', 'warn');
         this.onChange?.();
       };
       ws.onmessage = (e) => {
+        if (this.ws !== ws) return;
         if (typeof e.data === 'string') this.onMessage(JSON.parse(e.data) as HubMessage);
-        else this.onPlayRequest(e.data as ArrayBuffer);
+        else
+          this.onPlayRequest(e.data as ArrayBuffer).catch((err: unknown) => {
+            const message = err instanceof Error ? err.message : String(err);
+            this.app.toast(`Request from a remote device failed: ${message}`, 'warn');
+          });
       };
     });
   }
@@ -256,13 +263,19 @@ export class HostLink {
     }
     const data = new Float32Array(buf.slice(8));
     const app = this.app;
-    if (!app.engine.running) await app.start();
+    // Any failure is reported back so the remote's sweep doesn't wait forever
+    const fail = (err: unknown) => {
+      this.send({ t: 'event', to: from, ev: { type: 'playFailed', id, message: err instanceof Error ? err.message : String(err) } });
+      throw err;
+    };
+    if (!app.engine.running) await app.start().catch(fail);
+    if (!app.engine.running) return fail(new Error('The host audio could not be started'));
     const wasGen = app.settings.generator.type;
     if (wasGen !== 'off') app.engine.setGenerator({ ...app.settings.generator, type: 'off' });
     app.busy = true;
     app.toast('Playing a sweep requested by a remote client', 'info');
     try {
-      const r = await app.engine.play(data);
+      const r = await app.engine.play(data).catch(fail);
       this.send({ t: 'event', to: from, ev: { type: 'played', id, start: r.start, end: r.end } });
     } finally {
       app.busy = false;

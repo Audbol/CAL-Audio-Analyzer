@@ -72,7 +72,8 @@ export class MicsCard {
     if (raw === null) return app.toast('Start audio with the calibrator running first.', 'warn');
     if (raw < -80) return app.toast(`The level on In ${m.channel + 1} is too low for calibration: check the mic, its input and the gain.`, 'warn');
     if (raw > -1) return app.toast(`In ${m.channel + 1} is clipping: lower the preamp gain and calibrate again.`, 'warn');
-    const level = +this.refLevel.value;
+    const level = this.refLevel.value.trim() === '' ? NaN : +this.refLevel.value;
+    if (!Number.isFinite(level) || level < 40 || level > 150) return app.toast('Enter the reference level first (e.g. 94 or 114 dB SPL for a calibrator).', 'warn');
     m.splOffset = level - raw;
     m.splCalibrated = true;
     m.calibratedAt = Date.now();

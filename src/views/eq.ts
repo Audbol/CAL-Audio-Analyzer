@@ -81,10 +81,11 @@ export class EqView implements View {
 
   show(): void {
     const opts = [
-      ...this.app.measurements.map((m, i) => ({ value: `live:${i}`, label: `Live: ${m.cfg.name}` })),
+      // By measurement id, so removing another measurement never moves the source to a different mic
+      ...this.app.measurements.map((m) => ({ value: `live:${m.cfg.id}`, label: `Live: ${m.cfg.name}` })),
       ...this.app.traces.traces.filter((t) => t.kind !== 'rta').map((t) => ({ value: `trace:${t.id}`, label: `Trace: ${t.name}` })),
     ];
-    if (!opts.length) opts.push({ value: 'live:0', label: 'Live: (start audio)' });
+    if (!opts.length) opts.push({ value: 'live:', label: 'Live: (start audio)' });
     if (!opts.find((o) => o.value === this.source)) this.source = opts[0].value;
     this.srcHost.replaceChildren(select(opts, this.source, (v) => (this.source = v)));
     this.dirty = true;
@@ -93,7 +94,7 @@ export class EqView implements View {
   private getSource(): { freqs: ArrayLike<number>; mag: ArrayLike<number>; coh: ArrayLike<number> | null; name: string } | null {
     const [kind, id] = this.source.split(':');
     if (kind === 'live') {
-      const m = this.app.measurements[+id];
+      const m = this.app.measurements.find((x) => x.cfg.id === id);
       if (!m || !m.tfReady) return null;
       return { freqs: this.app.grid, mag: m.mag, coh: m.result.coh, name: m.cfg.name };
     }

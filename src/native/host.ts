@@ -110,16 +110,35 @@ class Session {
   /** Top the driver's generator supply up to the safety margin. */
   supply(queued: number): void {
     let need = this.safety - queued;
-    while (need > 0 && addon) {
+    if (!addon) return;
+    // Samples the driver didn't take last time go first: the generator already moved past them, so dropping
+    // them would skip part of a sweep and shift its timing
+    if (this.carry) {
+      const accepted = addon.write(this.carry);
+      this.generated += accepted;
+      need -= accepted;
+      if (accepted < this.carry.length) {
+        this.carry = this.carry.slice(accepted);
+        return;
+      }
+      this.carry = null;
+    }
+    while (need > 0) {
       const n = Math.min(need, this.chunk.length);
       const c = n === this.chunk.length ? this.chunk : this.chunk.subarray(0, n);
       for (let i = 0; i < n; i++) c[i] = this.core.next(this.generated + i);
       const accepted = addon.write(c);
       this.generated += accepted;
       need -= n;
-      if (accepted < n) break;
+      if (accepted < n) {
+        this.carry = c.slice(accepted);
+        break;
+      }
     }
   }
+
+  /** Generated samples waiting for room in the driver's output buffer. */
+  private carry: Float32Array | null = null;
 
   /** Read what the driver captured, pass it on in blocks and keep the generator supplied. */
   pump(): void {

@@ -54,5 +54,15 @@ const welcome = await new Promise((res) => {
   ws.on('error', () => res('rejected'));
 });
 check(welcome === 'welcome', 'same-origin connections with the right PIN work');
+// A message over the size limit (e.g. a huge song upload) closes only that connection, never the server
+const big = await new Promise((res) => {
+  const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?role=remote&pin=123456`);
+  ws.on('open', () => ws.send(Buffer.alloc(65 * 1024 * 1024)));
+  ws.on('close', (code) => res(code));
+  ws.on('error', () => undefined);
+});
+check(big === 1009 || big === 1006, `an oversized message closes that connection (${big})`);
+const after = [await get('/api/info'), await connect('123456')];
+check(after[0] === 200 && after[1] !== 'rejected', `the server keeps running and accepts new connections (${after.join(', ')})`);
 await hub2.stop();
 process.exit(failed ? 1 : 0);

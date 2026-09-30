@@ -59,7 +59,7 @@ describe('third-octave filter bank', () => {
 });
 
 import { SplMeter } from '../src/dsp/spl';
-import { SplLogger } from '../src/logger';
+import { SplLogger, LOG_BANDS } from '../src/logger';
 
 describe('SPL meter and noise log', () => {
   /** Feed a sine of `amp` at `freq` for `seconds` in 1024-sample blocks (like the audio path). */
@@ -149,5 +149,38 @@ describe('SPL meter and noise log', () => {
     expect(h.t.length).toBe(30);
     expect(h.t[h.t.length - 1]).toBe(0);
     expect(h.leq[20]).toBeCloseTo(-20, 1);
+  });
+
+  it('keeps the unfinished row when the interval changes', () => {
+    const m = new SplMeter(FS, 'Z');
+    const clock = { t: 1e6 };
+    const log = new SplLogger(false);
+    log.now = () => clock.t;
+    log.config = { interval: 60, limit: 0, window: 15 };
+    feed(m, 0.1, 1, 1000, clock);
+    log.start(m, 'Z', false);
+    feed(m, 0.1, 42, 1000, clock);
+    log.setInterval(10);
+    feed(m, 0.1, 20, 1000, clock);
+    expect(log.rows.map((r) => r.dur)).toEqual([42, 10, 10]);
+    const s = log.summary()!;
+    expect(s.duration).toBe(62);
+  });
+
+  it('always logs the full band list, blank where the sample rate cannot measure', () => {
+    const m = new SplMeter(32000, 'Z');
+    const log = new SplLogger(false);
+    log.config = { interval: 1, limit: 0, window: 1 };
+    log.start(m, 'Z', false);
+    feed(m, 0.1, 2.2);
+    expect(log.rows.length).toBe(2);
+    const b = log.rows[0].bands!;
+    expect(b.length).toBe(LOG_BANDS.length);
+    expect(Number.isFinite(b[b.length - 1])).toBe(false);
+    const k = LOG_BANDS.findIndex((f) => Math.abs(f - 1000) < 1);
+    expect(b[k]).toBeCloseTo(-20, 1);
+    const csv = log.toCsv().split('\n');
+    expect(csv[1].split(',').length).toBe(csv[0].split(',').length);
+    expect(csv[1].endsWith(',')).toBe(true);
   });
 });

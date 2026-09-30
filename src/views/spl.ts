@@ -234,6 +234,7 @@ export class SplView implements View {
   }
 
   private shownReading: SplReading | null = null;
+  private shownKey = '';
   private histCount = -1;
 
   tick(): void {
@@ -241,8 +242,11 @@ export class SplView implements View {
     // Numbers: the app's steady 4-per-second reading (never the frame rate)
     const r = this.app.splDisplay;
     const run = this.app.engine.running && r;
-    if (r !== this.shownReading || !run) {
+    // Rebuilt only when the reading or what it is shown in changed (not every frame while audio is stopped)
+    const shownKey = `${!!run}|${s.splCalibrated}|${s.splOffset}|${s.splWeighting}|${s.splTime}`;
+    if (r !== this.shownReading || shownKey !== this.shownKey) {
       this.shownReading = r;
+      this.shownKey = shownKey;
       const unit = s.splCalibrated ? `dB(${s.splWeighting})` : `dBFS(${s.splWeighting})`;
       this.big.innerHTML = `<div class="val">${run ? r!.level.toFixed(1) : '—'}</div><div class="unit">${unit} · ${s.splTime === 'fast' ? 'Fast' : 'Slow'}</div>${s.splCalibrated ? '' : '<div class="warn-text small">Uncalibrated</div>'}`;
       const fmt = (v: number | undefined) => (run && v !== undefined && Number.isFinite(v) ? v.toFixed(1) : '—');

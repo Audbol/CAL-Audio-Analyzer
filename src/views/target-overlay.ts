@@ -57,6 +57,11 @@ export class TargetOverlay {
     );
   }
 
+  /** Rebuild the target list if the stored traces changed (views that don't draw the target every frame). */
+  refresh(): void {
+    if (this.app.traces.version !== this.tracesVersion) this.renderSelect();
+  }
+
   /** Target choices change with the stored traces: rebuild the select when they did. */
   private renderSelect(): void {
     const app = this.app;

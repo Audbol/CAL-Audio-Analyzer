@@ -136,7 +136,6 @@ export class Measurement {
           this.rtaPeakOut[i] += cal[i];
         }
         this.rtaShown++;
-    this.updateAverage(s, cal);
         this.updateAverage(s, cal);
       }
     }

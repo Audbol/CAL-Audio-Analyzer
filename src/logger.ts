@@ -103,10 +103,13 @@ export class SplLogger {
     this.save();
   }
 
-  /** A new interval length applies from the next row. */
+  /** A new interval length applies from the next row; the unfinished row is logged as it is (not lost). */
   setInterval(seconds: number): void {
     this.config.interval = seconds;
-    if (this.running && this.meter) this.attach(this.meter);
+    if (this.running && this.meter) {
+      this.meter.stopRows();
+      this.attach(this.meter);
+    }
     this.save();
   }
 
@@ -125,7 +128,7 @@ export class SplLogger {
       leq: +r.leq.toFixed(2),
       max: Number.isFinite(r.max) ? +r.max.toFixed(2) : NaN,
       w: r.weighting,
-      bands: r.bands ? r.bands.map((v) => +v.toFixed(1)) : null,
+      bands: r.bands ? r.bands.map((v) => (Number.isFinite(v) ? +v.toFixed(1) : NaN)) : null,
     });
     this.weighting = r.weighting;
     this.version++;
@@ -191,7 +194,7 @@ export class SplLogger {
   toCsv(): string {
     const unit = this.calibrated ? 'dB' : 'dBFS';
     const head = ['time', 'seconds', 'weighting', `Leq (${unit})`, `LFmax (${unit})`, ...LOG_BANDS.map((f) => `${f < 1000 ? Math.round(f) : `${+(f / 1000).toFixed(1)}k`} Hz Leq (Z)`)];
-    const lines = this.rows.map((r) => [new Date(r.t).toISOString(), r.dur, r.w ?? this.weighting, r.leq, Number.isFinite(r.max) ? r.max : '', ...(r.bands ?? LOG_BANDS.map(() => ''))].join(','));
+    const lines = this.rows.map((r) => [new Date(r.t).toISOString(), r.dur, r.w ?? this.weighting, r.leq, Number.isFinite(r.max) ? r.max : '', ...LOG_BANDS.map((_, k) => (r.bands && Number.isFinite(r.bands[k]) ? r.bands[k] : ''))].join(','));
     return [head.join(','), ...lines].join('\n');
   }
 

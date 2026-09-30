@@ -322,6 +322,13 @@ export class RoomView implements View {
     this.setMeasureLabel();
     const wasGen = app.settings.generator.type;
     if (wasGen !== 'off') app.engine.setGenerator({ ...app.settings.generator, type: 'off' });
+    // Audio restarted during the sweep (e.g. another input source): the recording is gone, stop waiting for it
+    let restarted = false;
+    const watch = setInterval(() => {
+      if (e.running && e.ring(cfg.mic) === ring) return;
+      restarted = true;
+      token.cancelled = true;
+    }, 100);
     try {
       for (let r = 0; r < this.opts.repeats; r++) {
         this.setProgress(r / this.opts.repeats, `Playing sweep ${r + 1}/${this.opts.repeats}… keep quiet!`);
@@ -336,8 +343,10 @@ export class RoomView implements View {
         } finally {
           clearInterval(timer);
         }
-        if (token.cancelled) throw new Error('cancelled');
+        if (token.cancelled) throw new Error(restarted ? 'audio was restarted during the sweep. Run it again.' : 'cancelled');
         await e.waitForFrame(start + buf.length, token);
+        if (restarted || e.ring(cfg.mic) !== ring) throw new Error('audio was restarted during the sweep. Run it again.');
+        if (token.cancelled) throw new Error('cancelled');
         const rec = new Float64Array(buf.length);
         ring.read(start, buf.length, rec);
         for (let i = 0; i < rec.length; i++) sum[i] += rec[i] / this.opts.repeats;
@@ -354,10 +363,12 @@ export class RoomView implements View {
       app.shareSweep({ spec, peak: d.peak, fs: d.fs, channel: cfg.mic, when: Date.now(), by: by === 'the host' ? '' : by }, d.ir);
       if (this.result.peakDb < 40) app.toast('Low signal-to-noise ratio: raise the level, use a longer sweep or more repeats for reliable RT60.', 'warn');
     } catch (err) {
-      if ((err as Error).message !== 'cancelled') app.toast(`Sweep failed: ${(err as Error).message}`, 'warn');
+      const msg = restarted ? 'audio was restarted during the sweep. Run it again.' : (err as Error).message;
+      if (msg !== 'cancelled') app.toast(`Sweep failed: ${msg}`, 'warn');
       this.running = null;
       this.setProgress(0, 'Cancelled.', false);
     } finally {
+      clearInterval(watch);
       this.running = null;
       app.busy = false;
       this.setMeasureLabel();
@@ -546,6 +557,7 @@ export class RoomView implements View {
 
   tick(): void {
     const s = this.app.settings;
+    this.target.refresh();
     if (this.result && this.targetKey !== `${s.roomTargetCurve}|${s.targetTolerance}|${this.app.traces.version}`) {
       this.applyTarget();
       this.dirty = true;

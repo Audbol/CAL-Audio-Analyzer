@@ -197,6 +197,8 @@ function createHub(options) {
   function acceptHost(ws) {
     if (host) host.close(4000, 'Replaced by a new host connection');
     host = ws;
+    // A protocol error (oversized or malformed message) closes this connection, never the server
+    ws.on('error', (e) => log(`host connection error: ${e.message}`));
     log('host connected');
     notifyHost();
     for (const c of remotes.values()) send(c.ws, JSON.stringify({ t: 'host', connected: true }));
@@ -266,6 +268,7 @@ function createHub(options) {
     const address = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
     const client = { ws, name: String(name || 'Remote').slice(0, 40), address, since: Date.now(), dropped: 0, analysis: false };
     remotes.set(id, client);
+    ws.on('error', (e) => log(`remote ${id} connection error: ${e.message}`));
     log(`remote ${id} connected from ${address}`);
     send(ws, JSON.stringify({ t: 'welcome', id, allowControl: state.allowControl, hostConnected: !!host }));
     if (lastStatus) send(ws, lastStatus);
@@ -325,6 +328,7 @@ function createHub(options) {
   }
 
   function onUpgrade(req, socket, head) {
+    socket.on('error', () => socket.destroy());
     let url;
     try {
       url = new URL(req.url, 'http://x');

@@ -1,13 +1,5 @@
 import { TARGETS } from './eq';
 
-/** A target curve as drawn on the Spectrum and Transfer views: a shape in dB, levelled to the measurement. */
-export interface TargetSpec {
-  /** 'off', a built-in target id (see TARGETS) or `trace:<id>` for a stored trace used as the target. */
-  id: string;
-  /** ± tolerance band in dB (0 = no band). */
-  tolerance: number;
-}
-
 /** Frequency range used to level the target to the measurement (the ear's most sensitive, least room-affected range). */
 export const LEVEL_RANGE: [number, number] = [250, 4000];
 

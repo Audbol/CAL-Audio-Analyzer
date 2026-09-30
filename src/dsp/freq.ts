@@ -162,16 +162,6 @@ export function bandCentres(fraction: 1 | 3, fMin = 20, fMax = 20000): number[] 
   return out;
 }
 
-export function nominalBandLabel(f: number): string {
-  const nominal = [
-    16, 20, 25, 31.5, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500,
-    3150, 4000, 5000, 6300, 8000, 10000, 12500, 16000, 20000,
-  ];
-  let best = nominal[0];
-  for (const n of nominal) if (Math.abs(Math.log(n / f)) < Math.abs(Math.log(best / f))) best = n;
-  return best >= 1000 ? `${best / 1000}k` : `${best}`;
-}
-
 export function formatFreq(f: number): string {
   if (f >= 10000) return `${(f / 1000).toFixed(1)} kHz`;
   if (f >= 1000) return `${(f / 1000).toFixed(2)} kHz`;
@@ -190,7 +180,6 @@ export function noteName(f: number): string {
 }
 
 export const dB = (p: number): number => 10 * Math.log10(Math.max(p, 1e-30));
-export const dBa = (a: number): number => 20 * Math.log10(Math.max(Math.abs(a), 1e-15));
 
 /** Points per octave of a log grid (e.g. 48 for the analysis grid). */
 export function gridPpo(grid: ArrayLike<number>): number {

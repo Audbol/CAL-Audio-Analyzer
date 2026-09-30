@@ -78,6 +78,8 @@ export class RemoteEngine extends AudioEngine {
         reject(new Error(msg));
       };
       ws.onmessage = (e) => {
+        // A socket replaced by a newer connection (stop() then start()) no longer speaks for this engine
+        if (this.ws !== ws) return;
         if (typeof e.data !== 'string') return this.onAudio(e.data as ArrayBuffer);
         const msg = JSON.parse(e.data) as HubMessage;
         this.onMessage(msg);
@@ -89,7 +91,9 @@ export class RemoteEngine extends AudioEngine {
         }
       };
       ws.onclose = (e) => {
+        if (this.ws !== ws) return;
         const wasConnected = this.state === 'connected';
+        this.failPlays('Connection to the measurement host was lost');
         this.ws = null;
         this.status = null;
         if (this.closing) {
@@ -107,7 +111,7 @@ export class RemoteEngine extends AudioEngine {
     // Wait for the first status; ask the host to start its audio if it is stopped
     await this.waitFor(() => !!this.status, 4000);
     if (this.status && !this.status.running && this.allowControl) {
-      this.sendLegacy({ t: 'cmd', cmd: 'start' });
+      this.send({ t: 'cmd', cmd: 'start' });
       await this.waitFor(() => !!this.status?.running, 10000);
     }
   }
@@ -139,7 +143,10 @@ export class RemoteEngine extends AudioEngine {
         break;
       case 'host':
         this.hostConnected = msg.connected;
-        if (!msg.connected) this.status = null;
+        if (!msg.connected) {
+          this.status = null;
+          this.failPlays('The measurement host disconnected');
+        }
         break;
       case 'control':
         this.allowControl = msg.allowControl;
@@ -149,6 +156,8 @@ export class RemoteEngine extends AudioEngine {
         break;
       case 'error':
         this.lastError = msg.message;
+        // The hub refused a request (e.g. remote control off, host away): a pending sweep playback won't happen
+        this.failPlays(msg.message);
         break;
       case 'event':
         if (msg.ev.type === 'played') {
@@ -157,6 +166,10 @@ export class RemoteEngine extends AudioEngine {
             this.playWaiters.delete(msg.ev.id);
             w.resolve({ start: msg.ev.start, end: msg.ev.end });
           }
+        } else if (msg.ev.type === 'playFailed') {
+          const w = this.playWaiters.get(msg.ev.id);
+          this.playWaiters.delete(msg.ev.id);
+          w?.reject?.(new Error(msg.ev.message));
         }
         break;
     }
@@ -221,12 +234,14 @@ export class RemoteEngine extends AudioEngine {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ t: 'prefs', analysis: this.wantAnalysis } satisfies RemotePrefs));
   }
 
-  private sendLegacy(msg: RemoteCommand): void {
-    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));
+  /** Pending sweep playbacks fail (with a message the sweep view shows). */
+  private failPlays(message: string): void {
+    for (const [, w] of this.playWaiters) w.reject?.(new Error(message));
+    this.playWaiters.clear();
   }
 
   override setGenerator(config: GeneratorConfig): void {
-    this.sendLegacy({ t: 'cmd', cmd: 'setGenerator', config });
+    this.send({ t: 'cmd', cmd: 'setGenerator', config });
   }
 
   /** Sweep playback happens on the host; the result carries host frame indices, which match our rings. */
@@ -235,7 +250,7 @@ export class RemoteEngine extends AudioEngine {
     return new Promise((resolve, reject) => {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return reject(new Error('Not connected to the measurement host'));
       if (!this.allowControl) return reject(new Error('Remote control is disabled on the host'));
-      this.playWaiters.set(id, { resolve });
+      this.playWaiters.set(id, { resolve, reject });
       const buf = new ArrayBuffer(4 + data.length * 4);
       new DataView(buf).setUint32(0, id, true);
       new Float32Array(buf, 4).set(data);
@@ -244,7 +259,7 @@ export class RemoteEngine extends AudioEngine {
   }
 
   override stopPlayback(): void {
-    this.sendLegacy({ t: 'cmd', cmd: 'stopPlay' });
+    this.send({ t: 'cmd', cmd: 'stopPlay' });
     for (const [, w] of this.playWaiters) w.resolve({ start: 0, end: 0 });
     this.playWaiters.clear();
   }

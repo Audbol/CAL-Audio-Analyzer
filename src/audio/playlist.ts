@@ -366,11 +366,16 @@ export class Playlist implements PlaylistApi {
   }
 }
 
+/** Largest song a remote device can send (the server's message limit is 64 MB, minus the header). */
+const MAX_UPLOAD = 60 * 1048576;
+
 /** Remote devices: shows the host's playlist and sends actions and uploads to it. */
 export class RemotePlaylist implements PlaylistApi {
   private st: PlaylistState = { tracks: [], current: null, pos: 0, repeat: 'all', shuffle: false, loading: false, error: '' };
   private listeners = new Set<() => void>();
   private posAt = 0;
+  /** A problem on this device (e.g. a song too large to send), shown until the next upload. */
+  private localError = '';
   uploading = 0;
 
   constructor(
@@ -391,7 +396,7 @@ export class RemotePlaylist implements PlaylistApi {
     // Interpolate the position between status updates while the song plays
     const extra = this.playing() ? (performance.now() - this.posAt) / 1000 : 0;
     const cur = this.st.tracks.find((t) => t.id === this.st.current);
-    return { ...this.st, pos: Math.min(this.st.pos + extra, cur?.duration || Infinity) };
+    return { ...this.st, error: this.localError || this.st.error, pos: Math.min(this.st.pos + extra, cur?.duration || Infinity) };
   }
 
   act(a: PlaylistAction): void {
@@ -399,11 +404,22 @@ export class RemotePlaylist implements PlaylistApi {
   }
 
   async addFiles(files: File[]): Promise<void> {
+    this.localError = '';
     for (const f of files) {
+      // The remote-access server takes messages up to 64 MB
+      if (f.size > MAX_UPLOAD) {
+        this.localError = `“${f.name}” is too large to send to the host (${Math.round(f.size / 1048576)} MB, max ${MAX_UPLOAD / 1048576} MB). Use an MP3 or a shorter file.`;
+        continue;
+      }
       this.uploading++;
       for (const l of this.listeners) l();
-      await this.upload(f);
-      this.uploading--;
+      try {
+        if (!(await this.upload(f))) this.localError = 'Not connected to the host, or remote control is off.';
+      } catch (e) {
+        this.localError = `Could not send “${f.name}”: ${e instanceof Error ? e.message : String(e)}`;
+      } finally {
+        this.uploading--;
+      }
     }
     for (const l of this.listeners) l();
   }

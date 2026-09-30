@@ -70,6 +70,15 @@ export function parseSession(text: string): SessionFile {
   if ((f.version ?? 0) > SESSION_VERSION) throw new Error('This session was saved by a newer version of the app. Update the app to open it.');
   if (!Array.isArray(f.traces)) throw new Error('The session file is damaged (no trace list).');
   for (const t of f.traces) if (!t || typeof t.id !== 'string' || !Array.isArray(t.freqs) || !Array.isArray(t.mag)) throw new Error('The session file is damaged (a trace is incomplete).');
+  if (f.sweep) {
+    let ok = false;
+    try {
+      ok = !!f.sweep.meta && typeof f.sweep.ir === 'string' && decodeFloat32(f.sweep.ir).length > 0;
+    } catch {
+      ok = false;
+    }
+    if (!ok) throw new Error('The session file is damaged (the sweep measurement is incomplete).');
+  }
   return {
     format: SESSION_FORMAT,
     version: f.version ?? SESSION_VERSION,
@@ -88,6 +97,8 @@ export function parseSession(text: string): SessionFile {
 
 /** Replace the current session with a saved one. */
 export function applySession(app: App, f: SessionFile): void {
+  // Decode first: nothing changes if the file can't be read completely
+  const ir = f.sweep ? Float64Array.from(decodeFloat32(f.sweep.ir)) : null;
   const s = app.settings;
   s.session = { ...f.session };
   const rec = s as unknown as Record<string, unknown>;
@@ -95,7 +106,7 @@ export function applySession(app: App, f: SessionFile): void {
   if (f.shared && Array.isArray(f.shared.measurements) && f.shared.measurements.length) app.applyShared(f.shared);
   app.applyAnalysisSettings();
   app.traces.replaceAll(f.traces);
-  view<RoomView>(app, 'room').restoreSweep(f.sweep ? { meta: f.sweep.meta, ir: Float64Array.from(decodeFloat32(f.sweep.ir)) } : null);
+  view<RoomView>(app, 'room').restoreSweep(f.sweep && ir ? { meta: f.sweep.meta, ir } : null);
   view<EqView>(app, 'eq').restore(f.eq);
   view<AlignView>(app, 'align').restore(f.align);
   if (app.logger.running) app.logger.stop();

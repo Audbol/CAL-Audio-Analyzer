@@ -1,12 +1,5 @@
 export type WindowType = 'hann' | 'blackman-harris' | 'flat-top' | 'rectangular';
 
-export const WINDOW_LABELS: Record<WindowType, string> = {
-  hann: 'Hann',
-  'blackman-harris': 'Blackman-Harris',
-  'flat-top': 'Flat Top',
-  rectangular: 'Rectangular',
-};
-
 const cache = new Map<string, Float64Array>();
 
 /** Returns a (cached) window of the given type and length. */

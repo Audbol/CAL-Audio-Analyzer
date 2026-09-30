@@ -24,6 +24,7 @@ class CalProcessor extends AudioWorkletProcessor {
   private bufs: Float32Array[] = [];
   private genBuf = new Float32Array(BLOCK);
   private fill = 0;
+  private outOn = new Uint8Array(0);
 
   constructor() {
     super();
@@ -49,10 +50,14 @@ class CalProcessor extends AudioWorkletProcessor {
       this.bufs = Array.from({ length: nIn }, () => new Float32Array(BLOCK));
       this.fill = 0;
     }
-    const outMask = this.core.gen.outputs;
+    // Which outputs carry the generator, looked up once per render quantum (not per sample)
+    if (this.outOn.length < output.length) this.outOn = new Uint8Array(output.length);
+    const outOn = this.outOn;
+    const outputsOn = this.core.gen.outputs;
+    for (let c = 0; c < output.length; c++) outOn[c] = !this.sim && outputsOn.includes(c) ? 1 : 0;
     for (let i = 0; i < n; i++) {
       const g = this.core.next(this.frame + this.fill);
-      for (let c = 0; c < output.length; c++) output[c][i] = outMask.includes(c) && !this.sim ? g : 0;
+      for (let c = 0; c < output.length; c++) output[c][i] = outOn[c] ? g : 0;
       this.genBuf[this.fill] = g;
       if (this.sim) {
         this.bufs[0][this.fill] = this.sim.process(g);

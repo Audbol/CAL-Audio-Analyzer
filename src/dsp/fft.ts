@@ -192,16 +192,6 @@ export class FFT {
   }
 }
 
-/** Convenience: FFT of a real signal (zero padded / truncated to `size`). */
-export function realFFT(x: ArrayLike<number>, size: number): { re: Float64Array; im: Float64Array } {
-  const re = new Float64Array(size);
-  const im = new Float64Array(size);
-  const n = Math.min(size, x.length);
-  for (let i = 0; i < n; i++) re[i] = x[i];
-  FFT.get(size).forward(re, im);
-  return { re, im };
-}
-
 export function nextPow2(n: number): number {
   let p = 1;
   while (p < n) p <<= 1;
