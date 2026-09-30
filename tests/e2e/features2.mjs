@@ -114,9 +114,19 @@ const lg = await page.evaluate(() => {
 check(lg.rows >= 3, `noise log records a row per second (${lg.rows})`);
 check(lg.bands === 29, 'each row carries the third-octave spectrum');
 check(lg.state === 'over' && lg.over, 'limit exceeded: alarm state and red level readout');
+// Switching workspaces mid-log (C-weighted voice → A kept) never breaks the rows: exact 1 s each, one weighting
+const w0 = await page.evaluate(() => window.calApp.settings.splWeighting);
+for (const id of ['voice', 'live-mix', 'noise', 'system-tuning']) {
+  await page.evaluate((id) => { const sel = window.calApp.workspaceHost.querySelector('select'); sel.value = id; sel.dispatchEvent(new Event('change')); }, id);
+  await page.waitForTimeout(400);
+}
+await page.keyboard.press('8');
+await page.waitForTimeout(1500);
+const lg2 = await page.evaluate(() => { const l = window.calApp.logger; return { running: l.running, durs: l.rows.map((r) => r.dur), ws: [...new Set(l.rows.map((r) => r.w))], w: window.calApp.settings.splWeighting }; });
+check(lg2.running && lg2.durs.every((d) => d === 1) && lg2.ws.length === 1 && lg2.w === w0, `rows stay exact through workspace changes (${lg2.durs.length} rows, ${lg2.ws.join('/')})`);
 const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export log CSV' }).click()]);
 const csv = fs.readFileSync(await dl.path(), 'utf8').split('\n');
-check(csv[0].startsWith('time,seconds,LAeq') && csv.length >= lg.rows + 1, `CSV export (${csv.length - 1} rows)`);
+check(csv[0].startsWith('time,seconds,weighting,Leq') && csv.length >= lg.rows + 1, `CSV export (${csv.length - 1} rows)`);
 await page.locator('button[data-log="toggle"]').click();
 await page.mouse.move(700, 300);
 await page.waitForTimeout(300);

@@ -31,7 +31,15 @@ import type { PlaylistAction, PlaylistState } from '../audio/playlist';
 
 /** The subset of settings that belongs to the measurement setup and is shared by every device. */
 export function sharedOf(s: Settings): SharedSettings {
-  return { splOffset: s.splOffset, splCalibrated: s.splCalibrated, micCal: s.micCal, tempC: s.tempC, measurements: s.measurements, mics: s.mics };
+  return { splOffset: s.splOffset, splCalibrated: s.splCalibrated, micCal: s.micCal, tempC: s.tempC, measurements: s.measurements, mics: s.mics, tuning: tuningOf(s) };
+}
+
+/** Tuning display settings every device shows the same way: target curve, average curve, several-mic average. */
+export const TUNING_KEYS = ['targetCurve', 'targetTolerance', 'rtaAverageCurve', 'rtaAverageSmoothing', 'micAverage'] as const;
+export type Tuning = Pick<Settings, (typeof TUNING_KEYS)[number]>;
+
+export function tuningOf(s: Settings): Tuning {
+  return { targetCurve: s.targetCurve, targetTolerance: s.targetTolerance, rtaAverageCurve: s.rtaAverageCurve, rtaAverageSmoothing: s.rtaAverageSmoothing, micAverage: s.micAverage };
 }
 
 export interface SharedSettings {
@@ -42,6 +50,8 @@ export interface SharedSettings {
   mics?: MicProfile[];
   tempC: number;
   measurements: MeasurementConfig[];
+  /** Target and average-curve settings (older versions don't send them). */
+  tuning?: Tuning;
 }
 
 export interface HostStatus {

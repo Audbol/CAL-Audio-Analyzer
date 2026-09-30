@@ -95,6 +95,15 @@ await rem.waitForTimeout(3000);
 const dev = await rem.evaluate(() => { const a = window.calApp; const m = a.measurements[0]; let c = 0, n = 0; a.grid.forEach((f, i) => { if (f > 300 && f < 8000) { c += m.result.coh[i]; n++; } }); return { coh: c / n, host: !!m.hostFrame, mode: a.processingMode() }; });
 check(dev.mode === 'device' && !dev.host && dev.coh > 0.6, `on-device analysis works too (coherence ${dev.coh.toFixed(2)})`);
 await rem.evaluate(() => window.calApp.setProcessing('host'));
+// Target curve and average curve set on the host appear on the remote (host processing)
+await host.evaluate(() => { const a = window.calApp; a.settings.targetCurve = 'house'; a.settings.rtaAverageCurve = 10; for (const m of a.measurements) m.resetAverage(); a.save(); });
+await rem.waitForTimeout(2500);
+const tun = await rem.evaluate(() => { const a = window.calApp; return { target: a.settings.targetCurve, avg: a.settings.rtaAverageCurve, curve: !!a.measurements[0].averageDb(), frames: a.measurements[0].averageFrames }; });
+check(tun.target === 'house' && tun.avg === 10, 'remote adopts the host target curve and average setting');
+check(tun.curve && tun.frames > 5, `remote draws the average curve (${tun.frames} updates)`);
+// Spectrum refresh: new host analysis frames several times a second
+const rate = await rem.evaluate(() => new Promise((res) => { const m = window.calApp.measurements[0]; let last = m.hostFrame, n = 0; const t0 = performance.now(); const step = () => { if (m.hostFrame !== last) { n++; last = m.hostFrame; } if (performance.now() - t0 < 2000) requestAnimationFrame(step); else res(n / 2); }; step(); }));
+check(rate >= 12, `remote spectrum updates ${rate.toFixed(0)} times a second`);
 check(Math.abs(r.spl - h.spl) < 1.5, `remote SPL meter matches host (${r.spl.toFixed(1)} vs ${h.spl.toFixed(1)})`);
 check(h.clients === 1, 'host sees the connected remote client');
 await rem.screenshot({ path: `${out}/remote-01-transfer.png` });

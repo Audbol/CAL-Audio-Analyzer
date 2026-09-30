@@ -223,6 +223,8 @@ export class Measurement {
     rta(f.rtaBands, f.rtaFft, this.rtaOut);
     if (s.peakHold) rta(f.peakBands, f.peakFft, this.rtaPeakOut);
     this.rtaShown++;
+    // The average curve is built on this device from each new host frame
+    this.updateAverage(s, cal);
     this.tfReady = f.tfReady;
     if (f.tfReady) {
       smoothTransfer(f.mag, f.phase, f.coh, ppo, s.tfSmoothing || 48, this.result.mag, this.result.phase, this.result.coh);

@@ -30,13 +30,22 @@ export class SpectrumAnalyzer {
   averaging: Averaging = 4;
   window: WindowType = 'hann';
 
+  /** Averaging is defined per `avgHop` samples, whatever the frame spacing (see `frame`). */
+  private readonly avgScale: number;
+
   constructor(
     readonly fs: number,
     readonly size: number,
     readonly grid: Float64Array,
     /** Samples between frames (default: 50% overlap). */
     readonly hop = size / 2,
+    /**
+     * Frame spacing the averaging count refers to (default: 50% overlap). With more overlapped frames the
+     * display updates more often while "Avg 4" still averages over the same time.
+     */
+    avgHop = size / 2,
   ) {
+    this.avgScale = Math.max(1, avgHop / hop);
     this.bins = size / 2 + 1;
     this.power = new Float64Array(this.bins);
     this.peak = new Float64Array(this.bins);
@@ -58,8 +67,8 @@ export class SpectrumAnalyzer {
     this.version++;
   }
 
-  /** Process new data (hop = size/2). Returns the number of frames processed. */
-  process(ring: RingBuffer, maxFrames = 6): number {
+  /** Process new data, one frame per hop. Returns the number of frames processed. */
+  process(ring: RingBuffer, maxFrames = 12): number {
     const head = ring.written;
     const hop = this.hop;
     // (Re)start at the head, never on data from before the stream began (that would read as silence)
@@ -98,7 +107,7 @@ export class SpectrumAnalyzer {
     const norm = (2 * 2) / (n * powerSum);
     this.frames++;
     this.version++;
-    const a = this.averaging === 0 ? 1 / this.frames : Math.max(1 / this.averaging, 1 / this.frames);
+    const a = this.averaging === 0 ? 1 / this.frames : Math.max(1 / (this.averaging * this.avgScale), 1 / this.frames);
     const b = 1 - a;
     const last = (this.last ??= new Float64Array(this.bins));
     const power = this.power;
@@ -172,6 +181,9 @@ export class SpectrumAnalyzer {
  * FFT (heavily overlapped frames, cheap on the decimated signal), so the bass doesn't lag behind, and neighbouring
  * windows are blended over a third of an octave so there is no step where one takes over from the other.
  */
+/** Target number of new RTA spectra per second. */
+export const RTA_RATE = 25;
+
 export class MultiSpectrum {
   readonly main: SpectrumAnalyzer;
   private low: { sa: SpectrumAnalyzer; fLo: number; fHi: number }[] = [];
@@ -185,7 +197,10 @@ export class MultiSpectrum {
     readonly grid: Float64Array,
     readonly lf: LfResolution = 'standard',
   ) {
-    this.main = new SpectrumAnalyzer(fs, size, grid);
+    // About 25 new spectra per second (a 50%-overlap 16k FFT gives only 6): smooth, responsive display; the
+    // averaging still refers to 50%-overlap frames, so "Avg 4" means the same averaging time as before
+    const hop = Math.min(size / 2, Math.max(256, Math.round(fs / RTA_RATE)));
+    this.main = new SpectrumAnalyzer(fs, size, grid, hop);
     const scale = Math.max(1, Math.round(fs / 48000));
     const specs = lf === 'max' ? [[131072, 0, 80], [65536, 80, 160]] : lf === 'high' ? [[65536, 0, 160]] : [];
     const d = decimationFactor(fs);
@@ -193,8 +208,10 @@ export class MultiSpectrum {
     const useful = specs.filter(([eq]) => eq * scale > size);
     if (!useful.length) return;
     this.dec = new DecimatedRing(fs, d);
-    const hop = Math.max(32, Math.round(this.main.hop / d)); // same frame rate as the main FFT
-    this.low = useful.map(([eq, fLo, fHi]) => ({ sa: new SpectrumAnalyzer(fs / d, (eq * scale) / d, grid, hop), fLo, fHi }));
+    const lowHop = Math.max(32, Math.round(this.main.hop / d)); // same frame rate as the main FFT
+    // …and the same averaging time as the main FFT
+    const avgHop = size / 2 / d;
+    this.low = useful.map(([eq, fLo, fHi]) => ({ sa: new SpectrumAnalyzer(fs / d, (eq * scale) / d, grid, lowHop, avgHop), fLo, fHi }));
     // If only the longest window is dropped, the next one covers down to 0 Hz
     this.low[0].fLo = 0;
   }

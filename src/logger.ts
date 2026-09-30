@@ -1,18 +1,24 @@
-import { octaveBandCentres } from './dsp/freq';
+import { thirdOctaveCentres } from './dsp/octave-bank';
+import type { SplRow } from './dsp/spl';
 
 /**
  * Continuous sound level logging: Leq and Lmax per interval (1 s to 15 min) with the third-octave spectrum,
  * a rolling Leq against a limit (e.g. a venue's 100 dB LAeq,15min) with alarms, and CSV export.
+ *
+ * The rows are measured by the SPL meter itself on the raw samples, cut at exact sample boundaries (see
+ * SplMeter.startRows): nothing depends on the display, its refresh rate or the analysis settings.
  */
 
 export interface LogRow {
   /** End of the interval (epoch ms). */
   t: number;
-  /** Seconds of signal in the interval. */
+  /** Seconds of signal in the interval (exact: samples / sample rate). */
   dur: number;
   leq: number;
   max: number;
-  /** Third-octave band Leq (dB) at LOG_BANDS, or null without spectrum data. */
+  /** Frequency weighting of leq / max. */
+  w?: string;
+  /** Unweighted third-octave band Leq (dB) at LOG_BANDS, or null. */
   bands: number[] | null;
 }
 
@@ -37,12 +43,14 @@ export type LimitState = 'none' | 'ok' | 'near' | 'over';
 
 /** What the logger needs from the SPL meter. */
 export interface LogMeter {
-  integrator(): { sum: number; count: number };
-  levelOf(meanSquare: number): number;
-  takeMax(): number;
+  readonly fs: number;
+  readonly weighting: string;
+  startRows(seconds: number, onRow: (r: SplRow) => void): void;
+  stopRows(): void;
+  partialRow(): { samples: number; leq: number } | null;
 }
 
-export const LOG_BANDS = octaveBandCentres(3, 25, 16000);
+export const LOG_BANDS = thirdOctaveCentres(25, 16000);
 const STORE_KEY = 'cal-analyzer-log-v1';
 /** Warn this many dB below the limit. */
 export const NEAR_DB = 3;
@@ -58,14 +66,10 @@ export class SplLogger {
   /** Increases on every new row (views redraw only then). */
   version = 0;
   onState?: (s: LimitState, rolling: number) => void;
-  private mark: { sum: number; count: number } | null = null;
-  private markAt = 0;
-  private max = -Infinity;
-  private bandPow: Float64Array | null = null;
-  private bandN = 0;
+  private meter: LogMeter | null = null;
   private lastCheck = 0;
-  /** Current (unfinished) interval: energy and seconds so far, for the rolling Leq. */
-  private partial = { e: 0, dur: 0 };
+  /** Clock for row timestamps (tests override it). */
+  now: () => number = () => Date.now();
 
   constructor(private persist = true) {
     if (!persist) return;
@@ -77,98 +81,83 @@ export class SplLogger {
     }
   }
 
-  start(meter: LogMeter, weighting: string, calibrated: boolean, now = Date.now()): void {
-    if (!this.rows.length) this.started = now;
+  start(meter: LogMeter, weighting: string, calibrated: boolean): void {
+    if (!this.rows.length) this.started = this.now();
     this.weighting = weighting;
     this.calibrated = calibrated;
     this.running = true;
-    this.mark = meter.integrator();
-    this.markAt = now;
-    meter.takeMax();
-    this.max = -Infinity;
-    this.bandPow = null;
-    this.bandN = 0;
-    this.partial = { e: 0, dur: 0 };
+    this.attach(meter);
   }
 
-  stop(meter?: LogMeter, now = Date.now()): void {
-    if (this.running && meter) this.close(meter, now);
+  /** Follow a (new) meter: audio restarted, or the meter was recreated. */
+  attach(meter: LogMeter): void {
+    if (this.meter && this.meter !== meter) this.meter.stopRows();
+    this.meter = meter;
+    if (this.running) meter.startRows(this.config.interval, (r) => this.addRow(r, meter.fs));
+  }
+
+  stop(): void {
     this.running = false;
-    this.mark = null;
+    this.meter?.stopRows();
+    this.meter = null;
+    this.save();
+  }
+
+  /** A new interval length applies from the next row. */
+  setInterval(seconds: number): void {
+    this.config.interval = seconds;
+    if (this.running && this.meter) this.attach(this.meter);
     this.save();
   }
 
   clear(): void {
     this.rows = [];
-    this.started = this.running ? Date.now() : 0;
+    this.started = this.running ? this.now() : 0;
     this.state = 'none';
     this.version++;
     this.save();
   }
 
-  /**
-   * Called every frame while audio runs. `bands`: current third-octave band levels (dB, at LOG_BANDS) or null.
-   */
-  sample(meter: LogMeter, bands: ArrayLike<number> | null, now = Date.now()): void {
-    if (!this.running || !this.mark) return;
-    const m = meter.integrator();
-    if (m.count < this.mark.count) {
-      // The meter was recreated (audio restarted): start a new interval from here
-      this.mark = m;
-      this.markAt = now;
-      return;
-    }
-    this.max = Math.max(this.max, meter.takeMax());
-    if (bands) {
-      if (!this.bandPow) this.bandPow = new Float64Array(LOG_BANDS.length);
-      for (let i = 0; i < LOG_BANDS.length; i++) this.bandPow[i] += Math.pow(10, bands[i] / 10);
-      this.bandN++;
-    }
-    const dCount = m.count - this.mark.count;
-    this.partial = dCount > 0 ? { e: meter.levelOf((m.sum - this.mark.sum) / dCount), dur: (now - this.markAt) / 1000 } : { e: -Infinity, dur: 0 };
-    if (now - this.markAt >= this.config.interval * 1000) this.close(meter, now);
-    if (now - this.lastCheck >= 1000) {
-      this.lastCheck = now;
-      this.checkLimit(now);
-    }
+  private addRow(r: SplRow, fs: number): void {
+    this.rows.push({
+      t: this.now(),
+      dur: +(r.samples / fs).toFixed(4),
+      leq: +r.leq.toFixed(2),
+      max: Number.isFinite(r.max) ? +r.max.toFixed(2) : NaN,
+      w: r.weighting,
+      bands: r.bands ? r.bands.map((v) => +v.toFixed(1)) : null,
+    });
+    this.weighting = r.weighting;
+    this.version++;
+    this.save();
+    this.checkLimit(this.now());
   }
 
-  /** Finish the current interval as a row. */
-  private close(meter: LogMeter, now: number): void {
-    if (!this.mark) return;
-    const m = meter.integrator();
-    const dCount = m.count - this.mark.count;
-    if (dCount > 0) {
-      const dur = (now - this.markAt) / 1000;
-      const bands = this.bandPow && this.bandN ? Array.from(this.bandPow, (p) => +(10 * Math.log10(p / this.bandN)).toFixed(1)) : null;
-      this.rows.push({ t: now, dur: +dur.toFixed(2), leq: +meter.levelOf((m.sum - this.mark.sum) / dCount).toFixed(2), max: Number.isFinite(this.max) ? +this.max.toFixed(2) : NaN, bands });
-      this.version++;
-      this.save();
-    }
-    this.mark = m;
-    this.markAt = now;
-    this.max = -Infinity;
-    this.bandPow = null;
-    this.bandN = 0;
-    this.partial = { e: -Infinity, dur: 0 };
+  /** Called regularly (any rate): keeps the limit state current between rows. */
+  tick(now = this.now()): void {
+    if (!this.running || now - this.lastCheck < 1000) return;
+    this.lastCheck = now;
+    this.checkLimit(now);
   }
 
-  /** Energy-average Leq of the rows (and the current interval) in the last `minutes`. */
-  rolling(minutes = this.config.window, now = Date.now()): number {
+  /** Energy-average Leq of the rows (and the unfinished row) in the last `minutes`. */
+  rolling(minutes = this.config.window, now = this.now()): number {
     const from = now - minutes * 60000;
     let e = 0;
     let dur = 0;
-    for (let i = this.rows.length - 1; i >= 0; i--) {
+    const p = this.running && this.meter ? this.meter.partialRow() : null;
+    if (p) {
+      const d = Math.min(p.samples / this.meter!.fs, minutes * 60);
+      e += Math.pow(10, p.leq / 10) * d;
+      dur += d;
+    }
+    for (let i = this.rows.length - 1; i >= 0 && dur < minutes * 60; i--) {
       const r = this.rows[i];
       if (r.t <= from) break;
       // Only the part of the row inside the window counts
-      const d = Math.min(r.dur, (r.t - from) / 1000);
+      const d = Math.min(r.dur, minutes * 60 - dur);
       e += Math.pow(10, r.leq / 10) * d;
       dur += d;
-    }
-    if (this.running && this.partial.dur > 0 && Number.isFinite(this.partial.e)) {
-      e += Math.pow(10, this.partial.e / 10) * this.partial.dur;
-      dur += this.partial.dur;
     }
     return dur > 0 ? 10 * Math.log10(e / dur) : -Infinity;
   }
@@ -200,10 +189,9 @@ export class SplLogger {
   }
 
   toCsv(): string {
-    const w = this.weighting;
     const unit = this.calibrated ? 'dB' : 'dBFS';
-    const head = ['time', 'seconds', `L${w}eq (${unit})`, `L${w}Fmax (${unit})`, ...LOG_BANDS.map((f) => `${f < 1000 ? Math.round(f) : `${+(f / 1000).toFixed(1)}k`} Hz Leq (Z)`)];
-    const lines = this.rows.map((r) => [new Date(r.t).toISOString(), r.dur, r.leq, Number.isFinite(r.max) ? r.max : '', ...(r.bands ?? LOG_BANDS.map(() => ''))].join(','));
+    const head = ['time', 'seconds', 'weighting', `Leq (${unit})`, `LFmax (${unit})`, ...LOG_BANDS.map((f) => `${f < 1000 ? Math.round(f) : `${+(f / 1000).toFixed(1)}k`} Hz Leq (Z)`)];
+    const lines = this.rows.map((r) => [new Date(r.t).toISOString(), r.dur, r.w ?? this.weighting, r.leq, Number.isFinite(r.max) ? r.max : '', ...(r.bands ?? LOG_BANDS.map(() => ''))].join(','));
     return [head.join(','), ...lines].join('\n');
   }
 

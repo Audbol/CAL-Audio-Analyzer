@@ -98,7 +98,7 @@ export function applySession(app: App, f: SessionFile): void {
   view<RoomView>(app, 'room').restoreSweep(f.sweep ? { meta: f.sweep.meta, ir: Float64Array.from(decodeFloat32(f.sweep.ir)) } : null);
   view<EqView>(app, 'eq').restore(f.eq);
   view<AlignView>(app, 'align').restore(f.align);
-  if (app.logger.running) app.logger.stop(app.spl);
+  if (app.logger.running) app.logger.stop();
   app.logger.load(f.log ?? null);
   app.logger.save();
   app.save();

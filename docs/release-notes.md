@@ -19,6 +19,12 @@ The builds are not code-signed yet:
 
 On first launch, choose **Explore with the demo room** to try every feature without hardware.
 
+## What's new in 1.9.1
+
+- **SPL meter and noise log measured sample-exactly:** the meter and log are now computed entirely from the audio samples, independent of the screen, its refresh rate and the analysis settings. Each log row covers exactly its interval (to the sample), Lmax is tracked on every sample, the 2-minute history is recorded every 100 ms of audio, and the log's third-octave bands come from their own IEC 61260-style band filters instead of the spectrum display. The numbers update at a steady 4 per second so they are easy to read. While a noise log runs, its weighting and input are locked, and switching workspace no longer changes them; every row records its weighting, which is also in the CSV.
+- **Remote devices show the target and average curves:** the host's target curve, tolerance, average curve and multi-mic average settings now apply on connected phones and tablets, and the average curve is drawn from the host's analysis.
+- **Faster spectrum:** the spectrum updates about 25 times per second (was about 6) with the same frequency resolution; *Avg* keeps the same averaging time. Remote devices receive 20 updates per second.
+
 ## What's new in 1.9
 
 - **Several microphones, each calibrated:** *Tools → Microphones & calibration* keeps a list of your measurement mics: the input each one is plugged into, its correction file and its own SPL calibration (calibrator or reference meter, through the meter's weighting). Every view uses the mic on its input: the spectrum shows each measurement in dB SPL with its own calibration, the SPL meter and noise log follow the mic on their input, and the input lists show the mic names. Settings from earlier versions become the first mic.

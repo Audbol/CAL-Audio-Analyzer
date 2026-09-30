@@ -103,7 +103,10 @@ export function captureWorkspace(app: App, name: string): Workspace {
 export function applyWorkspace(app: App, ws: Workspace): void {
   const s = app.settings;
   const rec = s as unknown as Record<string, unknown>;
-  for (const k of WORKSPACE_KEYS) if (ws.settings[k] !== undefined) rec[k] = JSON.parse(JSON.stringify(ws.settings[k]));
+  // A running noise log keeps its weighting: every row of a log is measured the same way
+  const keep = app.logger.running ? new Set<string>(['splWeighting']) : new Set<string>();
+  if (keep.size && ws.settings.splWeighting && ws.settings.splWeighting !== s.splWeighting) app.toast(`Noise log running: SPL weighting stays ${s.splWeighting}.`, 'info');
+  for (const k of WORKSPACE_KEYS) if (ws.settings[k] !== undefined && !keep.has(k)) rec[k] = JSON.parse(JSON.stringify(ws.settings[k]));
   // A target trace that no longer exists falls back to none
   if (s.targetCurve.startsWith('trace:') && !app.traces.traces.some((t) => `trace:${t.id}` === s.targetCurve)) s.targetCurve = 'off';
   s.workspace = ws.id;

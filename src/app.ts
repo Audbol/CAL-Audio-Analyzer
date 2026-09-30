@@ -24,14 +24,14 @@ import { Plot } from './ui/plot';
 import { Playlist, RemotePlaylist, type PlaylistApi } from './audio/playlist';
 import { MusicControls, showPlaylist } from './ui/music';
 import { showTraceNotes } from './ui/trace-notes';
-import { SplLogger, LOG_BANDS } from './logger';
+import { SplLogger } from './logger';
 import { NativeAudio } from './native/client';
 import type { NativeDevice, NativeOpenOptions } from './native/protocol';
 import type { MicProfile } from './state';
 import { BUILTIN_WORKSPACES, allWorkspaces, applyWorkspace, captureWorkspace, type Workspace } from './workspaces';
 import { RemoteEngine } from './remote/client';
 import { HostLink, desktopBridge, hubPageInfo } from './remote/host';
-import { sharedOf, type HostStatus, type RemoteCommand, type SharedSettings, type SweepMeta, type SweepRequest } from './remote/protocol';
+import { sharedOf, TUNING_KEYS, type Tuning, type HostStatus, type RemoteCommand, type SharedSettings, type SweepMeta, type SweepRequest } from './remote/protocol';
 
 export interface View {
   id: ViewId;
@@ -83,6 +83,9 @@ export class App {
   measurements: Measurement[] = [];
   spl: SplMeter = new SplMeter(48000, this.settings.splWeighting);
   splReading: SplReading | null = null;
+  /** The reading the numbers show: refreshed 4 times per second, independent of the display's frame rate. */
+  splDisplay: SplReading | null = null;
+  private splDisplayAt = 0;
   cal: Float64Array | null = null;
   views: View[] = [];
   private active!: View;
@@ -169,37 +172,6 @@ export class App {
 
   /** Continuous sound level log (SPL view). */
   readonly logger = new SplLogger();
-  private logRtaShown = -1;
-  private logBandCache: number[] | null = null;
-
-  /**
-   * Third-octave band levels of the first shown measurement for the noise log (dB, calibrated), or null when
-   * the spectrum is narrow-band FFT. Recomputed only when the RTA changed.
-   */
-  private logBands(): number[] | null {
-    const s = this.settings;
-    const m = this.measurements.find((x) => x.cfg.enabled) ?? this.measurements[0];
-    if (!m || !s.rtaSmoothing || !m.rtaShown) return null;
-    if (m.rtaShown === this.logRtaShown && this.logBandCache) return this.logBandCache;
-    this.logRtaShown = m.rtaShown;
-    const g = this.grid;
-    const cal = this.splOffsetFor(m.cfg.mic);
-    // The RTA holds band power at its own resolution: rescale to third-octave bandwidth
-    const scale = 10 * Math.log10(s.rtaSmoothing / 3);
-    const half = Math.pow(2, 1 / 6);
-    this.logBandCache = LOG_BANDS.map((fc) => {
-      let p = 0;
-      let n = 0;
-      for (let i = 0; i < g.length; i++) {
-        if (g[i] < fc / half) continue;
-        if (g[i] > fc * half) break;
-        p += Math.pow(10, m.rtaOut[i] / 10);
-        n++;
-      }
-      return n ? 10 * Math.log10(p / n) + scale + cal : -200;
-    });
-    return this.logBandCache;
-  }
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -263,6 +235,7 @@ export class App {
     const s = this.settings;
     const measChanged = JSON.stringify(s.measurements) !== JSON.stringify(shared.measurements);
     this.adoptMics(shared);
+    this.adoptTuning(shared.tuning);
     s.tempC = shared.tempC;
     if (measChanged) {
       s.measurements = JSON.parse(JSON.stringify(shared.measurements));
@@ -332,6 +305,8 @@ export class App {
       if (this.settings.splChannel >= nCh) this.settings.splChannel = 0;
       this.rebuildMeasurements();
       this.spl = new SplMeter(this.fs, this.settings.splWeighting);
+      // A running noise log continues on the new meter (new stream, possibly a new sample rate)
+      if (this.logger.running) this.logger.attach(this.spl);
       this.syncCal();
       this.splUnsub?.();
       this.splUnsub = this.engine.onData((blocks) => {
@@ -492,8 +467,6 @@ export class App {
       n.tf ||= !!v.needs?.tf;
       n.tfLocal ||= !!v.needs?.tfLocal;
     }
-    // The noise log records the spectrum too
-    n.rta ||= this.logger.running;
     return n;
   }
 
@@ -560,6 +533,20 @@ export class App {
 
   updateCal(): void {
     this.syncCal();
+  }
+
+  /** Adopt the shared tuning display (target, average curve, mic average) from the host or a remote. */
+  private adoptTuning(t: Tuning | undefined): void {
+    if (!t) return;
+    const s = this.settings;
+    const changed = TUNING_KEYS.filter((k) => s[k] !== t[k]);
+    if (!changed.length) return;
+    // A different averaging time or smoothing starts the average curve again
+    const restart = changed.includes('rtaAverageCurve');
+    Object.assign(s, t);
+    if (restart) for (const m of this.measurements) m.resetAverage();
+    this.syncSettingControls();
+    for (const v of this.views) v.invalidate?.();
   }
 
   /** Adopt shared mic settings from the host or a remote (older versions only send one calibration). */
@@ -736,6 +723,7 @@ export class App {
       this.sharedApplied = shared;
       changed = true;
       this.adoptMics(st.shared);
+      this.adoptTuning(st.shared.tuning);
       s.tempC = st.shared.tempC;
       s.measurements = JSON.parse(JSON.stringify(st.shared.measurements));
       this.syncCal(); // resets Leq / Lmax when the units changed
@@ -1442,7 +1430,12 @@ export class App {
         }
       }
       this.splReading = this.spl.read(this.settings.splTime);
-      if (this.logger.running) this.logger.sample(this.spl, this.logBands());
+      // Numeric readouts update at a steady 4 per second (like a sound level meter), whatever the frame rate
+      if (!this.splDisplay || t0 - this.splDisplayAt >= 250 || t0 < this.splDisplayAt) {
+        this.splDisplay = this.splReading;
+        this.splDisplayAt = t0;
+      }
+      this.logger.tick();
     }
     if (this.frameCount % 15 === 0) {
       if (this.playlist instanceof Playlist && this.settings.generator.type === 'music' && this.engine.running) this.playlist.ensureLoaded();
@@ -1471,7 +1464,7 @@ export class App {
     const text = now - this.statusTextAt > 100;
     if (text) {
       this.statusTextAt = now;
-      const r = this.splReading;
+      const r = this.splDisplay;
       const unit = this.settings.splCalibrated ? `dB${this.settings.splWeighting}` : `dBFS ${this.settings.splWeighting}`;
       const mini = e.running && r ? `<b>${r.level.toFixed(1)}</b><span>${unit}</span><em>Leq ${r.leq.toFixed(1)}</em>` : `<b>—</b><span>${unit}</span>`;
       if (mini !== this.lastSplMini) {

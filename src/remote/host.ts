@@ -61,7 +61,8 @@ export class HostLink {
         this.lastStatus = '';
         this.sendStatus();
         this.statusTimer = window.setInterval(() => this.sendStatus(), 400);
-        this.analysisTimer = window.setInterval(() => this.sendAnalysis(), 100);
+        // 20 analysis frames per second to the remote devices (the host computes ~25)
+        this.analysisTimer = window.setInterval(() => this.sendAnalysis(), 50);
         this.unsubscribe = this.app.engine.onData((blocks, gen) => this.sendAudio(blocks, gen));
         // Publish the shared session state (traces, last sweep) for devices that connect
         this.sendTraces();

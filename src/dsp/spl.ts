@@ -1,4 +1,5 @@
 import { WeightingFilter, type Weighting } from './weighting';
+import { ThirdOctaveBank } from './octave-bank';
 
 export interface SplReading {
   /** Time-weighted level (Fast or Slow) in dB. */
@@ -15,9 +16,29 @@ export interface SplReading {
   duration: number;
 }
 
+/** One logging interval, measured sample-exactly by the meter. */
+export interface SplRow {
+  /** Samples in the row. */
+  samples: number;
+  leq: number;
+  /** Highest Fast level in the row. */
+  max: number;
+  weighting: Weighting;
+  /** Unweighted third-octave band Leq (dB) at `bandCentres`, or null without the band filters. */
+  bands: number[] | null;
+}
+
+/** 10 points per second of Fast level and 100 ms Leq, recorded by the meter itself (2 minutes). */
+const HISTORY_RATE = 10;
+const HISTORY_LEN = 120 * HISTORY_RATE;
+
 /**
  * Sound level meter operating on raw samples. `offsetDb` maps dBFS to dB SPL (from calibration);
  * with no calibration the readings are in dBFS (full-scale sine = 0 dB, i.e. RMS referenced +3 dB).
+ *
+ * Everything here is computed from the samples, never from the display: time weighting and Lmax per sample,
+ * the history every 100 ms of audio, and logging rows cut at exact sample boundaries (with third-octave band
+ * levels from a filter bank), so results don't depend on how often or how smoothly the screen updates.
  */
 export class SplMeter {
   private filter: WeightingFilter;
@@ -29,13 +50,26 @@ export class SplMeter {
   private maxFast = -Infinity;
   private peakSinceRead = 0;
   private peakHoldLin = 0;
-  /** Energy integrated since the meter was created (never reset by the user), for logging. */
-  private totalSum = 0;
-  private totalCount = 0;
-  private maxSinceTake = -Infinity;
   private readonly aFast: number;
   private readonly aSlow: number;
+  /** Samples processed since the meter was created. */
+  samples = 0;
   offsetDb = 0;
+  // History ring
+  private histFast = new Float32Array(HISTORY_LEN);
+  private histLeq = new Float32Array(HISTORY_LEN);
+  private histCount = 0;
+  private histStep: number;
+  private histLeft: number;
+  private histSum = 0;
+  // Logging rows
+  private rowLen = 0;
+  private rowLeft = 0;
+  private rowSum = 0;
+  private rowCount = 0;
+  private rowMaxMs = 0;
+  private onRow: ((r: SplRow) => void) | null = null;
+  private bank: ThirdOctaveBank | null = null;
 
   constructor(
     readonly fs: number,
@@ -44,17 +78,66 @@ export class SplMeter {
     this.filter = new WeightingFilter(weighting, fs);
     this.aFast = 1 - Math.exp(-1 / (0.125 * fs));
     this.aSlow = 1 - Math.exp(-1 / (1.0 * fs));
+    this.histStep = Math.round(fs / HISTORY_RATE);
+    this.histLeft = this.histStep;
   }
 
   get weighting(): Weighting {
     return this.filter.weighting;
   }
 
+  /** Centres of the logging band filters (when rows are on). */
+  get bandCentres(): number[] {
+    return this.bank?.centres ?? new ThirdOctaveBank(this.fs).centres;
+  }
+
   setWeighting(w: Weighting): void {
-    if (w !== this.filter.weighting) {
-      this.filter = new WeightingFilter(w, this.fs);
-      this.resetLeq();
-    }
+    if (w === this.filter.weighting) return;
+    // A logging row never mixes weightings: finish the current one first
+    if (this.onRow && this.rowCount) this.emitRow();
+    this.filter = new WeightingFilter(w, this.fs);
+    this.resetLeq();
+  }
+
+  /**
+   * Start logging rows of `seconds` (exact to the sample); `onRow` is called from the audio path as each row
+   * completes. Third-octave band levels are measured alongside.
+   */
+  startRows(seconds: number, onRow: (r: SplRow) => void): void {
+    this.rowLen = Math.max(1, Math.round(seconds * this.fs));
+    this.rowLeft = this.rowLen;
+    this.rowSum = 0;
+    this.rowCount = 0;
+    this.rowMaxMs = 0;
+    this.onRow = onRow;
+    this.bank = new ThirdOctaveBank(this.fs);
+  }
+
+  /** Stop logging; the unfinished row is delivered if it has at least 0.1 s. */
+  stopRows(): void {
+    if (this.onRow && this.rowCount >= this.fs * 0.1) this.emitRow();
+    this.onRow = null;
+    this.bank = null;
+  }
+
+  get logging(): boolean {
+    return !!this.onRow;
+  }
+
+  /** The unfinished row so far (for rolling levels), or null. */
+  partialRow(): { samples: number; leq: number } | null {
+    return this.onRow && this.rowCount ? { samples: this.rowCount, leq: this.toDb(this.rowSum / this.rowCount) } : null;
+  }
+
+  private emitRow(): void {
+    const n = this.rowCount;
+    const bands = this.bank ? Array.from(this.bank.take(), (e) => this.toDb(e / n)) : null;
+    const row: SplRow = { samples: n, leq: this.toDb(this.rowSum / n), max: this.toDb(this.rowMaxMs), weighting: this.filter.weighting, bands };
+    this.rowSum = 0;
+    this.rowCount = 0;
+    this.rowMaxMs = 0;
+    this.rowLeft = this.rowLen;
+    this.onRow?.(row);
   }
 
   process(block: ArrayLike<number>): void {
@@ -64,47 +147,87 @@ export class SplMeter {
     this.filter.process(block, y);
     let fast = this.fastMs;
     let slow = this.slowMs;
-    let sum = 0;
     let peak = this.peakSinceRead;
     const aF = this.aFast;
     const aS = this.aSlow;
-    for (let i = 0; i < n; i++) {
-      const s = y[i] * y[i];
-      fast += aF * (s - fast);
-      slow += aS * (s - slow);
-      sum += s;
-      const a = Math.abs(block[i]);
-      if (a > peak) peak = a;
+    // The first quarter second after start settles the time weighting: no Lmax from it
+    const settle = this.fs * 0.25;
+    let i = 0;
+    while (i < n) {
+      // Up to the next history point or row boundary, whichever comes first
+      const end = Math.min(n, i + this.histLeft, this.onRow ? i + this.rowLeft : n);
+      let sum = 0;
+      let maxMs = 0;
+      for (let k = i; k < end; k++) {
+        const s = y[k] * y[k];
+        fast += aF * (s - fast);
+        slow += aS * (s - slow);
+        sum += s;
+        if (fast > maxMs) maxMs = fast;
+        const a = Math.abs(block[k]);
+        if (a > peak) peak = a;
+      }
+      const len = end - i;
+      if (this.bank) this.bank.process(block, i, end);
+      this.samples += len;
+      this.leqSum += sum;
+      this.leqCount += len;
+      if (this.samples > settle) {
+        const mdb = this.toDb(maxMs);
+        if (mdb > this.maxFast && this.leqCount > settle) this.maxFast = mdb;
+        if (maxMs > this.rowMaxMs) this.rowMaxMs = maxMs;
+      }
+      // History: Fast level at the point and the Leq of the last 100 ms
+      this.histSum += sum;
+      this.histLeft -= len;
+      if (this.histLeft === 0) {
+        const j = this.histCount % HISTORY_LEN;
+        this.histFast[j] = this.toDb(fast);
+        this.histLeq[j] = this.toDb(this.histSum / this.histStep);
+        this.histCount++;
+        this.histSum = 0;
+        this.histLeft = this.histStep;
+      }
+      if (this.onRow) {
+        this.rowSum += sum;
+        this.rowCount += len;
+        this.rowLeft -= len;
+        if (this.rowLeft === 0) this.emitRow();
+      }
+      i = end;
     }
     this.fastMs = fast;
     this.slowMs = slow;
-    this.leqSum += sum;
-    this.leqCount += n;
-    this.totalSum += sum;
-    this.totalCount += n;
     this.peakSinceRead = peak;
     if (peak > this.peakHoldLin) this.peakHoldLin = peak;
-    // Mean-square*2 → sine referenced dBFS
-    const fastDb = this.toDb(fast);
-    if (fastDb > this.maxFast && this.leqCount > this.fs * 0.25) this.maxFast = fastDb;
-    if (fastDb > this.maxSinceTake && this.totalCount > this.fs * 0.25) this.maxSinceTake = fastDb;
   }
 
-  /** Energy integrated since the meter was created: the logger takes differences for exact interval Leq. */
-  integrator(): { sum: number; count: number } {
-    return { sum: this.totalSum, count: this.totalCount };
+  /**
+   * The recorded history, oldest first: `t` in seconds relative to now (≤ 0), Fast level and 100 ms Leq.
+   * Levels are stored with the calibration of the moment.
+   */
+  history(): { t: number[]; fast: number[]; leq: number[] } {
+    const n = Math.min(this.histCount, HISTORY_LEN);
+    const t: number[] = [];
+    const fast: number[] = [];
+    const leq: number[] = [];
+    for (let k = 0; k < n; k++) {
+      const idx = this.histCount - n + k;
+      t.push((idx + 1 - this.histCount) / HISTORY_RATE);
+      fast.push(this.histFast[idx % HISTORY_LEN]);
+      leq.push(this.histLeq[idx % HISTORY_LEN]);
+    }
+    return { t, fast, leq };
+  }
+
+  /** Number of history points recorded so far (changes 10 times per second of audio). */
+  get historyCount(): number {
+    return this.histCount;
   }
 
   /** Level (dB, calibrated) of a mean-square value. */
   levelOf(meanSquare: number): number {
     return this.toDb(meanSquare);
-  }
-
-  /** Highest Fast level since the last call (−∞ if none). */
-  takeMax(): number {
-    const m = this.maxSinceTake;
-    this.maxSinceTake = -Infinity;
-    return m;
   }
 
   private toDb(ms: number): number {

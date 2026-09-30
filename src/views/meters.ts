@@ -34,12 +34,12 @@ export class SplPanel {
   private lastHtml = '';
 
   render(): void {
-    // Numbers are readable at ~10 updates per second (like a hardware SPL meter); faster only costs layout work
+    // The numbers follow the app's 4-per-second SPL display reading (like a hardware sound level meter)
     const now = performance.now();
     if (now - this.lastAt < 100 && this.lastHtml) return;
     this.lastAt = now;
     const s = this.app.settings;
-    const r = this.app.splReading;
+    const r = this.app.splDisplay;
     const run = this.app.engine.running && r;
     const unit = s.splCalibrated ? `dB(${s.splWeighting})` : `dBFS(${s.splWeighting})`;
     const f = (v: number | undefined) => (run && v !== undefined && Number.isFinite(v) ? v.toFixed(1) : '—');
