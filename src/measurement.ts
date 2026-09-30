@@ -1,5 +1,5 @@
 import { TransferFunction, type TransferResult } from './dsp/transfer';
-import { MultiSpectrum } from './dsp/spectrum';
+import { MultiSpectrum, RTA_RATE } from './dsp/spectrum';
 import { findDelay, type DelayEstimate } from './dsp/delay';
 import type { AudioEngine } from './audio/engine';
 import type { MeasurementConfig, Settings } from './state';
@@ -14,6 +14,8 @@ export interface AnalysisNeeds {
 
 /** Runtime state for one measurement (mic + reference pair): live transfer function and RTA. */
 export class Measurement {
+  /** New RTA spectra per second for every measurement (lowered by the battery saver). */
+  static rtaRate = RTA_RATE;
   tf: TransferFunction;
   rta: MultiSpectrum;
   result: TransferResult;
@@ -54,7 +56,7 @@ export class Measurement {
     settings: Settings,
   ) {
     this.tf = new TransferFunction(fs, grid);
-    this.rta = new MultiSpectrum(fs, settings.rtaFft, grid, settings.lfResolution);
+    this.rta = new MultiSpectrum(fs, settings.rtaFft, grid, settings.lfResolution, Measurement.rtaRate);
     const n = grid.length;
     this.result = { freqs: grid, mag: new Float64Array(n).fill(NaN), phase: new Float64Array(n).fill(NaN), coh: new Float64Array(n) };
     this.rtaOut = new Float64Array(n).fill(-200);
@@ -70,8 +72,8 @@ export class Measurement {
     this.tf.averaging = s.tfAveraging;
     this.rta.averaging = s.rtaAveraging;
     this.tf.setLfResolution(s.lfResolution);
-    if (this.rta.size !== s.rtaFft || this.rta.lf !== s.lfResolution) {
-      this.rta = new MultiSpectrum(this.fs, s.rtaFft, this.grid, s.lfResolution);
+    if (this.rta.size !== s.rtaFft || this.rta.lf !== s.lfResolution || this.rta.rate !== Measurement.rtaRate) {
+      this.rta = new MultiSpectrum(this.fs, s.rtaFft, this.grid, s.lfResolution, Measurement.rtaRate);
       this.rta.averaging = s.rtaAveraging;
     }
   }

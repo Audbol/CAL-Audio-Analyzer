@@ -11,7 +11,7 @@ export const SESSION_FORMAT = 'cal-session';
 export const SESSION_VERSION = 1;
 
 /** Analysis and display settings a session carries (device, layout and remote-access settings stay per computer). */
-const SESSION_SETTINGS = ['tfSmoothing', 'rtaSmoothing', 'tfAveraging', 'rtaAveraging', 'rtaFft', 'lfResolution', 'coherenceThreshold', 'rtaAverageCurve', 'rtaAverageSmoothing', 'micAverage', 'targetCurve', 'targetTolerance'] as const;
+const SESSION_SETTINGS = ['tfSmoothing', 'rtaSmoothing', 'tfAveraging', 'rtaAveraging', 'rtaFft', 'lfResolution', 'coherenceThreshold', 'rtaAverageCurve', 'rtaAverageSmoothing', 'micAverage', 'targetCurve', 'roomTargetCurve', 'targetTolerance'] as const;
 type SessionSettingKey = (typeof SESSION_SETTINGS)[number];
 
 /** A saved session: everything measured and set up for one job, as one JSON file. */

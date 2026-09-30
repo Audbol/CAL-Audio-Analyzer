@@ -11,6 +11,8 @@ import { MicsCard } from './mics-card';
 import { modal } from '../ui/dialogs';
 import { applySession, buildSession, downloadText, parseSession, sessionFileName, type SessionFile } from '../session';
 import { openReport } from '../report';
+import { replaceSettings } from '../state';
+import { DEFAULT_PROFILES, resetToProfile } from '../defaults';
 
 /** Calibration, room-mode calculator and handy system-alignment calculators. */
 export class ToolsView implements View {
@@ -167,7 +169,8 @@ export class ToolsView implements View {
       { class: 'tool-card' },
       h('h4', {}, icon('trash', 15), ' Data'),
       h('p', { class: 'dim small' }, 'Settings and traces are stored locally in this browser only.'),
-      h('div', { class: 'row gap8' }, h('button', { class: 'btn small ghost', onclick: () => { if (confirm('Delete all stored traces?')) this.app.traces.clear(); } }, 'Delete all traces'), h('button', { class: 'btn small ghost', onclick: () => { if (confirm('Reset all settings to defaults?')) { localStorage.removeItem('cal-analyzer-settings-v1'); location.reload(); } } }, 'Reset settings')),
+      h('div', { class: 'row gap8' }, h('button', { class: 'btn small ghost', onclick: () => { if (confirm('Delete all stored traces?')) this.app.traces.clear(); } }, 'Delete all traces'), h('button', { class: 'btn small ghost', title: 'Everything back to the first start, including microphones, calibration and remote access', onclick: () => { if (confirm('Reset ALL settings, including microphones, calibrations and remote access, to the first start?')) { replaceSettings(null); location.reload(); } } }, 'Reset all settings')),
+      this.resetRow(),
     );
     // --- Display & performance
     const app = this.app;
@@ -189,6 +192,21 @@ export class ToolsView implements View {
           s.graphQuality,
           (v) => app.setGraphQualityMode(v),
           { dataset: { setting: 'graphQuality' } },
+        ),
+      ),
+      h(
+        'div',
+        { class: 'row gap8' },
+        h('span', {}, 'Battery saver'),
+        select(
+          [
+            { value: 'auto' as const, label: 'Auto (on while on battery)' },
+            { value: 'saver' as const, label: 'On' },
+            { value: 'normal' as const, label: 'Off' },
+          ],
+          s.powerMode,
+          (v) => app.setPowerMode(v),
+          { dataset: { setting: 'powerMode' }, title: 'Fewer screen updates (≈15 per second) and new spectra (10 per second), standard graph resolution. Measurements stay exact: every sample is still analysed.' },
         ),
       ),
       h(
@@ -285,5 +303,32 @@ export class ToolsView implements View {
     clear(this.modesTable);
     this.modesTable.innerHTML = `<p class="small">Volume <b>${V.toFixed(1)} m³</b> · Schroeder frequency <b>${fs.toFixed(0)} Hz</b> · critical distance ≈ <b>${criticalDistance(V, rt).toFixed(2)} m</b> (Q=2)</p>${issue}<table class="mini-table"><tr><th>Axial mode</th><th>n</th><th>Dimension</th></tr>${rows}</table>`;
     this.modesPlot.draw();
+  }
+
+  /** Reset the analysis and display settings to a profile, keeping the setup (mics, calibration, inputs, remote). */
+  private resetRow(): HTMLElement {
+    let profile = DEFAULT_PROFILES[0].id;
+    const sel = select(
+      DEFAULT_PROFILES.map((p) => ({ value: p.id, label: p.label })),
+      profile,
+      (v) => {
+        profile = v;
+        sel.title = DEFAULT_PROFILES.find((p) => p.id === v)!.description;
+      },
+      { title: DEFAULT_PROFILES[0].description, dataset: { reset: 'profile' } },
+    );
+    const go = () => {
+      const p = DEFAULT_PROFILES.find((x) => x.id === profile)!;
+      if (!confirm(`Reset the analysis and display settings to “${p.label}”?\n\nMicrophones, calibrations, inputs, remote access and saved workspaces stay as they are. The app reloads.`)) return;
+      replaceSettings(resetToProfile(this.app.settings, profile));
+      location.reload();
+    };
+    return h(
+      'div',
+      { class: 'row gap8 wrap' },
+      h('span', {}, 'Reset analysis & display to'),
+      sel,
+      h('button', { class: 'btn small', onclick: go, dataset: { reset: 'go' }, title: 'Keeps microphones, calibrations, inputs, remote access and workspaces' }, icon('reset', 14), 'Reset'),
+    );
   }
 }

@@ -113,8 +113,12 @@ export class HostLink {
   private analysisBufs: Float64Array[][] = [];
 
   /** Host processing: send the live analysis (~10 per second) to the devices that asked for it. */
+  private analysisTicks = 0;
+
   private sendAnalysis(): void {
     const a = this.app;
+    // Battery saver: 10 frames per second
+    if (a.powerSaving && this.analysisTicks++ % 2) return;
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN || this.ws.bufferedAmount > 2 * 1024 * 1024) return;
     if (!a.engine.running || !this.clients.some((c) => c.analysis)) return;
     const n = a.grid.length;

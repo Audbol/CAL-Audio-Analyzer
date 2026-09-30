@@ -9,6 +9,17 @@ import { optionsMenu, optRow, optHead } from '../ui/popover';
 import { TargetOverlay } from './target-overlay';
 import { micAverageControl, micAverageSeries } from './mic-average-overlay';
 
+/** Colours offered for the average curve ('auto': white at night, black by day). */
+export const AVG_COLORS = [
+  { value: 'auto', label: 'Auto (white / black)' },
+  { value: '#ffd60a', label: 'Yellow' },
+  { value: '#ff9f1c', label: 'Orange' },
+  { value: '#ff4d6d', label: 'Red' },
+  { value: '#ff5cf0', label: 'Magenta' },
+  { value: '#4cc9f0', label: 'Cyan' },
+  { value: '#7cff6b', label: 'Green' },
+];
+
 export function defaultSpectrumLayout(): DockLayout {
   return {
     order: ['rta', 'spl', 'levels'],
@@ -115,6 +126,31 @@ export class SpectrumView extends DockedView implements View {
             { title: 'Smoothing of the average curve', dataset: { setting: 'rtaAverageSmoothing' } },
           ),
         ),
+        optRow('Show', this.settingChip('avgCurveShow', 'Visible', 'Show or hide the average curve (it keeps averaging while hidden)')),
+        optRow(
+          'Colour',
+          select(
+            AVG_COLORS,
+            s.avgCurveColor,
+            (v) => {
+              s.avgCurveColor = v;
+              app.save();
+            },
+            { title: 'Colour of the average curve', dataset: { setting: 'avgCurveColor' } },
+          ),
+        ),
+        optRow(
+          'Thickness',
+          select(
+            [1, 1.5, 2, 3, 4, 6].map((v) => ({ value: v, label: `${v} px` })),
+            s.avgCurveWidth,
+            (v) => {
+              s.avgCurveWidth = v;
+              app.save();
+            },
+            { title: 'Line width of the average curve', dataset: { setting: 'avgCurveWidth' } },
+          ),
+        ),
         optRow('', h('button', { class: 'btn small', title: 'Start only the average curve again', onclick: () => app.measurements.forEach((m) => m.resetAverage()) }, icon('reset', 14), 'Restart average curve')),
         optHead('Target & mics'),
         optRow('Target tolerance', this.target.toleranceControl()),
@@ -162,6 +198,7 @@ export class SpectrumView extends DockedView implements View {
           },
           { title: 'Average curve over the live spectrum, for tuning (All: everything since Reset)', dataset: { setting: 'rtaAverageCurve' } },
         ),
+        this.settingChip('avgCurveShow', icon('eye', 14), 'Show / hide the average curve (it keeps averaging while hidden)'),
       ),
       this.target.targetControl(),
       this.settingChip('peakHold', 'Peak hold', 'Peak hold (P)'),
@@ -177,7 +214,7 @@ export class SpectrumView extends DockedView implements View {
     const s = app.settings;
     if (this.visible('rta')) {
       // Redraw only when what is shown changed (new analysis data arrives ~6–12 times a second)
-      const key = `${app.traces.version}|${s.rtaStyle}|${s.rtaSmoothing}|${s.peakHold}|${s.rtaAverageCurve}|${s.rtaAverageSmoothing}|${s.micAverage}|${s.targetCurve}|${s.targetTolerance}|${s.theme}|${s.splCalibrated}|${s.splOffset}|${JSON.stringify(s.mics.map((mc) => [mc.channel, mc.splCalibrated && mc.splOffset]))}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.rtaShown}`).join(',')}`;
+      const key = `${app.traces.version}|${s.rtaStyle}|${s.rtaSmoothing}|${s.peakHold}|${s.rtaAverageCurve}|${s.rtaAverageSmoothing}|${s.avgCurveShow}|${s.avgCurveColor}|${s.avgCurveWidth}|${s.micAverage}|${s.targetCurve}|${s.targetTolerance}|${s.theme}|${s.splCalibrated}|${s.splOffset}|${JSON.stringify(s.mics.map((mc) => [mc.channel, mc.splCalibrated && mc.splOffset]))}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.rtaShown}`).join(',')}`;
       if (key === this.lastKey) return this.tickMeters();
       this.lastKey = key;
       const g = app.grid;
@@ -222,12 +259,13 @@ export class SpectrumView extends DockedView implements View {
       // Average curves (for tuning) on top of everything: the long-term balance behind the live RTA
       const day = s.theme === 'day';
       series.push(...micAverageSeries(app, g, app.measurements.filter((m) => m.cfg.enabled && m.rtaShown > 0).map((m) => shiftBy(m.rtaOut, offOf(m.cfg.mic)))));
+      const avgColor = s.avgCurveColor === 'auto' ? (day ? '#111111' : '#ffffff') : s.avgCurveColor;
       for (const m of app.measurements) {
-        const avg = m.cfg.enabled && !only ? m.averageDb() : null;
+        const avg = m.cfg.enabled && !only && s.avgCurveShow ? m.averageDb() : null;
         if (!avg) continue;
         const label = `${m.cfg.name} average${s.rtaAverageCurve > 0 ? ` (${s.rtaAverageCurve} s)` : ''}`;
         // Drawn as a smooth curve on the fine grid in both display styles (over bars too)
-        series.push({ id: `${m.cfg.id}-avg`, label, x: g, y: shiftBy(avg, offOf(m.cfg.mic)), color: day ? '#111111' : '#ffffff', width: 2, halo: day ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)' });
+        series.push({ id: `${m.cfg.id}-avg`, label, x: g, y: shiftBy(avg, offOf(m.cfg.mic)), color: avgColor, width: s.avgCurveWidth, halo: day ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)' });
       }
       // Target curve, levelled to the first shown measurement (its average curve when there is one)
       const ref = app.measurements.find((m) => m.cfg.enabled && m.rtaShown > 0);

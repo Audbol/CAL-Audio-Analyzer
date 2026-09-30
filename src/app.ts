@@ -5,6 +5,7 @@ import { calCorrection } from './dsp/calibration';
 import { SplMeter, type SplReading } from './dsp/spl';
 import { speedOfSound } from './dsp/delay';
 import { Measurement, type AnalysisNeeds } from './measurement';
+import { RTA_RATE } from './dsp/spectrum';
 import { loadSettings, saveSettings, PALETTE, refLabel, type Settings, type ViewId, type MeasurementConfig } from './state';
 import { TraceStore, traceToCsv, parseTraceText, download, type Trace } from './traces';
 import { h, clear, icon, select } from './ui/dom';
@@ -182,9 +183,11 @@ export class App {
       Dock.restoreDetached = true;
     }
     if (this.settings.graphQuality === 'fast') Plot.maxDpr = 1;
+    this.watchBattery();
     this.applyTheme();
     this.updateCal();
     this.build();
+    this.applyPower();
     if (this.playlist instanceof Playlist) {
       const pl = this.playlist;
       pl.init();
@@ -420,6 +423,59 @@ export class App {
     this.renderTopState();
   }
 
+  // Battery saver ------------------------------------------------------------------------------------------
+
+  /** The device runs on battery (where the browser tells: Chrome, Edge, the desktop app). */
+  private onBattery = false;
+  private saving = false;
+
+  /** Battery saver in effect: chosen, or automatic while on battery. */
+  get powerSaving(): boolean {
+    const m = this.settings.powerMode;
+    return m === 'saver' || (m === 'auto' && this.onBattery);
+  }
+
+  setPowerMode(mode: Settings['powerMode']): void {
+    this.settings.powerMode = mode;
+    this.save();
+    this.applyPower();
+  }
+
+  /** Follow the battery / charger state for the automatic mode. */
+  private watchBattery(): void {
+    const nav = navigator as Navigator & { getBattery?: () => Promise<EventTarget & { charging: boolean }> };
+    nav
+      .getBattery?.()
+      .then((b) => {
+        const update = () => {
+          this.onBattery = !b.charging;
+          this.applyPower();
+        };
+        b.addEventListener('chargingchange', update);
+        update();
+      })
+      .catch(() => {
+        /* no battery information */
+      });
+  }
+
+  /**
+   * Battery saver: about 15 screen updates and 10 new spectra per second instead of 60 and 25, graphs at
+   * standard resolution, 10 analysis frames per second to remote devices. Measurements stay exact: every audio
+   * sample is still analysed, the SPL meter and noise log are unaffected.
+   */
+  private applyPower(): void {
+    const on = this.powerSaving;
+    if (on === this.saving) return;
+    this.saving = on;
+    Measurement.rtaRate = on ? 10 : RTA_RATE;
+    for (const m of this.measurements) m.applySettings(this.settings);
+    if (on) this.setGraphQuality(1);
+    else this.setGraphQuality(this.settings.graphQuality === 'fast' ? 1 : 2);
+    this.lastStatus = '';
+    for (const v of this.views) v.invalidate?.();
+  }
+
   /** Graph pixel-ratio limit (lower = faster drawing on slow devices). */
   setGraphQuality(maxDpr: number): void {
     Plot.setMaxDpr(maxDpr);
@@ -429,7 +485,7 @@ export class App {
     this.settings.graphQuality = mode;
     this.save();
     this.slowSince = 0;
-    this.setGraphQuality(mode === 'fast' ? 1 : 2);
+    this.setGraphQuality(mode === 'fast' || this.saving ? 1 : 2);
   }
 
   private lastFrameAt = 0;
@@ -441,7 +497,7 @@ export class App {
     if (this.lastFrameAt) this.frameGaps.push(now - this.lastFrameAt);
     this.lastFrameAt = now;
     if (this.frameGaps.length > 30) this.frameGaps.shift();
-    if (this.settings.graphQuality !== 'auto' || Plot.maxDpr <= 1 || this.frameGaps.length < 30 || document.hidden) return;
+    if (this.settings.graphQuality !== 'auto' || this.saving || Plot.maxDpr <= 1 || this.frameGaps.length < 30 || document.hidden) return;
     const gap = this.frameGaps.reduce((a, b) => a + b, 0) / this.frameGaps.length;
     // Below ~20 frames per second for 3 s: step the resolution down (2 → 1.5 → 1)
     if (gap < 50 || gap > 1000) {
@@ -539,11 +595,12 @@ export class App {
   private adoptTuning(t: Tuning | undefined): void {
     if (!t) return;
     const s = this.settings;
-    const changed = TUNING_KEYS.filter((k) => s[k] !== t[k]);
+    // Keys an older version doesn't send stay as they are
+    const changed = TUNING_KEYS.filter((k) => t[k] !== undefined && s[k] !== t[k]);
     if (!changed.length) return;
     // A different averaging time or smoothing starts the average curve again
     const restart = changed.includes('rtaAverageCurve');
-    Object.assign(s, t);
+    for (const k of changed) (s as unknown as Record<string, unknown>)[k] = t[k];
     if (restart) for (const m of this.measurements) m.resetAverage();
     this.syncSettingControls();
     for (const v of this.views) v.invalidate?.();
@@ -1396,6 +1453,11 @@ export class App {
       clearTimeout(this.frameTimer);
       this.loop();
     };
+    // Battery saver: wake on a timer only (about 16 times a second), not on every display refresh
+    if (this.saving) {
+      this.frameTimer = window.setTimeout(run, 60);
+      return;
+    }
     requestAnimationFrame(run);
     for (const w of Dock.openWindows()) {
       try {
@@ -1414,7 +1476,8 @@ export class App {
     const avg = this.frameTimes.reduce((a, b) => a + b, 0) / Math.max(1, this.frameTimes.length);
     const drawEvery = avg > 30 ? 3 : avg > 15 ? 2 : 1;
     // At most ~60 draws per second: high-refresh displays (120/144 Hz) would otherwise draw 2–3× as often
-    const draw = this.frameCount++ % drawEvery === 0 && t0 - this.lastDrawAt >= 15;
+    // Battery saver: about 15 draws per second
+    const draw = this.frameCount++ % drawEvery === 0 && t0 - this.lastDrawAt >= (this.saving ? 62 : 15);
     if (draw) this.lastDrawAt = t0;
     if (this.engine.running) {
       const needs = this.analysisNeeds();
@@ -1509,7 +1572,7 @@ export class App {
     const avg = this.frameTimes.reduce((a, b) => a + b, 0) / Math.max(1, this.frameTimes.length);
     const remoteInfo = this.remote ? ' · remote client' : this.hostLink?.connected ? ` · remote access on (${this.hostLink.clients.length} connected)` : '';
     const status = e.running
-      ? `${e.deviceLabel} · ${(e.sampleRate / 1000).toFixed(1)} kHz · ${e.channelCount} in · DSP ${avg.toFixed(1)} ms/frame${remoteInfo}`
+      ? `${e.deviceLabel} · ${(e.sampleRate / 1000).toFixed(1)} kHz · ${e.channelCount} in · DSP ${avg.toFixed(1)} ms/frame${this.saving ? ' · battery saver' : ''}${remoteInfo}`
       : this.remote
         ? (this.engine as RemoteEngine).state === 'connected'
           ? 'Connected · audio on the measurement host is stopped'

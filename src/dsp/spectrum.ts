@@ -196,10 +196,12 @@ export class MultiSpectrum {
     readonly size: number,
     readonly grid: Float64Array,
     readonly lf: LfResolution = 'standard',
+    /** New spectra per second (battery saver: fewer). */
+    readonly rate = RTA_RATE,
   ) {
     // About 25 new spectra per second (a 50%-overlap 16k FFT gives only 6): smooth, responsive display; the
     // averaging still refers to 50%-overlap frames, so "Avg 4" means the same averaging time as before
-    const hop = Math.min(size / 2, Math.max(256, Math.round(fs / RTA_RATE)));
+    const hop = Math.min(size / 2, Math.max(256, Math.round(fs / rate)));
     this.main = new SpectrumAnalyzer(fs, size, grid, hop);
     const scale = Math.max(1, Math.round(fs / 48000));
     const specs = lf === 'max' ? [[131072, 0, 80], [65536, 80, 160]] : lf === 'high' ? [[65536, 0, 160]] : [];

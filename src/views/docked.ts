@@ -5,6 +5,8 @@ import { Plot } from '../ui/plot';
 import { SplPanel, LevelsPanel } from './meters';
 
 type LayoutKey = 'spectrumLayout' | 'transferLayout';
+/** On/off settings shown as chips. */
+type ChipKey = 'showCoherence' | 'peakHold' | 'avgCurveShow';
 
 /**
  * Base for views whose displays live in a panel dock (Spectrum, Transfer). Handles the dock, layout
@@ -16,7 +18,7 @@ export abstract class DockedView {
   protected spl: SplPanel;
   protected levels: LevelsPanel;
   private chips = new Map<string, HTMLButtonElement>();
-  private settingChips = new Map<'showCoherence' | 'peakHold', HTMLButtonElement>();
+  private settingChips = new Map<HTMLButtonElement, ChipKey>();
   private meterTick = 0;
 
   constructor(
@@ -64,13 +66,13 @@ export abstract class DockedView {
     return b;
   }
 
-  protected settingChip(key: 'showCoherence' | 'peakHold', label: string, title: string): HTMLButtonElement {
+  protected settingChip(key: ChipKey, label: string | Node, title: string): HTMLButtonElement {
     const s = this.app.settings;
-    const b = h('button', { class: `chip${s[key] ? ' on' : ''}`, title }, label);
-    this.settingChips.set(key, b);
+    const b = h('button', { class: `chip${s[key] ? ' on' : ''}`, title, dataset: { chip: key } }, label);
+    this.settingChips.set(b, key);
     b.addEventListener('click', () => {
       s[key] = !s[key];
-      b.classList.toggle('on', s[key]);
+      this.syncSettingChips();
       this.app.save();
     });
     return b;
@@ -83,7 +85,7 @@ export abstract class DockedView {
 
   /** Update the on/off chips after their settings changed elsewhere (e.g. a workspace). */
   syncSettingChips(): void {
-    for (const [key, b] of this.settingChips) b.classList.toggle('on', !!this.app.settings[key]);
+    for (const [b, key] of this.settingChips) b.classList.toggle('on', !!this.app.settings[key]);
   }
 
   /** Restore the default panel arrangement (for the options panel). */

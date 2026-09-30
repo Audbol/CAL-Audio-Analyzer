@@ -10,6 +10,7 @@ import type { SweepMeta } from '../remote/protocol';
 import { waterfall, WATERFALL_PRESETS, type WaterfallResult } from '../dsp/waterfall';
 import { WaterfallPlot } from '../ui/waterfall-plot';
 import { optionsMenu, optRow, optHead } from '../ui/popover';
+import { TargetOverlay } from './target-overlay';
 
 interface SweepResult {
   spec: SweepSpec;
@@ -56,8 +57,12 @@ export class RoomView implements View {
   private content = h('div', { class: 'room-content' });
   private selHost = h('span', {});
   private dirty = true;
+  /** Target curve on the frequency response (its own choice, separate from the live views). */
+  private target: TargetOverlay;
+  private targetKey = '';
 
   constructor(private app: App) {
+    this.target = new TargetOverlay(app, 'roomTargetCurve', false);
     this.fr = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: -50, yMax: 10, yUnit: 'dB', yStep: 6, title: 'Frequency response & harmonic distortion', showNote: true, yLimits: [-200, 100] });
     this.irPlot = new Plot({ xType: 'lin', xMin: -5, xMax: 300, yMin: -90, yMax: 3, yUnit: 'dB', xUnit: 'ms', yStep: 10, title: 'Energy-time curve', yLimits: [-200, 20] });
     this.decay = new Plot({ xType: 'lin', xMin: 0, xMax: 1500, yMin: -70, yMax: 2, yUnit: 'dB', xUnit: 'ms', yStep: 10, title: 'Schroeder decay curves', yLimits: [-200, 20] });
@@ -106,7 +111,7 @@ export class RoomView implements View {
     );
     const bar = h('div', { class: 'progress-row' }, this.progress, this.statusText);
     this.renderTabs();
-    const tabsRow = h('div', { class: 'room-tabs-row' }, this.tabHost, h('div', { class: 'spacer' }), analysisOptions, h('button', { class: 'btn small', onclick: () => this.saveTrace(), title: 'Store the frequency response as a trace' }, icon('camera', 14), 'Save FR as trace'));
+    const tabsRow = h('div', { class: 'room-tabs-row' }, this.tabHost, h('div', { class: 'spacer' }), this.target.targetControl(), analysisOptions, h('button', { class: 'btn small', onclick: () => this.saveTrace(), title: 'Store the frequency response as a trace' }, icon('camera', 14), 'Save FR as trace'));
     this.el.append(settings, bar, this.cards, tabsRow, this.content);
     this.showTab();
   }
@@ -439,6 +444,7 @@ export class RoomView implements View {
       { id: 'h3', label: 'H3', x: grid, y: smoothDb(hdOffset(r.h3)), color: '#ff5c7a', width: 1.2 },
       { id: 'thd', label: 'THD', unit: 'dB', x: grid, y: smoothDb(Float64Array.from(thdDb, (v, i) => (valid(i) ? v : NaN))), color: '#b18cff', width: 1.2, dash: [4, 3] },
     ];
+    this.applyTarget();
     const t = Float64Array.from(r.etc, (_, i) => ((i - r.t0) / r.d.fs) * 1000);
     this.irPlot.series = [{ id: 'etc', label: 'ETC', x: t, y: r.etc, color: CHART.accent, width: 1.2, fill: true }];
     const ac = r.acoustics;
@@ -525,11 +531,25 @@ export class RoomView implements View {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
+  /** (Re)draw the target on the frequency response, levelled to the response. */
+  private applyTarget(): void {
+    const s = this.app.settings;
+    this.targetKey = `${s.roomTargetCurve}|${s.targetTolerance}|${this.app.traces.version}`;
+    const own = this.fr.series.filter((x) => x.id !== 'target' && x.id !== 'target-band');
+    const fr = own.find((x) => x.id === 'fr');
+    this.fr.series = [...this.target.series(this.app.grid, fr ? (fr.y as ArrayLike<number>) : null), ...own];
+  }
+
   invalidate(): void {
     this.dirty = true;
   }
 
   tick(): void {
+    const s = this.app.settings;
+    if (this.result && this.targetKey !== `${s.roomTargetCurve}|${s.targetTolerance}|${this.app.traces.version}`) {
+      this.applyTarget();
+      this.dirty = true;
+    }
     if (!this.dirty) return;
     this.dirty = false;
     this.fr.draw();

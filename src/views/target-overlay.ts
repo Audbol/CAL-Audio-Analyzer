@@ -6,17 +6,29 @@ import { targetLevel, targetShape } from '../dsp/target';
 
 const TARGET_COLOR = '#ffb020';
 
+/** The setting that holds a view's target choice. */
+export type TargetKey = 'targetCurve' | 'roomTargetCurve';
+
 /**
- * Target curve on the Spectrum and Transfer views: the chosen target shape, levelled to the measurement
- * (coherence-weighted mean over 250 Hz–4 kHz, smoothed over time so it doesn't jitter), drawn as a line with a
- * ± tolerance band.
+ * Target curve on the Spectrum, Transfer and Sweep & Room views: the chosen target shape, levelled to the
+ * measurement (coherence-weighted mean over 250 Hz–4 kHz; on live data smoothed over time so it doesn't jitter),
+ * drawn as a line with a ± tolerance band.
  */
 export class TargetOverlay {
   private level: number | null = null;
   private selHost = h('span', { class: 'tb-target' });
   private tracesVersion = -1;
 
-  constructor(private app: App) {}
+  /** `live`: the data changes continuously, so the level follows it gently; otherwise it is set at once. */
+  constructor(
+    private app: App,
+    readonly key: TargetKey = 'targetCurve',
+    private live = true,
+  ) {}
+
+  private get choice(): string {
+    return this.app.settings[this.key];
+  }
 
   /** Toolbar group: the target select (built-ins and stored traces). */
   targetControl(): HTMLElement {
@@ -55,18 +67,18 @@ export class TargetOverlay {
       ...TARGETS.map((t) => ({ value: t.id, label: t.label })),
       ...app.traces.traces.map((t) => ({ value: `trace:${t.id}`, label: `Trace: ${t.name}` })),
     ];
-    if (!opts.some((o) => o.value === s.targetCurve)) s.targetCurve = 'off';
+    if (!opts.some((o) => o.value === s[this.key])) s[this.key] = 'off';
     this.selHost.replaceChildren(
       select(
         opts,
-        s.targetCurve,
+        s[this.key],
         (v) => {
-          s.targetCurve = v;
+          s[this.key] = v;
           this.level = null;
           app.save();
           app.syncSettingControls();
         },
-        { title: 'Target curve: a reference line to tune towards (levelled to the measurement automatically)', dataset: { setting: 'targetCurve' } },
+        { title: 'Target curve: a reference line to tune towards (levelled to the measurement automatically)', dataset: { setting: this.key } },
       ),
     );
   }
@@ -79,15 +91,16 @@ export class TargetOverlay {
     const app = this.app;
     const s = app.settings;
     if (app.traces.version !== this.tracesVersion) this.renderSelect();
-    const trace = s.targetCurve.startsWith('trace:') ? app.traces.traces.find((t) => t.id === s.targetCurve.slice(6)) : null;
-    const shape = targetShape(s.targetCurve, freqs, trace);
+    const choice = this.choice;
+    const trace = choice.startsWith('trace:') ? app.traces.traces.find((t) => t.id === choice.slice(6)) : null;
+    const shape = targetShape(choice, freqs, trace);
     if (!shape || !data) return [];
     const lvl = targetLevel(freqs, data, shape, weight);
     if (lvl === null) return [];
     // Follow level changes smoothly (a live measurement fluctuates)
-    this.level = this.level === null || Math.abs(lvl - this.level) > 12 ? lvl : this.level + 0.15 * (lvl - this.level);
+    this.level = !this.live || this.level === null || Math.abs(lvl - this.level) > 12 ? lvl : this.level + 0.15 * (lvl - this.level);
     const target = Float64Array.from(shape, (v) => v + this.level!);
-    const name = trace ? trace.name : (TARGETS.find((t) => t.id === s.targetCurve)?.label ?? 'Target').replace(/ \(.*\)$/, '');
+    const name = trace ? trace.name : (TARGETS.find((t) => t.id === choice)?.label ?? 'Target').replace(/ \(.*\)$/, '');
     const out: Series[] = [];
     const tol = s.targetTolerance;
     if (tol > 0) out.push({ id: 'target-band', label: '', x: freqs, y: target.map((v) => v + tol), band: target.map((v) => v - tol), color: TARGET_COLOR, quiet: true });
@@ -97,9 +110,9 @@ export class TargetOverlay {
 
   /** The levelled target currently drawn (for reports), or null. */
   current(freqs: ArrayLike<number>): Float64Array | null {
-    const s = this.app.settings;
-    const trace = s.targetCurve.startsWith('trace:') ? this.app.traces.traces.find((t) => t.id === s.targetCurve.slice(6)) : null;
-    const shape = targetShape(s.targetCurve, freqs, trace);
+    const choice = this.choice;
+    const trace = choice.startsWith('trace:') ? this.app.traces.traces.find((t) => t.id === choice.slice(6)) : null;
+    const shape = targetShape(choice, freqs, trace);
     return shape && this.level !== null ? Float64Array.from(shape, (v) => v + this.level!) : null;
   }
 }

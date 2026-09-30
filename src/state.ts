@@ -112,6 +112,12 @@ export interface Settings {
   rtaAverageCurve: number;
   /** Smoothing of the average curve: 1/n octave with a bell-shaped window (0 = none). */
   rtaAverageSmoothing: number;
+  /** How the average curve is drawn: shown or hidden (still measured), colour ('auto' = white / black by theme), line width (px). */
+  avgCurveShow: boolean;
+  avgCurveColor: string;
+  avgCurveWidth: number;
+  /** Battery saver: fewer updates and lighter drawing. 'auto' turns it on while the device runs on battery. */
+  powerMode: 'auto' | 'normal' | 'saver';
   /** Several mics: show their live power average (and the spread between them) on Spectrum and Transfer. */
   micAverage: 'off' | 'avg' | 'spread' | 'only';
   /** Workspaces saved by the user (built-in ones live in workspaces.ts), and the last one chosen. */
@@ -123,6 +129,8 @@ export interface Settings {
   targetCurve: string;
   /** ± tolerance band around the target (dB, 0 = none). */
   targetTolerance: number;
+  /** Target curve on the Sweep & Room frequency response ('off', a built-in id or `trace:<id>`). */
+  roomTargetCurve: string;
   /** Session details used for saving and for reports. */
   session: { name: string; venue: string; notes: string };
 }
@@ -166,12 +174,17 @@ export function defaultSettings(): Settings {
     spectrogramLayout: 'vertical',
     rtaAverageCurve: 10,
     rtaAverageSmoothing: 6,
+    avgCurveShow: true,
+    avgCurveColor: 'auto',
+    avgCurveWidth: 2,
+    powerMode: 'auto',
     micAverage: 'off',
     workspaces: [],
     workspace: '',
     nativeAudio: { sampleRate: 48000, bufferFrames: 0, safetyMs: 80 },
     targetCurve: 'off',
     targetTolerance: 3,
+    roomTargetCurve: 'off',
     session: { name: '', venue: '', notes: '' },
   };
 }
@@ -221,10 +234,30 @@ function writeSettings(): void {
   pending = null;
 }
 
+/** Set by replaceSettings: the page is about to reload with new settings, later saves must not overwrite them. */
+let replaced = false;
+
 export function saveSettings(s: Settings): void {
+  if (replaced) return;
   pending = s;
   clearTimeout(saveTimer);
   saveTimer = window.setTimeout(writeSettings, 300);
+}
+
+/**
+ * Store `next` (or nothing: defaults) at once and ignore every later save from this page, which is about to
+ * reload (closing detached windows on the way out would otherwise save the old settings again).
+ */
+export function replaceSettings(next: Settings | null): void {
+  clearTimeout(saveTimer);
+  pending = null;
+  replaced = true;
+  try {
+    if (next) localStorage.setItem(KEY, JSON.stringify(next));
+    else localStorage.removeItem(KEY);
+  } catch {
+    /* storage unavailable */
+  }
 }
 
 // Don't lose the last change when the window closes or reloads within the debounce time
