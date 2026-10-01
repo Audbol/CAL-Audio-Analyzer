@@ -733,6 +733,7 @@ function sampleAt(xs: ArrayLike<number>, ys: ArrayLike<number>, x: number): numb
 }
 
 export function niceStep(raw: number): number {
+  if (!(raw > 0) || !Number.isFinite(raw)) return 1;
   const p = Math.pow(10, Math.floor(Math.log10(raw)));
   const m = raw / p;
   return (m < 1.5 ? 1 : m < 3 ? 2 : m < 7 ? 5 : 10) * p;

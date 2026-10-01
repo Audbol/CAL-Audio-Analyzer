@@ -82,7 +82,9 @@ export class DecimatedRing {
     const h = this.h;
     const n = h.length;
     const d = this.d;
-    const headIn = src.written - this.offset; // newest usable (delayed) input index + 1
+    // Output k reads input k·d − offset: the delayed input is complete up to output (written − 1 + offset) / d.
+    // (Waiting for k·d + offset instead held the bass windows back by the reference delay.)
+    const headIn = src.written + this.offset;
     const last = Math.floor((headIn - 1) / d); // newest output index whose input is complete
     if (last < 0) return;
     // (Re)start near the head, and never try to catch up on a long gap

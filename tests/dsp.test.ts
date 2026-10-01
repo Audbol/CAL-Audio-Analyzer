@@ -167,6 +167,23 @@ describe('spectrum analyzer', () => {
   });
 });
 
+describe('decimated rings', () => {
+  it('keep up with the input when the reference is delayed (no extra latency)', () => {
+    const d = decimationFactor(FS);
+    const src = new RingBuffer(1 << 18);
+    const plain = new DecimatedRing(FS, d);
+    const delayed = new DecimatedRing(FS, d, Math.round(FS * 0.1)); // 100 ms reference delay
+    const block = new Float32Array(1024).fill(0.1);
+    for (let i = 0; i < 200; i++) {
+      src.push(block);
+      plain.update(src);
+      delayed.update(src);
+    }
+    // The delayed copy reads older input, so it is complete at least as far as the undelayed one
+    expect(delayed.ring.written).toBeGreaterThanOrEqual(plain.ring.written);
+  });
+});
+
 describe('transfer function', () => {
   it('recovers gain, delay-compensated phase and coherence', () => {
     const grid = logGrid(20, 20000, 24);
@@ -308,6 +325,15 @@ describe('EQ', () => {
     expect(res.filters.length).toBeGreaterThan(0);
     expect(res.rmsAfter).toBeLessThan(res.rmsBefore * 0.4);
     expect(Math.abs(res.filters[0].f - 120)).toBeLessThan(15);
+  });
+
+  it('still cuts a peak when a bigger dip cannot be boosted', () => {
+    const grid = logGrid(20, 20000, 24);
+    const mag = eqResponse([{ type: 'peak', f: 200, gain: -10, q: 3 }, { type: 'peak', f: 2000, gain: 4, q: 3 }], grid);
+    const res = autoEq(grid, mag, null, TARGETS[0], { fMin: 30, fMax: 16000, maxFilters: 4, maxBoost: 0, maxCut: 12, minCoherence: 0 });
+    expect(res.filters.length).toBeGreaterThan(0);
+    expect(res.filters.every((f) => f.gain < 0)).toBe(true);
+    expect(res.filters.some((f) => Math.abs(Math.log2(f.f / 2000)) < 0.25)).toBe(true);
   });
 });
 

@@ -40,6 +40,8 @@ export class Measurement {
   /** Increase whenever the displayed TF / RTA arrays change (views redraw only then). */
   tfShown = 0;
   rtaShown = 0;
+  /** rtaOut holds a real spectrum (not the empty fill from before the first analysis, or after a reset). */
+  hasRta = false;
   /** Long-term average of the RTA (power per grid point) for the average curve, and its bookkeeping. */
   private avgPow: Float64Array | null = null;
   private avgDb: Float64Array | null = null;
@@ -82,6 +84,7 @@ export class Measurement {
     this.tf.reset();
     this.rta.reset();
     this.tfReady = false;
+    this.hasRta = false;
     this.tfKey = '';
     this.rtaKey = '';
     this.resetAverage();
@@ -137,6 +140,7 @@ export class Measurement {
           this.rtaPeakOut[i] += cal[i];
         }
         this.rtaShown++;
+        this.hasRta = true;
         this.updateAverage(s, cal);
       }
     }
@@ -223,11 +227,13 @@ export class Measurement {
     if (key === this.hostKey) return;
     this.hostKey = key;
     // Frames sent while the host's analyzer had just been reset carry no spectrum (all ≈ −300 dB): skip them,
-    // or they'd be drawn (and fitted to) as real data, and a calibration offset lifts them into view
-    if (hasSpectrum(f.rtaBands)) {
+    // or they'd be drawn (and fitted to) as real data, and a calibration offset lifts them into view. (Real
+    // digital silence is data and is shown.)
+    if (f.rtaReady) {
       rta(f.rtaBands, f.rtaFft, this.rtaOut);
       if (s.peakHold) rta(f.peakBands, f.peakFft, this.rtaPeakOut);
       this.rtaShown++;
+      this.hasRta = true;
       // The average curve is built on this device from each new host frame
       this.updateAverage(s, cal);
     }
@@ -240,7 +246,7 @@ export class Measurement {
   }
 
   /** Host: uncalibrated fine-resolution arrays for remote devices (see encodeAnalysis). */
-  hostArrays(bufs: Float64Array[]): { tfReady: boolean; arrays: Float64Array[] } {
+  hostArrays(bufs: Float64Array[]): { tfReady: boolean; rtaReady: boolean; arrays: Float64Array[] } {
     const [rb, rf, pb, pf, mag, phase, coh] = bufs;
     this.rta.render(48, 'avg', rb);
     this.rta.render(0, 'avg', rf);
@@ -248,7 +254,7 @@ export class Measurement {
     this.rta.render(0, 'peak', pf);
     const ready = this.tf.ready;
     if (ready) this.tf.result(48, { freqs: this.grid, mag, phase, coh });
-    return { tfReady: ready, arrays: bufs };
+    return { tfReady: ready, rtaReady: this.rta.main.hasData, arrays: bufs };
   }
 
   /** Measure the reference→mic delay from the most recent ~1.4 s of audio. */
@@ -280,8 +286,3 @@ function calId(cal: Float64Array | null): number {
   return id;
 }
 
-/** A host frame's spectrum has data (an analyzer without frames yet renders everything at ≈ −300 dB). */
-function hasSpectrum(bands: ArrayLike<number>): boolean {
-  for (let i = 0; i < bands.length; i++) if (bands[i] > -250) return true;
-  return false;
-}

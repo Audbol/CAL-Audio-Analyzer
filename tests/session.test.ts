@@ -60,3 +60,23 @@ describe('waterfall', () => {
   });
 });
 
+
+describe('remote analysis frames', () => {
+  it('carry the spectrum-ready flag, and older hosts read as ready', async () => {
+    const { encodeAnalysis, decodeAnalysis } = await import('../src/remote/protocol');
+    const arrays = Array.from({ length: 7 }, () => new Float64Array(4));
+    const cases = [
+      [true, true],
+      [false, true],
+      [true, false],
+      [false, false],
+    ] as const;
+    for (const [tfReady, rtaReady] of cases) {
+      const [f] = decodeAnalysis(encodeAnalysis(4, [{ index: 0, tfReady, rtaReady, arrays }]));
+      expect([f.tfReady, f.rtaReady]).toEqual([tfReady, rtaReady]);
+    }
+    // An older host sends no rtaReady: the spectrum counts as ready
+    const [old] = decodeAnalysis(encodeAnalysis(4, [{ index: 0, tfReady: false, arrays }]));
+    expect(old.rtaReady).toBe(true);
+  });
+});

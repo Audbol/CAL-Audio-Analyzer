@@ -1,5 +1,5 @@
 // Accessibility checks: every button, list and input on every tab has a name screen readers can read, messages
-// and assistant tips are live regions, and the Options panels work from the keyboard.
+// and new assistant tips are announced (once), and the Options panels work from the keyboard.
 // Usage: npm run build && node tests/e2e/a11y.mjs
 import { chromium } from 'playwright';
 import { preview } from 'vite';
@@ -42,15 +42,31 @@ await page.keyboard.press('Escape');
 const closed = await page.evaluate(() => !document.querySelector('.opt-wrap.open') && document.activeElement?.dataset.options === 'spectrum');
 check(closed, 'Escape closes the Options panel and returns focus to its button');
 
-const live = await page.evaluate(() => ({
-  toasts: document.querySelector('.toasts')?.getAttribute('aria-live'),
-  hints: document.querySelector('.hints')?.getAttribute('aria-live'),
-}));
-check(live.toasts === 'polite' && live.hints === 'polite', 'messages and assistant tips are announced (live regions)');
-
-// A warning is announced at once
+// Screen-reader announcements: one polite and one assertive region; a warning goes to the assertive one
+const regions = await page.evaluate(() => [...document.querySelectorAll('.sr-only[aria-live]')].map((e) => e.getAttribute('aria-live')).sort());
+check(regions.join() === 'assertive,polite', `one polite and one assertive announcer (${regions.join(', ')})`);
+check((await page.locator('[aria-live] [aria-live], [role=status] [role=alert]').count()) === 0, 'no nested live regions (nothing is read twice)');
 await page.evaluate(() => window.calApp.toast('Test warning', 'warn'));
-check((await page.locator('.toast[role="alert"]').count()) === 1, 'warnings use the alert role');
+await page.waitForTimeout(100);
+check((await page.locator('.sr-only[aria-live="assertive"]').textContent()) === 'Test warning', 'warnings are announced at once');
+// Assistant tips are announced once, not every time a number in them changes
+const heard = await page.evaluate(async () => {
+  const el = document.querySelector('.sr-only[aria-live="polite"]');
+  const said = [];
+  new MutationObserver(() => el.textContent && said.push(el.textContent)).observe(el, { childList: true, characterData: true, subtree: true });
+  await new Promise((r) => setTimeout(r, 4000));
+  return said.filter((t) => t.startsWith('Assistant')).length;
+});
+check(heard <= 1, `assistant tips are not re-announced while measuring (${heard} in 4 s)`);
+// Fields that share a row label have names of their own
+await page.keyboard.press('6');
+await page.locator('[data-options="eq"]').click();
+const same = await page.evaluate(() => [...document.querySelectorAll('.opt-wrap.open .opt-row')].filter((r) => {
+  const names = [...r.querySelectorAll('select, input')].map((e) => e.getAttribute('aria-label') || e.title);
+  return names.length > 1 && new Set(names).size < names.length;
+}).length);
+check(same === 0, 'fields that share a row have different names');
+await page.keyboard.press('Escape');
 
 // Icons are hidden from screen readers (their buttons carry the name)
 const icons = await page.evaluate(() => [...document.querySelectorAll('svg')].filter((s) => s.getClientRects().length && s.closest('button') && s.getAttribute('aria-hidden') !== 'true').length);

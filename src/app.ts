@@ -105,6 +105,8 @@ export class App {
   private genControls!: HTMLElement;
   private selectedTraces = new Set<string>();
   private lastHints = '';
+  /** Tips already announced, with their numbers masked. */
+  private hintsHeard: string[] = [];
   private frameTimes: number[] = [];
   private starting = false;
   private themeBtn = h('button', { class: 'btn icon-btn theme-btn', onclick: () => this.toggleTheme() });
@@ -1024,8 +1026,7 @@ export class App {
 
     this.sidebarMeas = h('div', { class: 'meas-list' });
     this.sidebarTraces = h('div', { class: 'trace-list' });
-    // New assistant tips are read out by screen readers (the list only changes when the situation does)
-    this.hintsEl = h('div', { class: 'hints', 'aria-live': 'polite' });
+    this.hintsEl = h('div', { class: 'hints' });
     const fileInput = h('input', { type: 'file', accept: '.csv,.txt,.frd,.json', multiple: true, style: 'display:none' });
     fileInput.addEventListener('change', () => this.importTraces(fileInput));
     const sidebar = h(
@@ -1073,18 +1074,36 @@ export class App {
   }
 
   toastHost = (() => {
-    // Messages are announced by screen readers (warnings at once, others when the reader is idle)
-    const el = h('div', { class: 'toasts', role: 'status', 'aria-live': 'polite' });
+    const el = h('div', { class: 'toasts' });
     document.body.append(el);
     return el;
   })();
+
+  /** Screen-reader announcers (hidden): polite for messages and tips, assertive for warnings. */
+  private announcers = (() => {
+    const mk = (live: 'polite' | 'assertive') => {
+      const el = h('div', { class: 'sr-only', 'aria-live': live, 'aria-atomic': 'true' });
+      document.body.append(el);
+      return el;
+    };
+    return { polite: mk('polite'), assertive: mk('assertive') };
+  })();
+
+  /** Read a message out with screen readers (once; nothing is shown). */
+  announce(text: string, urgent = false): void {
+    const el = urgent ? this.announcers.assertive : this.announcers.polite;
+    // Replace the text so the same message can be announced again later
+    el.textContent = '';
+    setTimeout(() => (el.textContent = text), 30);
+  }
 
   toast(text: string, level: 'info' | 'ok' | 'warn' = 'info'): void {
     // A repeated message refreshes instead of stacking; at most three are shown
     for (const old of this.toastHost.querySelectorAll('.toast')) if (old.textContent === text) old.remove();
     const shown = this.toastHost.querySelectorAll('.toast:not(.out)');
     if (shown.length >= 3) shown[0].remove();
-    const t = h('div', { class: `toast ${level}`, role: level === 'warn' ? 'alert' : null }, icon(level === 'warn' ? 'alert' : level === 'ok' ? 'check' : 'info', 16), h('span', {}, text));
+    this.announce(text, level === 'warn');
+    const t = h('div', { class: `toast ${level}` }, icon(level === 'warn' ? 'alert' : level === 'ok' ? 'check' : 'info', 16), h('span', {}, text));
     this.toastHost.append(t);
     setTimeout(() => t.classList.add('out'), level === 'warn' ? 5200 : 3200);
     setTimeout(() => t.remove(), level === 'warn' ? 5600 : 3600);
@@ -1674,6 +1693,12 @@ export class App {
     const key = hints.map((x) => x.text).join('|');
     if (key === this.lastHints) return;
     this.lastHints = key;
+    // Screen readers hear a tip when it first appears, not each time a number in it changes (e.g. coherence %)
+    const gist = (t: string) => t.replace(/[-+]?\d+(?:[.,]\d+)?/g, '#');
+    const heard = new Set(this.hintsHeard);
+    this.hintsHeard = hints.slice(0, 4).map((x) => gist(x.text));
+    const fresh = hints.slice(0, 4).filter((x) => !heard.has(gist(x.text)));
+    if (fresh.length) this.announce(`Assistant: ${fresh.map((x) => x.text).join(' ')}`, fresh.some((x) => x.level === 'warn'));
     clear(this.hintsEl);
     for (const hint of hints.slice(0, 4)) {
       this.hintsEl.append(

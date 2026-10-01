@@ -48,8 +48,8 @@ export class EqView implements View {
     // Start from the target chosen for the Spectrum / Transfer views, when it is a built-in one
     if (TARGETS.some((t) => t.id === app.settings.targetCurve)) this.target = app.settings.targetCurve;
     this.plot = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: -18, yMax: 18, yUnit: 'dB', yStep: 3, title: 'Deviation from target, EQ and predicted result', showNote: true, yLimits: [-60, 60] });
-    const numIn = (key: keyof typeof this.opt, step: string) => {
-      const i = h('input', { type: 'number', class: 'num', value: String(this.opt[key]), step, dataset: { eqOpt: key } });
+    const numIn = (key: keyof typeof this.opt, step: string, label?: string) => {
+      const i = h('input', { type: 'number', class: 'num', value: String(this.opt[key]), step, dataset: { eqOpt: key }, 'aria-label': label });
       i.addEventListener('change', () => ((this.opt[key] as number) = +i.value));
       return i;
     };
@@ -62,7 +62,7 @@ export class EqView implements View {
         optionsMenu(
           [
             optHead('Range'),
-            optRow('Frequencies', numIn('fMin', '1'), '–', numIn('fMax', '100'), h('span', { class: 'unit' }, 'Hz')),
+            optRow('Frequencies', numIn('fMin', '1', 'Lowest frequency (Hz)'), '–', numIn('fMax', '100', 'Highest frequency (Hz)'), h('span', { class: 'unit' }, 'Hz')),
             optHead('Filters'),
             optRow('Number of filters', numIn('maxFilters', '1')),
             optRow('Max boost', numIn('maxBoost', '0.5'), h('span', { class: 'unit' }, 'dB')),

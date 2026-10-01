@@ -19,8 +19,6 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Attrs = 
     if (c === null || c === undefined || c === false) continue;
     el.append(c instanceof Node ? c : document.createTextNode(String(c)));
   }
-  // Icon-only buttons are named by their tooltip for screen readers
-  if (tag === 'button' && !el.hasAttribute('aria-label') && typeof attrs.title === 'string' && !el.textContent?.trim()) el.setAttribute('aria-label', attrs.title);
   return el;
 }
 

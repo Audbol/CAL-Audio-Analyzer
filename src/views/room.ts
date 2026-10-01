@@ -81,9 +81,9 @@ export class RoomView implements View {
         optRow('Repeats', select([1, 2, 4, 8].map((v) => ({ value: v, label: `${v}× (averaged)` })), o.repeats, (v) => (o.repeats = v), { title: 'More repeats lower the noise floor' })),
         optRow(
           'Range',
-          select([{ value: 20, label: '20 Hz' }, { value: 10, label: '10 Hz' }, { value: 40, label: '40 Hz' }, { value: 80, label: '80 Hz' }], o.f1, (v) => (o.f1 = v)),
+          select([{ value: 20, label: '20 Hz' }, { value: 10, label: '10 Hz' }, { value: 40, label: '40 Hz' }, { value: 80, label: '80 Hz' }], o.f1, (v) => (o.f1 = v), { 'aria-label': 'Sweep start frequency' }),
           '–',
-          select([{ value: 20000, label: '20 kHz' }, { value: 16000, label: '16 kHz' }, { value: 10000, label: '10 kHz' }, { value: 1000, label: '1 kHz (sub)' }], o.f2, (v) => (o.f2 = v)),
+          select([{ value: 20000, label: '20 kHz' }, { value: 16000, label: '16 kHz' }, { value: 10000, label: '10 kHz' }, { value: 1000, label: '1 kHz (sub)' }], o.f2, (v) => (o.f2 = v), { 'aria-label': 'Sweep end frequency' }),
         ),
       ],
       { label: 'Sweep options', title: 'Sweep options: repeats and frequency range', id: 'sweep' },

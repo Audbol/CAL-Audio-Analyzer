@@ -130,7 +130,7 @@ export class ToolsView implements View {
     const dInput = h('input', { type: 'number', class: 'num', value: '10', step: '0.01' });
     const mInput = h('input', { type: 'number', class: 'num', value: '3.43', step: '0.01' });
     const fInput = h('input', { type: 'number', class: 'num', value: '100', step: '1' });
-    const temp = numberInput(s.tempC, (v) => { s.tempC = v; this.app.save(); update(); }, { class: 'num', step: '1' });
+    const temp = numberInput(s.tempC, (v) => { s.tempC = v; this.app.save(); update(); this.dirty = true; }, { class: 'num', step: '1', 'aria-label': 'Air temperature (°C)' });
     const update = () => {
       const c = speedOfSound(s.tempC);
       const f = +fInput.value || 100;

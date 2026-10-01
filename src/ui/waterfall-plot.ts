@@ -145,7 +145,8 @@ export class WaterfallPlot {
     ctx.textBaseline = 'middle';
     const tMax = d.times[n - 1];
     const tStep = niceStep(tMax / 4);
-    for (let t = 0; t <= tMax + 1e-9; t += tStep) {
+    // A single slice (very short impulse response) has no time span to label
+    for (let t = 0; tMax > 0 && n > 1 && t <= tMax + 1e-9; t += tStep) {
       const o = off((t / tMax) * (n - 1));
       ctx.fillText(`${+t.toFixed(1)} ms`, pad.l + plotW + o.x + 6, Y(floor) + o.y + 2);
     }
@@ -156,6 +157,7 @@ export class WaterfallPlot {
 }
 
 function niceStep(x: number): number {
+  if (!(x > 0) || !Number.isFinite(x)) return 1;
   const p = Math.pow(10, Math.floor(Math.log10(x)));
   const m = x / p;
   return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p;

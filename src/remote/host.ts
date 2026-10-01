@@ -129,13 +129,13 @@ export class HostLink {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN || this.ws.bufferedAmount > 2 * 1024 * 1024) return;
     if (!a.engine.running || !this.clients.some((c) => c.analysis)) return;
     const n = a.grid.length;
-    const items: { index: number; tfReady: boolean; arrays: Float64Array[] }[] = [];
+    const items: { index: number; tfReady: boolean; rtaReady: boolean; arrays: Float64Array[] }[] = [];
     a.measurements.forEach((m, i) => {
       if (!m.cfg.enabled) return;
       const bufs = (this.analysisBufs[i] ??= Array.from({ length: 7 }, () => new Float64Array(n)));
       if (bufs[0].length !== n) this.analysisBufs[i] = Array.from({ length: 7 }, () => new Float64Array(n));
       const r = m.hostArrays(this.analysisBufs[i]);
-      items.push({ index: i, tfReady: r.tfReady, arrays: r.arrays });
+      items.push({ index: i, tfReady: r.tfReady, rtaReady: r.rtaReady, arrays: r.arrays });
     });
     this.ws.send(encodeAnalysis(n, items));
   }

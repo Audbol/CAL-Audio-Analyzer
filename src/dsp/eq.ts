@@ -127,14 +127,19 @@ export function autoEq(
     return Math.sqrt(s / idx.length);
   };
 
-  for (let k = 0; k < opt.maxFilters; k++) {
+  // Frequencies where a filter didn't help (e.g. a dip when boosts are off): the fit moves on to the next problem
+  const skip = new Set<number>();
+  for (let k = 0, tries = 0; k < opt.maxFilters && tries < opt.maxFilters * 4; tries++) {
     // Current residual
     let worst = -1;
     let worstVal = 0;
     for (const i of idx) {
+      if (skip.has(i)) continue;
       let e = before[i];
       for (const f of filters) e += filterDb(f, freqs[i]);
       const weighted = e > 0 ? e : e * 0.5;
+      // Only what the limits allow: peaks need cuts, dips need boosts
+      if ((weighted > 0 && opt.maxCut <= 0) || (weighted < 0 && opt.maxBoost <= 0)) continue;
       if (Math.abs(weighted) > Math.abs(worstVal)) {
         worstVal = weighted;
         worst = i;
@@ -175,7 +180,12 @@ export function autoEq(
       }
       if (!improved) break;
     }
-    if (best >= base - 0.02 || Math.abs(cand.gain) < 0.5) break;
+    if (best >= base - 0.02 || Math.abs(cand.gain) < 0.5) {
+      // No useful filter here: leave this region (±1/6 octave) and try the next worst point
+      for (const i of idx) if (Math.abs(Math.log2(freqs[i] / freqs[worst])) < 1 / 6) skip.add(i);
+      continue;
+    }
+    k++;
     cand.f = Math.round(cand.f * 10) / 10;
     cand.gain = Math.round(cand.gain * 10) / 10;
     cand.q = Math.round(cand.q * 100) / 100;

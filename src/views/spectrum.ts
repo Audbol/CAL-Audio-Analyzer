@@ -246,7 +246,7 @@ export class SpectrumView extends DockedView implements View {
       const atBands = (y: Float64Array, off: number) => this.bands.map((f) => sampleLogGrid(g, y, f) + off);
       const only = s.micAverage === 'only' && app.measurements.filter((m) => m.cfg.enabled).length > 1;
       for (const m of app.measurements) {
-        if (!m.cfg.enabled || only) continue;
+        if (!m.cfg.enabled || only || !m.hasRta) continue;
         const off = offOf(m.cfg.mic);
         if (bars) {
           series.push({ id: m.cfg.id, label: nameOf(m), x: this.bands, y: atBands(m.rtaOut, off), color: m.cfg.color, bars });
@@ -258,7 +258,7 @@ export class SpectrumView extends DockedView implements View {
       }
       // Average curves (for tuning) on top of everything: the long-term balance behind the live RTA
       const day = s.theme === 'day';
-      series.push(...micAverageSeries(app, g, app.measurements.filter((m) => m.cfg.enabled && m.rtaShown > 0).map((m) => shiftBy(m.rtaOut, offOf(m.cfg.mic)))));
+      series.push(...micAverageSeries(app, g, app.measurements.filter((m) => m.cfg.enabled && m.hasRta).map((m) => shiftBy(m.rtaOut, offOf(m.cfg.mic)))));
       const avgColor = s.avgCurveColor === 'auto' ? (day ? '#111111' : '#ffffff') : s.avgCurveColor;
       for (const m of app.measurements) {
         const avg = m.cfg.enabled && !only && s.avgCurveShow ? m.averageDb() : null;
@@ -268,7 +268,7 @@ export class SpectrumView extends DockedView implements View {
         series.push({ id: `${m.cfg.id}-avg`, label, x: g, y: shiftBy(avg, offOf(m.cfg.mic)), color: avgColor, width: s.avgCurveWidth, halo: day ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)' });
       }
       // Target curve, levelled to the first shown measurement (its average curve when there is one)
-      const ref = app.measurements.find((m) => m.cfg.enabled && m.rtaShown > 0);
+      const ref = app.measurements.find((m) => m.cfg.enabled && m.hasRta);
       if (ref) {
         const data = ref.averageDb() ?? ref.rtaOut;
         series.unshift(...this.target.series(g, shiftBy(data, offOf(ref.cfg.mic))));

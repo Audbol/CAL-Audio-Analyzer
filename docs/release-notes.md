@@ -24,10 +24,16 @@ On first launch, choose **Explore with the demo room** to try every feature with
 - **User guide:** a complete, plain-language [user guide](https://github.com/Audbol/CAL-Audio-Analyzer/blob/HEAD/docs/user-guide.md) with screenshots, from installing to reports, with an accessibility section, keyboard shortcuts, troubleshooting and a glossary.
 - **Accessibility:**
   - Every button, list and input now has a name that screen readers read out (lists take the label shown next to them, icon buttons their tooltip).
-  - Messages are announced as they appear, warnings straight away, and so are new tips from the Assistant.
+  - Messages are announced as they appear, warnings straight away. New tips from the Assistant are announced once, not each time a number in them changes.
+  - Fields that share a label (such as a frequency range) have names of their own.
 - **Fixes:**
   - A phone or tablet that connected right after the measurement computer's analysis restarted (for example when the generator signal changed) could show an empty spectrum with its scale stuck far below the data, when a calibrated mic was in use. Empty analysis frames are now skipped.
   - The Transfer tab's smoothing list now follows a workspace that changes the smoothing.
+  - With a reference delay, the bass part of the transfer function (High or Maximum bass resolution) waited for that delay before updating: with 100 ms of delay it reacted 100 ms late. It now keeps up with the rest.
+  - The EQ assistant stopped altogether when the biggest deviation was a dip it wasn't allowed to boost (Max boost 0 dB). It now moves on and still cuts the peaks.
+  - The Waterfall could freeze the tab with a very short impulse response.
+  - Before a measurement had any spectrum (just after a reset), calibrated mics could add a flat, false curve to the several-mic average and to the target's levelling.
+  - Changing the air temperature in Tools now updates the room-mode calculator straight away.
 
 ## What's new in 1.10
 

@@ -208,6 +208,8 @@ export const ANALYSIS_ARRAYS = 7;
 export interface AnalysisFrame {
   index: number;
   tfReady: boolean;
+  /** The host's spectrum analyzer has data (false right after a reset: its arrays are then empty). */
+  rtaReady: boolean;
   rtaBands: Float32Array;
   rtaFft: Float32Array;
   peakBands: Float32Array;
@@ -217,7 +219,16 @@ export interface AnalysisFrame {
   coh: Float32Array;
 }
 
-export function encodeAnalysis(n: number, items: { index: number; tfReady: boolean; arrays: ArrayLike<number>[] }[]): ArrayBuffer {
+/**
+ * The flags value carries tfReady and rtaReady so that older versions still read tfReady as `value > 0`:
+ * 0 / 1 = TF not ready / ready with the spectrum ready (all that older hosts send); −1 / 2 = the same with the
+ * spectrum not ready yet.
+ */
+function flagsOf(tfReady: boolean, rtaReady: boolean): number {
+  return rtaReady ? (tfReady ? 1 : 0) : tfReady ? 2 : -1;
+}
+
+export function encodeAnalysis(n: number, items: { index: number; tfReady: boolean; rtaReady?: boolean; arrays: ArrayLike<number>[] }[]): ArrayBuffer {
   const per = 2 + ANALYSIS_ARRAYS * n;
   const buf = new ArrayBuffer(AUDIO_HEADER + items.length * per * 4);
   const dv = new DataView(buf);
@@ -228,7 +239,7 @@ export function encodeAnalysis(n: number, items: { index: number; tfReady: boole
   items.forEach((it, j) => {
     const o = j * per;
     f[o] = it.index;
-    f[o + 1] = it.tfReady ? 1 : 0;
+    f[o + 1] = flagsOf(it.tfReady, it.rtaReady ?? true);
     it.arrays.forEach((a, k) => f.set(a, o + 2 + k * n));
   });
   return buf;
@@ -244,7 +255,8 @@ export function decodeAnalysis(buf: ArrayBuffer): AnalysisFrame[] {
   for (let j = 0; j < count; j++) {
     const o = j * per;
     const arr = (k: number) => f.subarray(o + 2 + k * n, o + 2 + (k + 1) * n);
-    out.push({ index: f[o], tfReady: f[o + 1] > 0, rtaBands: arr(0), rtaFft: arr(1), peakBands: arr(2), peakFft: arr(3), mag: arr(4), phase: arr(5), coh: arr(6) });
+    const flags = f[o + 1];
+    out.push({ index: f[o], tfReady: flags > 0, rtaReady: flags === 0 || flags === 1, rtaBands: arr(0), rtaFft: arr(1), peakBands: arr(2), peakFft: arr(3), mag: arr(4), phase: arr(5), coh: arr(6) });
   }
   return out;
 }
