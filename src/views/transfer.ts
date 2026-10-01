@@ -74,7 +74,7 @@ export class TransferView extends DockedView implements View {
     return h(
       'div',
       { class: 'toolbar' },
-      h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Smoothing'), select(SMOOTHING_OPTIONS.filter((o) => o.value !== 0), s.tfSmoothing, (v: Smoothing) => { s.tfSmoothing = v; app.save(); }), h('span', { class: 'tb-label' }, 'Avg'), select(AVG_OPTIONS, s.tfAveraging, (v) => { s.tfAveraging = v; app.applyAnalysisSettings(); }, { dataset: { setting: 'tfAveraging' } })),
+      h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Smoothing'), select(SMOOTHING_OPTIONS.filter((o) => o.value !== 0), s.tfSmoothing, (v: Smoothing) => { s.tfSmoothing = v; app.save(); }, { dataset: { setting: 'tfSmoothing' } }), h('span', { class: 'tb-label' }, 'Avg'), select(AVG_OPTIONS, s.tfAveraging, (v) => { s.tfAveraging = v; app.applyAnalysisSettings(); }, { dataset: { setting: 'tfAveraging' } })),
       this.target.targetControl(),
       this.settingChip('showCoherence', 'Coherence', 'Show coherence trace on the magnitude plot'),
       h('div', { class: 'spacer' }),

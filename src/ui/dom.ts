@@ -19,7 +19,31 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Attrs = 
     if (c === null || c === undefined || c === false) continue;
     el.append(c instanceof Node ? c : document.createTextNode(String(c)));
   }
+  // Icon-only buttons are named by their tooltip for screen readers
+  if (tag === 'button' && !el.hasAttribute('aria-label') && typeof attrs.title === 'string' && !el.textContent?.trim()) el.setAttribute('aria-label', attrs.title);
   return el;
+}
+
+/**
+ * Screen readers: a list or input without a name of its own is named by the visible label next to it (toolbar
+ * labels, option-panel rows, "Label [control]" rows). Watches `root`, so controls built later are named too.
+ */
+export function autoLabelControls(root: HTMLElement): void {
+  // Plain label text only: not units ("dB") or live values ("-18 dBFS")
+  const labelText = (e: Element | null) => (e && /^(SPAN|LABEL)$/.test(e.tagName) && (!e.className || e.classList.contains('tb-label') || e.classList.contains('opt-label') || e.classList.contains('lbl')) && !e.querySelector('select, input') ? e.textContent?.trim() || null : null);
+  const name = (el: HTMLElement) => {
+    // A tooltip already names the control
+    if (el.getAttribute('aria-label') || el.title || el.closest('label') || (el.id && root.ownerDocument.querySelector(`label[for="${el.id}"]`))) return;
+    // The control itself, or the wrapper it sits alone in, follows its label
+    const wrap = el.parentElement && el.parentElement.childElementCount === 1 && el.parentElement.tagName === 'SPAN' ? el.parentElement : null;
+    const text = labelText(el.previousElementSibling) ?? (wrap ? labelText(wrap.previousElementSibling) : null) ?? el.closest('.opt-row')?.querySelector('.opt-label')?.textContent?.trim() ?? el.closest('label, .field')?.querySelector('.lbl, span')?.textContent?.trim();
+    if (text) el.setAttribute('aria-label', text);
+  };
+  const scan = (n: ParentNode) => n.querySelectorAll<HTMLElement>('select, input:not([type=hidden]), textarea').forEach(name);
+  scan(root);
+  new MutationObserver((list) => {
+    for (const m of list) for (const n of m.addedNodes) if (n instanceof HTMLElement) (n.matches('select, input, textarea') ? name(n) : scan(n));
+  }).observe(root, { childList: true, subtree: true });
 }
 
 export function clear(el: Element): void {

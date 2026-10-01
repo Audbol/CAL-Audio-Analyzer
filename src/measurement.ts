@@ -125,7 +125,8 @@ export class Measurement {
       }
       this.tfReady = true;
     }
-    if (!this.frozen && !this.paused.rta) {
+    // A just-reset analyzer has no spectrum yet (it would read as −300 dB): keep showing nothing new until it has
+    if (!this.frozen && !this.paused.rta && this.rta.main.hasData) {
       const key = `${this.rta.version}|${s.rtaSmoothing}|${s.peakHold}|${calId(cal)}`;
       if (key !== this.rtaKey) {
         this.rtaKey = key;
@@ -221,11 +222,15 @@ export class Measurement {
     const key = `${this.hostFrameAt}|${s.rtaSmoothing}|${s.tfSmoothing}|${s.peakHold}|${this.cfg.invert}|${calId(cal)}`;
     if (key === this.hostKey) return;
     this.hostKey = key;
-    rta(f.rtaBands, f.rtaFft, this.rtaOut);
-    if (s.peakHold) rta(f.peakBands, f.peakFft, this.rtaPeakOut);
-    this.rtaShown++;
-    // The average curve is built on this device from each new host frame
-    this.updateAverage(s, cal);
+    // Frames sent while the host's analyzer had just been reset carry no spectrum (all ≈ −300 dB): skip them,
+    // or they'd be drawn (and fitted to) as real data, and a calibration offset lifts them into view
+    if (hasSpectrum(f.rtaBands)) {
+      rta(f.rtaBands, f.rtaFft, this.rtaOut);
+      if (s.peakHold) rta(f.peakBands, f.peakFft, this.rtaPeakOut);
+      this.rtaShown++;
+      // The average curve is built on this device from each new host frame
+      this.updateAverage(s, cal);
+    }
     this.tfReady = f.tfReady;
     if (f.tfReady) {
       smoothTransfer(f.mag, f.phase, f.coh, ppo, s.tfSmoothing || 48, this.result.mag, this.result.phase, this.result.coh);
@@ -273,4 +278,10 @@ function calId(cal: Float64Array | null): number {
   let id = calIds.get(cal);
   if (!id) calIds.set(cal, (id = nextCalId++));
   return id;
+}
+
+/** A host frame's spectrum has data (an analyzer without frames yet renders everything at ≈ −300 dB). */
+function hasSpectrum(bands: ArrayLike<number>): boolean {
+  for (let i = 0; i < bands.length; i++) if (bands[i] > -250) return true;
+  return false;
 }

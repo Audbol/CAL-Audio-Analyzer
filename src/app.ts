@@ -8,7 +8,7 @@ import { Measurement, type AnalysisNeeds } from './measurement';
 import { RTA_RATE } from './dsp/spectrum';
 import { loadSettings, saveSettings, PALETTE, refLabel, type Settings, type ViewId, type MeasurementConfig } from './state';
 import { TraceStore, traceToCsv, parseTraceText, download, type Trace } from './traces';
-import { h, clear, icon, select } from './ui/dom';
+import { h, clear, icon, select, autoLabelControls } from './ui/dom';
 import { SpectrumView } from './views/spectrum';
 import { TransferView } from './views/transfer';
 import { SpectrogramView } from './views/spectrogram';
@@ -187,6 +187,7 @@ export class App {
     this.applyTheme();
     this.updateCal();
     this.build();
+    autoLabelControls(document.body);
     this.applyPower();
     if (this.playlist instanceof Playlist) {
       const pl = this.playlist;
@@ -1023,7 +1024,8 @@ export class App {
 
     this.sidebarMeas = h('div', { class: 'meas-list' });
     this.sidebarTraces = h('div', { class: 'trace-list' });
-    this.hintsEl = h('div', { class: 'hints' });
+    // New assistant tips are read out by screen readers (the list only changes when the situation does)
+    this.hintsEl = h('div', { class: 'hints', 'aria-live': 'polite' });
     const fileInput = h('input', { type: 'file', accept: '.csv,.txt,.frd,.json', multiple: true, style: 'display:none' });
     fileInput.addEventListener('change', () => this.importTraces(fileInput));
     const sidebar = h(
@@ -1071,7 +1073,8 @@ export class App {
   }
 
   toastHost = (() => {
-    const el = h('div', { class: 'toasts' });
+    // Messages are announced by screen readers (warnings at once, others when the reader is idle)
+    const el = h('div', { class: 'toasts', role: 'status', 'aria-live': 'polite' });
     document.body.append(el);
     return el;
   })();
@@ -1081,7 +1084,7 @@ export class App {
     for (const old of this.toastHost.querySelectorAll('.toast')) if (old.textContent === text) old.remove();
     const shown = this.toastHost.querySelectorAll('.toast:not(.out)');
     if (shown.length >= 3) shown[0].remove();
-    const t = h('div', { class: `toast ${level}` }, icon(level === 'warn' ? 'alert' : level === 'ok' ? 'check' : 'info', 16), h('span', {}, text));
+    const t = h('div', { class: `toast ${level}`, role: level === 'warn' ? 'alert' : null }, icon(level === 'warn' ? 'alert' : level === 'ok' ? 'check' : 'info', 16), h('span', {}, text));
     this.toastHost.append(t);
     setTimeout(() => t.classList.add('out'), level === 'warn' ? 5200 : 3200);
     setTimeout(() => t.remove(), level === 'warn' ? 5600 : 3600);

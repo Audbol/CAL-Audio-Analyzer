@@ -19,6 +19,16 @@ The builds are not code-signed yet:
 
 On first launch, choose **Explore with the demo room** to try every feature without hardware.
 
+## What's new in 1.10.1
+
+- **User guide:** a complete, plain-language [user guide](https://github.com/Audbol/CAL-Audio-Analyzer/blob/HEAD/docs/user-guide.md) with screenshots, from installing to reports, with an accessibility section, keyboard shortcuts, troubleshooting and a glossary.
+- **Accessibility:**
+  - Every button, list and input now has a name that screen readers read out (lists take the label shown next to them, icon buttons their tooltip).
+  - Messages are announced as they appear, warnings straight away, and so are new tips from the Assistant.
+- **Fixes:**
+  - A phone or tablet that connected right after the measurement computer's analysis restarted (for example when the generator signal changed) could show an empty spectrum with its scale stuck far below the data, when a calibrated mic was in use. Empty analysis frames are now skipped.
+  - The Transfer tab's smoothing list now follows a workspace that changes the smoothing.
+
 ## What's new in 1.10
 
 - **Average curve your way:** hide or show the average curve with the eye button next to *Average* (it keeps averaging while hidden, so the target stays levelled), and choose its colour and thickness under *Options → Average curve*.

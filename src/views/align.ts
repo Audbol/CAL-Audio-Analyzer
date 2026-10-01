@@ -338,7 +338,7 @@ export class AlignView implements View {
               this.selected = el.id;
               this.renderList();
               this.renderSelected();
-            }, { dataset: { alignEl: el.id } }),
+            }, { dataset: { alignEl: el.id }, 'aria-label': `Measurement of ${el.name} alone` }),
             h('button', { class: 'btn tiny', title: `Store the live transfer function as the ${el.name.toLowerCase()} measurement`, onclick: () => this.captureEl(el) }, icon('camera', 12), 'Capture'),
           ),
           h(

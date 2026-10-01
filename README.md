@@ -2,7 +2,9 @@
 
 A professional, real-time **sound system and room acoustics analyzer** that runs entirely in the browser. It is built to be approachable: a guided setup, a live assistant that explains what the data means, and a built-in virtual room so you can learn every feature without any hardware.
 
-**[⬇ Download the latest version for Windows, macOS or Linux](https://github.com/Audbol/CAL-Audio-Analyzer/releases/latest)**
+**[⬇ Download the latest version for Windows, macOS or Linux](https://github.com/Audbol/CAL-Audio-Analyzer/releases/latest)** · **[📖 User guide](docs/user-guide.md)** · **[What's new](docs/release-notes.md)**
+
+New to the app? The **[user guide](docs/user-guide.md)** walks you through installing, connecting your equipment, calibrating microphones, tuning, alignment, room measurements, noise logging and remote access, in plain language with screenshots.
 
 ![Transfer function: magnitude with coherence, phase, and level meters](docs/screenshot-live.png)
 
@@ -48,6 +50,7 @@ A professional, real-time **sound system and room acoustics analyzer** that runs
 | **Music generator** | Choose *Music (playlist)* as the generator to play MP3, WAV, FLAC, OGG or M4A songs: add or drop files, reorder them, repeat and shuffle. Songs are level-matched to the generator level, and the music is the transfer-function reference, so you can measure with a song playing. The playlist is kept on the measurement computer; remote devices can control it and add songs. |
 | **Tidy toolbars** | Each tab keeps its everyday controls in one row; less-used settings (FFT size, averaging, curve smoothing, target tolerance, several mics, panels, sweep range, EQ limits…) sit under *Options*. |
 | **Usability** | Setup wizard, a context-aware assistant (clipping, missing excitation, unset delay, low coherence, and so on), hover readouts with note name and wavelength, zoom and pan, keyboard shortcuts, and input/generator meters with clip indicators. |
+| **Accessibility** | Every control can be reached and used from the keyboard and has a name for screen readers; messages and assistant tips are announced; a high-contrast day mode; information never relies on colour alone; measurements can be saved as traces and exported as tables (CSV), and every job can be summarised in a text report. See the [accessibility section](docs/user-guide.md#18-accessibility) of the user guide. |
 
 ![Sweep & Room: ISO 3382 parameters per octave band](docs/screenshot-room.png)
 
@@ -124,9 +127,11 @@ On first launch, choose **Explore with the demo room** to try everything with th
 | R | Reset averages |
 | P | Peak hold |
 | F | Freeze display |
-| 1–9 | Switch tabs |
+| 1–9 | Switch tabs (Spectrum, Transfer, Spectrogram, Impulse, Sweep & Room, EQ, Align, SPL, Tools) |
 | T | Day / night colour scheme |
+| F11 | Full screen |
 | ? | Help |
+| Esc | Close a dialog or Options panel |
 
 ## Remote access (tablet / phone / second computer)
 
@@ -157,22 +162,31 @@ src/
     fft.ts          radix-2 FFT with cached tables
     transfer.ts     multi-time-window dual-channel transfer function (H1, coherence)
     spectrum.ts     RTA / FFT spectrum (sine-referenced dBFS, band power)
+    octave-bank.ts  third-octave Butterworth filter bank (IEC 61260-style) for the noise log
+    align.ts        system alignment (sub crossover summation, fills and delay speakers)
     delay.ts        GCC-PHAT delay estimation
     sweep.ts        log sweep, regularised deconvolution, Farina harmonic distortion
     acoustics.ts    Schroeder/Lundeby decay analysis, ISO 3382 parameters, ETC, room modes
     weighting.ts    IEC 61672 A/C weighting (analytic + optimised IIR)
-    spl.ts          sound level meter
+    spl.ts          sample-exact sound level meter (history and log rows cut at sample boundaries)
     eq.ts           PEQ model and auto-EQ fitting
     calibration.ts  mic calibration file parsing
   audio/
     processor.ts    AudioWorklet: generator + sample-accurate multichannel capture
     simulator.ts    virtual loudspeaker + room for demo mode
     engine.ts       AudioContext, device handling, per-channel ring buffers
-  views/          Spectrum, Transfer, Spectrogram, Impulse, Sweep & Room, EQ, SPL, Tools
+  native/         utility-process host for the native (ASIO) audio module
+  views/          Spectrum, Transfer, Spectrogram, Impulse, Sweep & Room, EQ, Align, SPL, Tools
   remote/         remote-access host link, remote engine and wire protocol
+  ui/             canvas plot, spectrogram, waterfall, panels (dock), dialogs, DOM helpers
+  logger.ts       noise log (rows, rolling Leq and limit, CSV)
+  session.ts      session files; report.ts printable reports
+  workspaces.ts   ready-made and saved workspaces; defaults.ts reset profiles
+native/           C++ audio module (RtAudio: ASIO on Windows)
 electron/         desktop main process, preload bridge and the remote-access hub (hub.cjs)
 server/cli.mjs    standalone remote-access server for browser hosts
-  ui/             canvas plot, spectrogram, dialogs, DOM helpers
+scripts/          documentation screenshots (npm run docs:screenshots)
+docs/             user guide, release notes and screenshots
 ```
 
 Audio is captured in an AudioWorklet and written into per-channel ring buffers that are addressed by absolute sample index. That keeps every channel, including the internal generator reference, sample-aligned for dual-channel analysis. All processing happens locally, and audio never leaves the device.
@@ -181,7 +195,9 @@ Audio is captured in an AudioWorklet and written into per-channel ring buffers t
 
 ```bash
 npm run check      # TypeScript + DSP unit tests (FFT, weighting, SPL, RTA, TF, delay, sweep, THD, RT60, EQ…)
-npm run test:e2e   # builds, then drives the app in headless Chromium (demo room + fake mic) and verifies results
+npm run test:e2e   # builds, then drives the app in headless Chromium (demo room + fake mic) and verifies results,
+                   # including remote access, phones, accessibility and the server's security
+npm run test:electron                          # the desktop app
 npm run build:native && npm run test:native   # native audio module + desktop app on the virtual loopback interface
 ```
 
