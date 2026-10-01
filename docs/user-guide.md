@@ -228,6 +228,8 @@ The average curve is a smooth line showing the long-term tonal balance. It is us
 
 ![The Spectrogram tab, a colour picture of level over frequency and time.](guide/spectrogram.png)
 
+![The Impulse tab: the energy-time curve with a sharp first arrival followed by decaying reflections.](guide/impulse.png)
+
 ## 9. Save and compare traces
 
 A trace is a saved measurement. Use traces to compare positions, or before and after a change.
@@ -312,6 +314,8 @@ A sweep is a tone that glides from low to high frequencies. It measures the room
 **Show a target on the sweep result:** choose a **Target** next to the result tabs. This target is separate from the one on the Spectrum and Transfer tabs.
 
 ![The Sweep & Room frequency response with a dashed house curve target and a shaded tolerance band.](guide/sweep.png)
+
+![The Waterfall view: a 3-D plot of the room modes. Ridges that reach far back are frequencies that keep ringing.](guide/waterfall.png)
 
 ### Tips
 
