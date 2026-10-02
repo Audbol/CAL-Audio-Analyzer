@@ -3,7 +3,8 @@ name: Desktop app
 # Builds the standalone desktop program for Windows (installer + portable .exe), macOS (Intel + Apple Silicon)
 # and Linux (x64 + ARM64). Every push produces downloadable artifacts. A GitHub Release is published when a
 # tag like v1.1.0 is pushed, or when the workflow is run manually with "release" enabled (the tag v<version>
-# from package.json is then created on the built commit).
+# from package.json is then created on the built commit). With "prerelease" it is published as a beta: marked as a
+# pre-release, not the latest download, with the notes from docs/beta-notes.md.
 on:
   push:
     branches: ['**']
@@ -14,6 +15,10 @@ on:
         description: Publish a GitHub Release (tag v<package.json version>)
         type: boolean
         default: true
+      prerelease:
+        description: Publish it as a beta (pre-release, not the latest download; notes from docs/beta-notes.md)
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -89,7 +94,8 @@ jobs:
           tag_name: ${{ steps.tag.outputs.tag }}
           target_commitish: ${{ github.sha }}
           name: CAL Audio Analyzer ${{ steps.tag.outputs.tag }}
-          make_latest: true
-          body_path: docs/release-notes.md
+          prerelease: ${{ inputs.prerelease == true }}
+          make_latest: ${{ inputs.prerelease == true && 'false' || 'true' }}
+          body_path: ${{ inputs.prerelease == true && 'docs/beta-notes.md' || 'docs/release-notes.md' }}
           files: dist-release/*
           fail_on_unmatched_files: true
