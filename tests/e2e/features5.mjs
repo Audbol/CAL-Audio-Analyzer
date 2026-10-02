@@ -108,6 +108,29 @@ if (want('diagnosis')) {
   await page.screenshot({ path: `${out}/feat5-04-diagnosis-markers.png` });
 }
 
+// --- 4. Spectrum: the highest peak in the low, mid and high ranges is highlighted
+if (want('peaks')) {
+  await page.keyboard.press('1');
+  await page.waitForTimeout(2500);
+  const pk = await page.evaluate(() => {
+    const v = window.calApp.views.find((x) => x.id === 'spectrum');
+    return { peaks: v.peaks.map((p) => ({ r: p.range.id, f: p.f, l: p.level })), pins: v.rta.pins.map((p) => p.label) };
+  });
+  check(pk.peaks.map((p) => p.r).join() === 'low,mid,high', `one peak per range (${pk.pins.join(' | ')})`);
+  check(pk.peaks[0].f >= 20 && pk.peaks[0].f < 250 && pk.peaks[1].f >= 250 && pk.peaks[1].f < 4000 && pk.peaks[2].f >= 4000, 'each peak lies in its own range');
+  // The demo room's strongest low-frequency feature is its 47 Hz mode region (between 40 and 110 Hz)
+  check(pk.peaks[0].f > 40 && pk.peaks[0].f < 110, `the low peak is in the room-mode region (${pk.peaks[0].f.toFixed(0)} Hz)`);
+  await page.screenshot({ path: `${out}/feat5-05-peaks.png` });
+  await page.locator('.toolbar button[data-chip="rtaPeakMarks"]').first().click();
+  await page.waitForTimeout(400);
+  check(await page.evaluate(() => window.calApp.views.find((x) => x.id === 'spectrum').rta.pins.length === 0), 'the Peaks button turns the highlights off');
+  await page.locator('.toolbar button[data-chip="rtaPeakMarks"]').first().click();
+  await page.keyboard.press('b');
+  await page.waitForTimeout(600);
+  check(await page.evaluate(() => window.calApp.views.find((x) => x.id === 'spectrum').rta.pins.length === 3), 'peaks are highlighted on bars too');
+  await page.keyboard.press('b');
+}
+
 check(errors.length === 0, `no console errors ${errors.join(' | ')}`);
 await browser.close();
 await new Promise((r) => server.httpServer.close(r));

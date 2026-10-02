@@ -8,6 +8,7 @@ import { DockedView } from './docked';
 import { optionsMenu, optRow, optHead, colourChoice } from '../ui/popover';
 import { TargetOverlay } from './target-overlay';
 import { micAverageControl, micAverageSeries } from './mic-average-overlay';
+import { rangePeaks, type RangePeak } from '../dsp/peaks';
 
 /** Colours offered for the average curve ('auto': white at night, black by day). */
 export const AVG_COLORS = [
@@ -42,6 +43,8 @@ export class SpectrumView extends DockedView implements View {
   private bands: number[] = [];
   private lastKey = '';
   readonly target: TargetOverlay;
+  /** The highlighted peaks (low, mid, high) last drawn. */
+  peaks: RangePeak[] = [];
 
   invalidate(): void {
     this.lastKey = '';
@@ -217,6 +220,7 @@ export class SpectrumView extends DockedView implements View {
       ),
       this.target.targetControl(),
       this.settingChip('peakHold', 'Peak hold', 'Peak hold (P)'),
+      this.settingChip('rtaPeakMarks', 'Peaks', 'Highlight the highest peak in the low (20–250 Hz), mid (250 Hz–4 kHz) and high (4–20 kHz) ranges'),
       h('div', { class: 'spacer' }),
       options,
       this.resetButton(),
@@ -229,7 +233,7 @@ export class SpectrumView extends DockedView implements View {
     const s = app.settings;
     if (this.visible('rta')) {
       // Redraw only when what is shown changed (new analysis data arrives ~6–12 times a second)
-      const key = `${app.traces.version}|${s.rtaStyle}|${s.rtaSmoothing}|${s.peakHold}|${s.rtaAverageCurve}|${s.rtaAverageSmoothing}|${s.avgCurveShow}|${s.rtaTraceColor}|${s.rtaFillColor}|${s.rtaFillOpacity}|${s.avgCurveColor}|${s.avgCurveWidth}|${s.micAverage}|${s.targetCurve}|${s.targetTolerance}|${s.theme}|${s.splCalibrated}|${s.splOffset}|${JSON.stringify(s.mics.map((mc) => [mc.channel, mc.splCalibrated && mc.splOffset]))}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.rtaShown}`).join(',')}`;
+      const key = `${app.traces.version}|${s.rtaStyle}|${s.rtaSmoothing}|${s.peakHold}|${s.rtaAverageCurve}|${s.rtaAverageSmoothing}|${s.avgCurveShow}|${s.rtaPeakMarks}|${s.rtaTraceColor}|${s.rtaFillColor}|${s.rtaFillOpacity}|${s.avgCurveColor}|${s.avgCurveWidth}|${s.micAverage}|${s.targetCurve}|${s.targetTolerance}|${s.theme}|${s.splCalibrated}|${s.splOffset}|${JSON.stringify(s.mics.map((mc) => [mc.channel, mc.splCalibrated && mc.splOffset]))}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.rtaShown}`).join(',')}`;
       if (key === this.lastKey) return this.tickMeters();
       this.lastKey = key;
       const g = app.grid;
@@ -292,6 +296,16 @@ export class SpectrumView extends DockedView implements View {
         const data = ref.averageDb() ?? ref.rtaOut;
         series.unshift(...this.target.series(g, shiftBy(data, offOf(ref.cfg.mic))));
       } else this.target.series(g, null);
+      // Highest peak in the low, mid and high ranges, on the curve that is shown: the (steadier) average curve
+      // when it is on, else the bars or the live line
+      this.rta.pins = [];
+      if (s.rtaPeakMarks && ref) {
+        const off = offOf(ref.cfg.mic);
+        const avg = s.avgCurveShow && !only ? ref.averageDb() : null;
+        const [px, py] = avg ? [g, shiftBy(avg, off)] : bars ? [this.bands, atBands(ref.rtaOut, off)] : [g, shiftBy(ref.rtaOut, off)];
+        this.peaks = rangePeaks(px, py);
+        this.rta.pins = this.peaks.map((p) => ({ x: p.f, y: p.level, color: '#ffd60a', label: `${p.range.label}${p.isPeak ? '' : ' (no peak)'} ${p.f >= 1000 ? `${+(p.f / 1000).toFixed(p.f >= 10000 ? 1 : 2)} kHz` : `${Math.round(p.f)} Hz`} · ${p.level.toFixed(1)} dB` }));
+      } else this.peaks = [];
       this.rta.cfg.yUnit = spl ? 'dB SPL' : 'dBFS';
       this.rta.series = series;
       this.rta.draw();

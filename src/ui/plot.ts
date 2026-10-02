@@ -42,6 +42,14 @@ export interface Marker {
   top?: boolean;
 }
 
+/** A labelled point (e.g. a highlighted peak): a ring at (x, y) with a label above it. */
+export interface Pin {
+  x: number;
+  y: number;
+  label: string;
+  color: string;
+}
+
 export interface PlotConfig {
   xType: 'log' | 'lin';
   xMin: number;
@@ -101,6 +109,7 @@ export class Plot {
   private readonly tip: HTMLDivElement;
   series: Series[] = [];
   markers: Marker[] = [];
+  pins: Pin[] = [];
   shades: { x0: number; x1: number; color: string }[] = [];
   cfg: PlotConfig;
   private readonly defaults: { yMin: number; yMax: number; xMin: number; xMax: number };
@@ -430,6 +439,7 @@ export class Plot {
       ctx.fillRect(x0, pad.t, this.xToPx(s.x1) - x0, H - pad.t - pad.b);
     }
     for (const s of this.series) this.drawSeries(s);
+    this.drawPins();
     for (const m of this.markers) {
       const x = this.xToPx(m.x);
       ctx.strokeStyle = seriesColor(m.color);
@@ -448,6 +458,48 @@ export class Plot {
     }
     ctx.restore();
     this.drawCursor();
+  }
+
+  /** Labelled points on top of the curves; labels stay inside the plot and are kept apart. */
+  private drawPins(): void {
+    const ctx = this.ctx;
+    const { w, pad } = this;
+    ctx.font = "600 11px 'Inter Variable', Inter, system-ui, sans-serif";
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    const placed: { x0: number; x1: number; y: number }[] = [];
+    for (const p of this.pins) {
+      if (!Number.isFinite(p.y) || p.x < this.cfg.xMin || p.x > this.cfg.xMax) continue;
+      const x = this.xToPx(p.x);
+      const y = this.yToPx(p.y);
+      const color = seriesColor(p.color);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = COLORS.bg;
+      ctx.beginPath();
+      ctx.arc(x, y, 6, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, 5, 0, Math.PI * 2);
+      ctx.stroke();
+      // Label box above the point (below it when there is no room), clear of other labels
+      const tw = ctx.measureText(p.label).width + 10;
+      const lx = Math.max(pad.l + 2, Math.min(w - pad.r - tw - 2, x - tw / 2));
+      let ly = y - 20 < pad.t + 10 ? y + 20 : y - 20;
+      for (const o of placed) if (lx < o.x1 && lx + tw > o.x0 && Math.abs(ly - o.y) < 18) ly = o.y - 20 < pad.t + 10 ? o.y + 20 : o.y - 20;
+      placed.push({ x0: lx, x1: lx + tw, y: ly });
+      ctx.fillStyle = COLORS.bg;
+      ctx.globalAlpha = 0.85;
+      ctx.fillRect(lx, ly - 9, tw, 18);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(lx + 0.5, ly - 8.5, tw - 1, 17);
+      ctx.fillStyle = COLORS.fg;
+      ctx.fillText(p.label, lx + 5, ly + 0.5);
+    }
+    ctx.textBaseline = 'alphabetic';
   }
 
   private drawGrid(): void {

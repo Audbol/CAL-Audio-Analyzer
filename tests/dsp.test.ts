@@ -691,3 +691,30 @@ describe('full-range alignment (fills and delay speakers)', () => {
     expect(r.polarity).toBe(-1);
   });
 });
+
+describe('spectrum peak highlights', () => {
+  it('finds the highest peak in the low, mid and high ranges', async () => {
+    const { rangePeaks } = await import('../src/dsp/peaks');
+    const grid = logGrid(20, 20000, 48);
+    // Rising slope into the low range's top edge (not a peak), bumps at 63 Hz, 1 kHz (+ a smaller one) and 8 kHz
+    const bump = (f: number, fc: number, h: number) => h * Math.exp(-Math.pow(Math.log2(f / fc) * 6, 2));
+    const y = Array.from(grid, (f) => (f < 250 ? (f / 250) * 2 : 0) + bump(f, 63, 6) + bump(f, 1000, 8) + bump(f, 400, 4) + bump(f, 8000, 5));
+    const p = rangePeaks(grid, y);
+    expect(p.map((x) => x.range.id)).toEqual(['low', 'mid', 'high']);
+    expect(Math.abs(Math.log2(p[0].f / 63))).toBeLessThan(0.05);
+    expect(Math.abs(Math.log2(p[1].f / 1000))).toBeLessThan(0.05);
+    expect(Math.abs(Math.log2(p[2].f / 8000))).toBeLessThan(0.05);
+    expect(p[1].level).toBeCloseTo(8, 0);
+  });
+});
+
+describe('spectrum peak highlights on a slope', () => {
+  it('says when a range has no real peak', async () => {
+    const { rangePeaks } = await import('../src/dsp/peaks');
+    const grid = logGrid(20, 20000, 48);
+    const y = Array.from(grid, (f) => -3 * Math.log2(f / 1000)); // falling everywhere
+    const p = rangePeaks(grid, y);
+    expect(p.every((x) => !x.isPeak)).toBe(true);
+    expect(p[2].f).toBeCloseTo(4000, -2);
+  });
+});

@@ -121,6 +121,8 @@ export interface Settings {
   rtaTraceColor: string;
   rtaFillColor: string;
   rtaFillOpacity: number;
+  /** Highlight the highest peak in the low, mid and high ranges of the spectrum. */
+  rtaPeakMarks: boolean;
   /** How the average curve is drawn: shown or hidden (still measured), colour ('auto' = white / black by theme), line width (px). */
   avgCurveShow: boolean;
   avgCurveColor: string;
@@ -187,6 +189,7 @@ export function defaultSettings(): Settings {
     rtaTraceColor: 'auto',
     rtaFillColor: 'auto',
     rtaFillOpacity: 0,
+    rtaPeakMarks: true,
     avgCurveShow: true,
     avgCurveColor: 'auto',
     avgCurveWidth: 2,
