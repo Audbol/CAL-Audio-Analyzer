@@ -57,6 +57,36 @@ if (want('colours')) {
   await page.keyboard.press('b');
 }
 
+// --- 2. SPL tab: sound level, history and noise log are panels that float and detach
+if (want('spl')) {
+  await page.keyboard.press('8');
+  await page.waitForTimeout(1200);
+  const panels = await page.evaluate(() => [...document.querySelectorAll('.view:not([hidden]) .spl .dpanel, .spl .dpanel')].map((p) => p.dataset.panel));
+  check(['meter', 'history', 'log'].every((id) => panels.includes(id)), `SPL tab has three panels (${[...new Set(panels)].join(', ')})`);
+  await page.locator('.dpanel[data-panel="meter"] [data-act="float"]').first().click();
+  await page.waitForTimeout(400);
+  check(await page.locator('.dpanel[data-panel="meter"].floating').count() === 1, 'the sound level panel floats');
+  await page.locator('.dpanel[data-panel="meter"] [data-act="float"]').first().click();
+  await page.waitForTimeout(300);
+  const [popup] = await Promise.all([ctx.waitForEvent('page'), page.locator('.dpanel[data-panel="meter"] [data-act="popout"]').first().click()]);
+  await popup.waitForTimeout(1500);
+  const a = await popup.evaluate(() => document.querySelector('.spl-big .val')?.textContent ?? '');
+  await popup.waitForTimeout(1200);
+  const b = await popup.evaluate(() => document.querySelector('.spl-big .val')?.textContent ?? '');
+  check(/^-?\d+\.\d$/.test(a) && /^-?\d+\.\d$/.test(b), `the level readout runs in its own window (${a} → ${b})`);
+  // It keeps updating while another tab is open in the main window
+  await page.keyboard.press('1');
+  await page.waitForTimeout(300);
+  const before = await popup.evaluate(() => document.querySelector('.spl-stats')?.textContent ?? '');
+  await popup.waitForTimeout(1500);
+  const after = await popup.evaluate(() => document.querySelector('.spl-stats')?.textContent ?? '');
+  check(before !== after, 'the detached readout keeps updating while another tab is shown');
+  await popup.screenshot({ path: `${out}/feat5-02-spl-detached.png` });
+  await popup.close();
+  await page.waitForTimeout(500);
+  check(await page.evaluate(() => !!document.querySelector('.spl .dpanel[data-panel="meter"]:not(.popped)')), 'closing the window docks the panel again');
+}
+
 check(errors.length === 0, `no console errors ${errors.join(' | ')}`);
 await browser.close();
 await new Promise((r) => server.httpServer.close(r));

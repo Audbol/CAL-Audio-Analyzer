@@ -100,7 +100,6 @@ await page.screenshot({ path: `${out}/feat2-03-waterfall.png` });
 
 // --- Noise log: 1 s rows, a limit below the level → alarm
 await page.keyboard.press('8');
-await page.locator('.spl-subtabs [data-sub="log"]').click();
 await page.locator('select[data-log="interval"]').selectOption('1');
 await page.locator('select[data-log="window"]').selectOption('1');
 await page.locator('input[data-log="limit"]').fill('-80');

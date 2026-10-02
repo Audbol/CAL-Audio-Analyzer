@@ -4,7 +4,7 @@ import { Dock, type DockLayout, type DockPanel } from '../ui/dock';
 import { Plot } from '../ui/plot';
 import { SplPanel, LevelsPanel } from './meters';
 
-type LayoutKey = 'spectrumLayout' | 'transferLayout';
+type LayoutKey = 'spectrumLayout' | 'transferLayout' | 'splLayout';
 /** On/off settings shown as chips. */
 type ChipKey = 'showCoherence' | 'peakHold' | 'avgCurveShow';
 

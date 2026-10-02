@@ -3130,3 +3130,42 @@ input[type='text']:hover {
   background: none;
   cursor: pointer;
 }
+
+/* SPL tab panels: the readout and the noise log fill their panels */
+.spl .dpanel .spl-top {
+  position: absolute;
+  inset: 0;
+  padding: 10px;
+  overflow: auto;
+  align-content: flex-start;
+}
+.spl-log {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+.spl-log .pane-fill {
+  position: relative;
+  inset: auto;
+  flex: 1;
+  min-height: 0;
+}
+.spl-log .log-status {
+  padding: 4px 10px;
+}
+.spl .dpanel .spl-stats {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  align-content: start;
+}
+.spl .dpanel .spl-big {
+  padding: 12px 22px;
+  min-width: 240px;
+}
+.spl .dpanel .spl-big .val {
+  font-size: 60px;
+}
+.spl .dpanel .stat b {
+  font-size: 22px;
+  white-space: nowrap;
+}

@@ -2,15 +2,24 @@ import { CHART } from '../ui/theme';
 import type { App, View } from '../app';
 import { Plot, type Series } from '../ui/plot';
 import { h, icon, select } from '../ui/dom';
+import type { DockLayout } from '../ui/dock';
+import { DockedView } from './docked';
+import { optionsMenu, optHead } from '../ui/popover';
 import type { Weighting } from '../dsp/weighting';
 import type { SplReading } from '../dsp/spl';
 
-/** Sound level meter with Leq, Lmax, peak and a scrolling history graph. */
-export class SplView implements View {
+export function defaultSplLayout(): DockLayout {
+  return { order: ['meter', 'history', 'log'], sizes: { meter: 0.62, history: 1, log: 1.15 }, hidden: [], floating: {} };
+}
+
+/**
+ * Sound level meter with Leq, Lmax, peak, a 2-minute history and the noise log. Each of the three is a panel:
+ * rearrange, resize, float or detach them (e.g. the level readout on a second screen) like on the Spectrum tab.
+ */
+export class SplView extends DockedView implements View {
   id = 'spl' as const;
   title = 'SPL';
   icon = 'clock' as const;
-  el = h('div', { class: 'spl' });
   private big = h('div', { class: 'spl-big' });
   private stats = h('div', { class: 'spl-stats' });
   private history: Plot;
@@ -23,48 +32,48 @@ export class SplView implements View {
   private logVersion = -1;
   private logSpan = 10;
 
-  constructor(private app: App) {
+  constructor(app: App) {
+    super(app, 'splLayout', defaultSplLayout);
+    this.el.classList.add('spl');
     const s = app.settings;
     this.history = new Plot({ xType: 'lin', xMin: -120, xMax: 0, yMin: 20, yMax: 120, yUnit: 'dB', xUnit: 's', yStep: 10, title: 'History (last 2 minutes)', yLimits: [-200, 200] });
-    this.el.append(
-      h(
-        'div',
-        { class: 'toolbar' },
-        h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Channel'), this.chHost),
-        h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Weighting'), (this.weightSel = select([{ value: 'A' as Weighting, label: 'A' }, { value: 'C' as Weighting, label: 'C' }, { value: 'Z' as Weighting, label: 'Z (flat)' }], s.splWeighting, (v) => { s.splWeighting = v; app.spl.setWeighting(v); app.save(); }, { dataset: { setting: 'splWeighting' } }) as HTMLSelectElement)),
-        h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Time'), select([{ value: 'fast' as const, label: 'Fast (125 ms)' }, { value: 'slow' as const, label: 'Slow (1 s)' }], s.splTime, (v) => { s.splTime = v; app.save(); }, { dataset: { setting: 'splTime' } })),
-        h('div', { class: 'spacer' }),
-        h('button', { class: 'btn small', onclick: () => app.spl.resetLeq() }, icon('reset', 14), 'Reset Leq / Max'),
-        h('button', { class: 'btn small', onclick: () => app.setView('tools') }, icon('settings', 14), 'Calibrate…'),
-      ),
-      h('div', { class: 'spl-top' }, this.big, this.stats),
-      this.subtabs,
-      this.historyBox,
-      this.logBox,
+    const logToolbar = this.logToolbar();
+    const options = optionsMenu(
+      [
+        optHead('Panels'),
+        h('div', { class: 'opt-ctl' }, this.panelChip('meter', 'Sound level', 'sound level'), this.panelChip('history', 'History', 'history'), this.panelChip('log', 'Noise log', 'noise log')),
+        optHead('Layout'),
+        h('div', { class: 'opt-ctl' }, this.resetLayoutButton()),
+      ],
+      { title: 'SPL options: panels and layout', id: 'spl' },
     );
-    this.historyBox.append(h('div', { class: 'pane fill' }, this.history.el));
-    this.logBox.append(this.logToolbar(), this.logStatus, h('div', { class: 'pane fill' }, this.logPlot.el));
+    const toolbar = h(
+      'div',
+      { class: 'toolbar' },
+      h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Channel'), this.chHost),
+      h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Weighting'), (this.weightSel = select([{ value: 'A' as Weighting, label: 'A' }, { value: 'C' as Weighting, label: 'C' }, { value: 'Z' as Weighting, label: 'Z (flat)' }], s.splWeighting, (v) => { s.splWeighting = v; app.spl.setWeighting(v); app.save(); }, { dataset: { setting: 'splWeighting' } }) as HTMLSelectElement)),
+      h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Time'), select([{ value: 'fast' as const, label: 'Fast (125 ms)' }, { value: 'slow' as const, label: 'Slow (1 s)' }], s.splTime, (v) => { s.splTime = v; app.save(); }, { dataset: { setting: 'splTime' } })),
+      h('div', { class: 'spacer' }),
+      h('button', { class: 'btn small', onclick: () => app.spl.resetLeq() }, icon('reset', 14), 'Reset Leq / Max'),
+      h('button', { class: 'btn small', onclick: () => app.setView('tools') }, icon('settings', 14), 'Calibrate…'),
+      options,
+    );
+    this.mountDock(
+      [
+        { id: 'meter', title: 'Sound level', body: h('div', { class: 'spl-top' }, this.big, this.stats) },
+        this.plotPanel('history', 'History (2 min)', this.history),
+        { id: 'log', title: 'Noise log', body: h('div', { class: 'spl-log' }, logToolbar, this.logStatus, h('div', { class: 'pane-fill' }, this.logPlot.el)), onResize: () => this.logPlot.resize() },
+      ],
+      toolbar,
+    );
     this.renderLogButton();
-    this.renderSubtabs();
   }
 
-  /** History and noise log share the space below the meter: one at a time. */
-  private sub: 'history' | 'log' = 'history';
-  private subtabs = h('div', { class: 'subtabs spl-subtabs' });
-  private historyBox = h('div', { class: 'spl-box' });
-  private logBox = h('div', { class: 'spl-box' });
-
-  private renderSubtabs(): void {
-    const rec = this.app.logger.running;
-    const tab = (id: 'history' | 'log', ...label: (string | HTMLElement)[]) =>
-      h('button', { class: `chip${this.sub === id ? ' on' : ''}`, dataset: { sub: id }, onclick: () => { this.sub = id; this.renderSubtabs(); } }, ...label);
-    this.subtabs.replaceChildren(tab('history', 'History (2 min)'), tab('log', rec ? h('span', { class: 'rec-dot' }) : '', 'Noise log'));
-    this.subRec = rec;
-    this.historyBox.style.display = this.sub === 'history' ? '' : 'none';
-    this.logBox.style.display = this.sub === 'log' ? '' : 'none';
-    if (this.sub === 'log') this.logVersion = -1;
+  invalidate(): void {
+    this.histDirty = true;
+    this.logVersion = -1;
+    this.shownKey = '';
   }
-  private subRec = false;
 
   /** Noise log controls: start / stop, interval, limit and rolling window, export. */
   private logToolbar(): HTMLElement {
@@ -237,14 +246,15 @@ export class SplView implements View {
   private shownKey = '';
   private histCount = -1;
 
-  tick(): void {
+  tick(detachedOnly = false): void {
+    this.detachedOnly = detachedOnly;
     const s = this.app.settings;
     // Numbers: the app's steady 4-per-second reading (never the frame rate)
     const r = this.app.splDisplay;
     const run = this.app.engine.running && r;
     // Rebuilt only when the reading or what it is shown in changed (not every frame while audio is stopped)
     const shownKey = `${!!run}|${s.splCalibrated}|${s.splOffset}|${s.splWeighting}|${s.splTime}`;
-    if (r !== this.shownReading || shownKey !== this.shownKey) {
+    if (this.visible('meter') && (r !== this.shownReading || shownKey !== this.shownKey)) {
       this.shownReading = r;
       this.shownKey = shownKey;
       const unit = s.splCalibrated ? `dB(${s.splWeighting})` : `dBFS(${s.splWeighting})`;
@@ -274,10 +284,10 @@ export class SplView implements View {
     if (!s.splCalibrated && this.history.cfg.yMin > -20) this.history.setDefaults({ yMin: -100, yMax: 0 });
     if (s.splCalibrated && this.history.cfg.yMax < 60) this.history.setDefaults({ yMin: 20, yMax: 120 });
     this.lockWeighting();
-    if (this.app.logger.running !== this.subRec) this.renderSubtabs();
-    if (this.sub === 'history') {
-      if (this.histDirty) this.history.draw();
+    if (this.visible('history') && this.histDirty) {
+      this.history.draw();
       this.histDirty = false;
-    } else this.tickLog();
+    }
+    if (this.visible('log')) this.tickLog();
   }
 }

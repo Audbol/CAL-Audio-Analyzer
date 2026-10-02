@@ -86,6 +86,8 @@ export interface Settings {
   /** Panel arrangements (order, sizes, floating, hidden) of the Spectrum and Transfer views. */
   spectrumLayout: DockLayout | null;
   transferLayout: DockLayout | null;
+  /** Panel arrangement of the SPL tab (sound level, history, noise log). */
+  splLayout: DockLayout | null;
   remoteServer: RemoteServerSettings;
   peakHold: boolean;
   splWeighting: Weighting;
@@ -163,6 +165,7 @@ export function defaultSettings(): Settings {
     showCoherence: true,
     spectrumLayout: null,
     transferLayout: null,
+    splLayout: null,
     remoteServer: { enabled: false, port: 8520, pin: randomPin(), allowControl: true },
     peakHold: false,
     splWeighting: 'A',

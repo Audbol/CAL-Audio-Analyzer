@@ -106,13 +106,11 @@ await shot(path.join(GUIDE, 'align.png'), { wait: 800 });
 // --- SPL meter and noise log
 await key('8', 3000);
 await shot(path.join(GUIDE, 'spl.png'));
-await page.locator('.spl-subtabs [data-sub="log"]').click();
 await page.locator('select[data-log="interval"]').selectOption('1');
 await page.locator('button[data-log="toggle"]').click();
 await page.waitForTimeout(8000);
 await shot(path.join(GUIDE, 'noise-log.png'));
 await page.locator('button[data-log="toggle"]').click();
-await page.locator('.spl-subtabs [data-sub="meter"]').click().catch(() => undefined);
 
 // --- Tools: microphones, remote access, display & performance
 await key('9', 800);
