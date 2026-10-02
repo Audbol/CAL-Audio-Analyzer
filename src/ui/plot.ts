@@ -38,6 +38,8 @@ export interface Marker {
   x: number;
   label?: string;
   color: string;
+  /** Label at the top of the plot (default: at the bottom). */
+  top?: boolean;
 }
 
 export interface PlotConfig {
@@ -441,7 +443,7 @@ export class Plot {
       if (m.label) {
         ctx.fillStyle = seriesColor(m.color);
         ctx.font = "10px 'Inter Variable', Inter, system-ui, sans-serif";
-        ctx.fillText(m.label, x + 3, H - pad.b - 5);
+        ctx.fillText(m.label, x + 3, m.top ? pad.t + 24 : H - pad.b - 5);
       }
     }
     ctx.restore();

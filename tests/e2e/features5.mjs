@@ -87,6 +87,27 @@ if (want('spl')) {
   check(await page.evaluate(() => !!document.querySelector('.spl .dpanel[data-panel="meter"]:not(.popped)')), 'closing the window docks the panel again');
 }
 
+// --- 3. Room diagnosis from a sweep in the demo room (modes at 47 and 94 Hz, early reflections from 2.3 ms)
+if (want('diagnosis')) {
+  await page.keyboard.press('5');
+  await page.getByRole('button', { name: 'Measure sweep' }).click();
+  await page.waitForFunction(() => window.calApp.views.find((v) => v.id === 'room').result !== null, null, { timeout: 40000 });
+  await page.locator('.room-tabs-row').getByRole('button', { name: 'Diagnosis' }).click();
+  await page.waitForTimeout(500);
+  const dx = await page.evaluate(() => window.calApp.views.find((v) => v.id === 'room').diagnosis);
+  const mode47 = dx.findings.find((f) => f.kind === 'mode' && Math.abs(f.f - 47) < 4);
+  check(!!mode47 && mode47.confidence === 'likely', `the 47 Hz room mode is found (${mode47 ? mode47.f.toFixed(1) + ' Hz' : 'none'})`);
+  check(dx.reflections.some((r) => Math.abs(r.delayMs - 2.3) < 0.15), `the 2.3 ms floor reflection is found (${dx.reflections.map((r) => r.delayMs.toFixed(1)).join(', ')} ms)`);
+  const kinds = new Set(dx.findings.map((f) => f.kind));
+  check(kinds.has('mode') && (kinds.has('reflection') || kinds.has('sbir')), `modes and reflections are told apart (${[...kinds].join(', ')})`);
+  check((await page.locator('.dx-card').count()) === dx.findings.length && (await page.locator('.dx-card .dx-badge').first().textContent()).length > 0, 'each finding is listed with a text label');
+  await page.screenshot({ path: `${out}/feat5-03-diagnosis.png` });
+  await page.locator('.room-tabs-row').getByRole('button', { name: 'Frequency response' }).click();
+  await page.waitForTimeout(400);
+  check(await page.evaluate(() => window.calApp.views.find((v) => v.id === 'room').fr.markers.length > 0), 'findings are marked on the frequency response');
+  await page.screenshot({ path: `${out}/feat5-04-diagnosis-markers.png` });
+}
+
 check(errors.length === 0, `no console errors ${errors.join(' | ')}`);
 await browser.close();
 await new Promise((r) => server.httpServer.close(r));

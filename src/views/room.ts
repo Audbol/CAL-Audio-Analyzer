@@ -11,6 +11,16 @@ import { waterfall, WATERFALL_PRESETS, type WaterfallResult } from '../dsp/water
 import { WaterfallPlot } from '../ui/waterfall-plot';
 import { optionsMenu, optRow, optHead } from '../ui/popover';
 import { TargetOverlay } from './target-overlay';
+import { diagnose, type Diagnosis, type FindingKind } from '../dsp/diagnose';
+import { speedOfSound } from '../dsp/delay';
+
+/** How each kind of diagnosis finding is labelled (text first, colour second). */
+const DX_KIND: Record<FindingKind, { label: string; short: string; color: string }> = {
+  mode: { label: 'Room mode', short: 'Mode', color: '#ff9f1c' },
+  sbir: { label: 'SBIR', short: 'SBIR', color: '#ff4d6d' },
+  null: { label: 'Modal null', short: 'Null', color: '#b18cff' },
+  reflection: { label: 'Reflection', short: 'Refl.', color: '#4cc9f0' },
+};
 
 interface SweepResult {
   spec: SweepSpec;
@@ -49,7 +59,7 @@ export class RoomView implements View {
   private decay: Plot;
   private table = h('div', { class: 'rt-table' });
   private cards = h('div', { class: 'cards' });
-  private tab: 'fr' | 'ir' | 'rt' | 'wf' = 'fr';
+  private tab: 'fr' | 'ir' | 'rt' | 'wf' | 'dx' = 'fr';
   private wf = new WaterfallPlot('Waterfall: cumulative spectral decay');
   private wfOpts: { preset: 'bass' | 'full'; range: number } = { preset: 'bass', range: 45 };
   private wfFor: { result: unknown; preset: string } | null = null;
@@ -123,11 +133,12 @@ export class RoomView implements View {
 
   private renderTabs(): void {
     clear(this.tabHost);
-    const tabs: { id: 'fr' | 'ir' | 'rt' | 'wf'; label: string }[] = [
+    const tabs: { id: 'fr' | 'ir' | 'rt' | 'wf' | 'dx'; label: string }[] = [
       { id: 'fr', label: 'Frequency response' },
       { id: 'ir', label: 'Impulse / ETC' },
       { id: 'rt', label: 'Reverberation (RT60)' },
       { id: 'wf', label: 'Waterfall' },
+      { id: 'dx', label: 'Diagnosis' },
     ];
     for (const t of tabs) {
       this.tabHost.append(h('button', { class: `chip${this.tab === t.id ? ' on' : ''}`, onclick: () => { this.tab = t.id; this.renderTabs(); this.showTab(); } }, t.label));
@@ -168,7 +179,8 @@ export class RoomView implements View {
         h('span', { class: 'dim small' }, 'Ridges that reach far back are resonances that keep ringing: room modes in the bass, or cabinet and horn resonances higher up.'),
       );
       this.content.append(bar, h('div', { class: 'pane fill' }, this.wf.el));
-    } else this.content.append(h('div', { class: 'rt-split' }, h('div', { class: 'pane' }, this.decay.el), this.table));
+    } else if (this.tab === 'dx') this.content.append(this.dxEl);
+    else this.content.append(h('div', { class: 'rt-split' }, h('div', { class: 'pane' }, this.decay.el), this.table));
     this.dirty = true;
   }
 
@@ -247,6 +259,10 @@ export class RoomView implements View {
       clear(this.cards);
       this.table.innerHTML = '';
       for (const p of [this.fr, this.irPlot, this.decay]) p.series = [];
+      this.diagnosis = null;
+      this.fr.markers = [];
+      this.irPlot.markers = [];
+      this.dxEl.replaceChildren(h('div', { class: 'empty big' }, 'Run a sweep to see which dips and peaks come from room modes, reflections or speaker-boundary interference.'));
       this.setProgress(0, 'Ready.', false);
       this.dirty = true;
       return;
@@ -254,6 +270,38 @@ export class RoomView implements View {
     this.applyShared(state.meta, state.ir);
     this.setProgress(1, `Loaded from the session · measured ${this.result!.when.toLocaleString()} · peak-to-noise ${this.result!.peakDb.toFixed(0)} dB`, false);
     this.app.shareSweep(state.meta, state.ir);
+  }
+
+  /** Room diagnosis of the current sweep: what causes the response's peaks and dips. */
+  diagnosis: Diagnosis | null = null;
+  private dxEl = h('div', { class: 'dx-list' }, h('div', { class: 'empty big' }, 'Run a sweep to see which dips and peaks come from room modes, reflections or speaker-boundary interference.'));
+
+  private renderDiagnosis(r: SweepResult): void {
+    const dx = (this.diagnosis = diagnose(r.ir, r.d.fs, r.t0, { c: speedOfSound(this.app.settings.tempC), fMin: r.spec.f1 }));
+    // Markers: modes, nulls and SBIR on the frequency response; reflections on the impulse response / ETC
+    this.fr.markers = dx.findings.filter((f) => f.kind !== 'reflection' && f.f).map((f) => ({ x: f.f!, label: `${DX_KIND[f.kind].short} ${f.f! < 1000 ? Math.round(f.f!) : (f.f! / 1000).toFixed(1) + 'k'}`, color: DX_KIND[f.kind].color, top: true }));
+    this.irPlot.markers = dx.findings.filter((f) => f.delayMs !== undefined).map((f) => ({ x: f.delayMs!, label: `${DX_KIND[f.kind].short} ${f.delayMs!.toFixed(1)} ms`, color: DX_KIND[f.kind].color }));
+    const intro = h(
+      'p',
+      { class: 'dim small dx-intro' },
+      'What shapes this response: room modes (resonances that ring), speaker-boundary interference (SBIR: a nearby wall, floor or desk cancelling the low-mids) and reflections (comb filtering). Each needs a different fix. Markers on the Frequency response and Impulse / ETC graphs show where they are.',
+    );
+    if (!dx.findings.length) {
+      this.dxEl.replaceChildren(intro, h('div', { class: 'empty big' }, 'No clear room modes, boundary interference or strong reflections in this measurement.'));
+      return;
+    }
+    this.dxEl.replaceChildren(
+      intro,
+      ...dx.findings.map((f) =>
+        h(
+          'div',
+          { class: `dx-card ${f.kind} ${f.confidence}`, dataset: { kind: f.kind } },
+          h('div', { class: 'dx-head' }, h('span', { class: 'dx-badge', style: `--dx:${DX_KIND[f.kind].color}` }, DX_KIND[f.kind].label), h('b', {}, f.title), h('span', { class: 'dx-conf' }, f.confidence === 'likely' ? 'Likely' : 'Possible')),
+          h('p', {}, f.detail),
+          h('p', { class: 'dx-advice' }, h('b', {}, 'What to do: '), f.advice),
+        ),
+      ),
+    );
   }
 
   /** Waterfall of the current sweep (computed once per sweep and range), or null. */
@@ -470,6 +518,7 @@ export class RoomView implements View {
     }));
     decaySeries.push({ id: 'bb', label: 'Broadband', x: Float64Array.from(ac.broadband.decay, (_, k) => k * ac.decayStep * 1000), y: ac.broadband.decay, color: CHART.fg, width: 2 });
     this.decay.series = decaySeries;
+    this.renderDiagnosis(r);
     this.renderCards(r);
     this.renderTable(ac);
     this.dirty = true;
