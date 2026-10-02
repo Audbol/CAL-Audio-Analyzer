@@ -5,7 +5,7 @@ import type { DockLayout } from '../ui/dock';
 import { octaveBandCentres, sampleLogGrid, type Smoothing } from '../dsp/freq';
 import { AVG_OPTIONS } from './meters';
 import { DockedView } from './docked';
-import { optionsMenu, optRow, optHead } from '../ui/popover';
+import { optionsMenu, optRow, optHead, colourChoice } from '../ui/popover';
 import { TargetOverlay } from './target-overlay';
 import { micAverageControl, micAverageSeries } from './mic-average-overlay';
 
@@ -107,6 +107,21 @@ export class SpectrumView extends DockedView implements View {
         optHead('Analysis'),
         optRow('FFT size', select([4096, 8192, 16384, 32768, 65536].map((n) => ({ value: n, label: `${n / 1024}k` })), s.rtaFft, (v) => { s.rtaFft = v; app.applyAnalysisSettings(); }, { dataset: { setting: 'rtaFft' }, title: 'Longer FFTs resolve lower frequencies but react more slowly' })),
         optRow('Averaging', select(AVG_OPTIONS, s.rtaAveraging, (v) => { s.rtaAveraging = v; app.applyAnalysisSettings(); }, { dataset: { setting: 'rtaAveraging' } })),
+        optHead('Colours'),
+        optRow('Trace', colourChoice(s.rtaTraceColor, (v) => { s.rtaTraceColor = v; app.save(); }, { auto: 'Measurement colour', label: 'Spectrum trace colour' })),
+        optRow('Fill', colourChoice(s.rtaFillColor, (v) => { s.rtaFillColor = v; app.save(); }, { auto: 'Same as the trace', none: true, label: 'Spectrum fill colour' })),
+        optRow(
+          'Fill opacity',
+          select(
+            [{ value: 0, label: 'Default' }, ...[10, 20, 35, 50, 75, 100].map((v) => ({ value: v, label: `${v} %` }))],
+            s.rtaFillOpacity,
+            (v) => {
+              s.rtaFillOpacity = v;
+              app.save();
+            },
+            { title: 'How strongly the area under the line, or the bars, are filled', dataset: { setting: 'rtaFillOpacity' } },
+          ),
+        ),
         optHead('Average curve'),
         optRow(
           'Smoothing',
@@ -214,7 +229,7 @@ export class SpectrumView extends DockedView implements View {
     const s = app.settings;
     if (this.visible('rta')) {
       // Redraw only when what is shown changed (new analysis data arrives ~6–12 times a second)
-      const key = `${app.traces.version}|${s.rtaStyle}|${s.rtaSmoothing}|${s.peakHold}|${s.rtaAverageCurve}|${s.rtaAverageSmoothing}|${s.avgCurveShow}|${s.avgCurveColor}|${s.avgCurveWidth}|${s.micAverage}|${s.targetCurve}|${s.targetTolerance}|${s.theme}|${s.splCalibrated}|${s.splOffset}|${JSON.stringify(s.mics.map((mc) => [mc.channel, mc.splCalibrated && mc.splOffset]))}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.rtaShown}`).join(',')}`;
+      const key = `${app.traces.version}|${s.rtaStyle}|${s.rtaSmoothing}|${s.peakHold}|${s.rtaAverageCurve}|${s.rtaAverageSmoothing}|${s.avgCurveShow}|${s.rtaTraceColor}|${s.rtaFillColor}|${s.rtaFillOpacity}|${s.avgCurveColor}|${s.avgCurveWidth}|${s.micAverage}|${s.targetCurve}|${s.targetTolerance}|${s.theme}|${s.splCalibrated}|${s.splOffset}|${JSON.stringify(s.mics.map((mc) => [mc.channel, mc.splCalibrated && mc.splOffset]))}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.rtaShown}`).join(',')}`;
       if (key === this.lastKey) return this.tickMeters();
       this.lastKey = key;
       const g = app.grid;
@@ -244,17 +259,21 @@ export class SpectrumView extends DockedView implements View {
       }
       // Band levels at the exact band centres (the RTA is already band power at this resolution)
       const atBands = (y: Float64Array, off: number) => this.bands.map((f) => sampleLogGrid(g, y, f) + off);
+      // Chosen colours (Options → Colours): the trace, and the fill under the line / of the bars
+      const traceOf = (c: string) => (s.rtaTraceColor === 'auto' ? c : s.rtaTraceColor);
+      const fillStyle: Pick<Series, 'fillColor' | 'fillAlpha'> =
+        s.rtaFillColor === 'none' ? { fillAlpha: 0 } : { fillColor: s.rtaFillColor === 'auto' ? undefined : s.rtaFillColor, fillAlpha: s.rtaFillOpacity ? s.rtaFillOpacity / 100 : undefined };
       const only = s.micAverage === 'only' && app.measurements.filter((m) => m.cfg.enabled).length > 1;
       for (const m of app.measurements) {
         if (!m.cfg.enabled || only || !m.hasRta) continue;
         const off = offOf(m.cfg.mic);
         if (bars) {
-          series.push({ id: m.cfg.id, label: nameOf(m), x: this.bands, y: atBands(m.rtaOut, off), color: m.cfg.color, bars });
-          if (s.peakHold) series.push({ id: `${m.cfg.id}-pk`, label: `${m.cfg.name} peak`, x: this.bands, y: atBands(m.rtaPeakOut, off), color: m.cfg.color, bars, cap: true });
+          series.push({ id: m.cfg.id, label: nameOf(m), x: this.bands, y: atBands(m.rtaOut, off), color: traceOf(m.cfg.color), bars, ...fillStyle });
+          if (s.peakHold) series.push({ id: `${m.cfg.id}-pk`, label: `${m.cfg.name} peak`, x: this.bands, y: atBands(m.rtaPeakOut, off), color: traceOf(m.cfg.color), bars, cap: true });
           continue;
         }
-        if (s.peakHold) series.push({ id: `${m.cfg.id}-pk`, label: `${m.cfg.name} peak`, x: g, y: shiftBy(m.rtaPeakOut, off), color: m.cfg.color, width: 1, dash: [2, 2] });
-        series.push({ id: m.cfg.id, label: nameOf(m), x: g, y: shiftBy(m.rtaOut, off), color: m.cfg.color, width: 1.6, fill: true });
+        if (s.peakHold) series.push({ id: `${m.cfg.id}-pk`, label: `${m.cfg.name} peak`, x: g, y: shiftBy(m.rtaPeakOut, off), color: traceOf(m.cfg.color), width: 1, dash: [2, 2] });
+        series.push({ id: m.cfg.id, label: nameOf(m), x: g, y: shiftBy(m.rtaOut, off), color: traceOf(m.cfg.color), width: 1.6, fill: true, ...fillStyle });
       }
       // Average curves (for tuning) on top of everything: the long-term balance behind the live RTA
       const day = s.theme === 'day';

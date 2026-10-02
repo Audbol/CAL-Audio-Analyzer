@@ -13,6 +13,10 @@ export interface Series {
   dash?: number[];
   /** Fill area under the curve down to the bottom of the plot. */
   fill?: boolean;
+  /** Colour of the fill (line fill or bar bodies); the series colour when not set. */
+  fillColor?: string;
+  /** Opacity of the fill (0..1); the theme's default when not set. */
+  fillAlpha?: number;
   /** Treat as wrapped phase: break the line on ±180° jumps. */
   wrap?: number;
   /** Render as bars centred on each x (RTA bands): the bar width in 1/N octave. */
@@ -560,9 +564,11 @@ export class Plot {
         if (!s.cap && y < bottom) fill.rect(x0 + gap, y, Math.max(1, x1 - x0 - 2 * gap), bottom - y);
         tops.rect(x0 + gap, y - cap / 2, Math.max(1, x1 - x0 - 2 * gap), cap);
       }
-      if (!s.cap) {
-        ctx.globalAlpha = 0.45;
+      if (!s.cap && s.fillAlpha !== 0) {
+        ctx.fillStyle = s.fillColor ? seriesColor(s.fillColor) : color;
+        ctx.globalAlpha = s.fillAlpha ?? 0.45;
         ctx.fill(fill);
+        ctx.fillStyle = color;
       }
       ctx.globalAlpha = 1;
       ctx.fill(tops);
@@ -667,11 +673,12 @@ export class Plot {
       ctx.restore();
     }
     ctx.stroke();
-    if (s.fill) {
+    if (s.fill && s.fillAlpha !== 0) {
       ctx.lineTo(lastX, bottom);
       ctx.lineTo(firstX, bottom);
       ctx.closePath();
-      ctx.globalAlpha = COLORS.fillAlpha;
+      if (s.fillColor) ctx.fillStyle = seriesColor(s.fillColor);
+      ctx.globalAlpha = s.fillAlpha ?? COLORS.fillAlpha;
       ctx.fill();
       ctx.globalAlpha = 1;
     }

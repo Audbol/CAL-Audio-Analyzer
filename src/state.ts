@@ -112,6 +112,13 @@ export interface Settings {
   rtaAverageCurve: number;
   /** Smoothing of the average curve: 1/n octave with a bell-shaped window (0 = none). */
   rtaAverageSmoothing: number;
+  /**
+   * Spectrum colours: the trace (line or bar tops) and its fill (area under the line, bar bodies). 'auto' uses each
+   * measurement's own colour; the fill can also be 'none'. Fill opacity in percent (0 = theme default).
+   */
+  rtaTraceColor: string;
+  rtaFillColor: string;
+  rtaFillOpacity: number;
   /** How the average curve is drawn: shown or hidden (still measured), colour ('auto' = white / black by theme), line width (px). */
   avgCurveShow: boolean;
   avgCurveColor: string;
@@ -174,6 +181,9 @@ export function defaultSettings(): Settings {
     spectrogramLayout: 'vertical',
     rtaAverageCurve: 10,
     rtaAverageSmoothing: 6,
+    rtaTraceColor: 'auto',
+    rtaFillColor: 'auto',
+    rtaFillOpacity: 0,
     avgCurveShow: true,
     avgCurveColor: 'auto',
     avgCurveWidth: 2,

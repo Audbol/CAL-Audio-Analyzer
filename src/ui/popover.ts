@@ -67,3 +67,47 @@ export function optRow(label: string, ...controls: (HTMLElement | string | null)
 export function optHead(text: string): HTMLElement {
   return h('div', { class: 'opt-head' }, text);
 }
+
+const COLOUR_PRESETS = [
+  { value: '#4d9fff', label: 'Blue' },
+  { value: '#2ec4b6', label: 'Teal' },
+  { value: '#7cff6b', label: 'Green' },
+  { value: '#ffd60a', label: 'Yellow' },
+  { value: '#ff9f1c', label: 'Orange' },
+  { value: '#ff4d6d', label: 'Red' },
+  { value: '#ff5cf0', label: 'Magenta' },
+  { value: '#b18cff', label: 'Violet' },
+  { value: '#ffffff', label: 'White' },
+  { value: '#8a94a6', label: 'Grey' },
+];
+
+/**
+ * A colour choice: automatic, optionally none, a few presets or any colour (the swatch opens the system colour
+ * picker). Calls `onChange` with 'auto', 'none' or a #rrggbb colour.
+ */
+export function colourChoice(value: string, onChange: (v: string) => void, opts: { auto: string; none?: boolean; label: string }): HTMLElement {
+  const sel = h('select', { 'aria-label': opts.label });
+  const add = (v: string, l: string) => sel.append(h('option', { value: v }, l));
+  add('auto', opts.auto);
+  if (opts.none) add('none', 'None');
+  for (const p of COLOUR_PRESETS) add(p.value, p.label);
+  add('custom', 'Custom…');
+  const swatch = h('input', { type: 'color', class: 'swatch', 'aria-label': `${opts.label} (custom)`, title: 'Pick any colour' });
+  const show = (v: string) => {
+    const preset = v === 'auto' || v === 'none' || COLOUR_PRESETS.some((p) => p.value === v);
+    sel.value = preset ? v : 'custom';
+    swatch.style.display = v === 'auto' || v === 'none' ? 'none' : '';
+    if (v.startsWith('#')) swatch.value = v;
+  };
+  sel.addEventListener('change', () => {
+    const v = sel.value === 'custom' ? swatch.value || '#4d9fff' : sel.value;
+    show(v);
+    onChange(v);
+  });
+  swatch.addEventListener('input', () => {
+    show(swatch.value);
+    onChange(swatch.value);
+  });
+  show(value);
+  return h('span', { class: 'colour-choice' }, sel, swatch);
+}
