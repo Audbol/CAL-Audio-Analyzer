@@ -55,7 +55,7 @@ export class SplView extends DockedView implements View {
       h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Time'), select([{ value: 'fast' as const, label: 'Fast (125 ms)' }, { value: 'slow' as const, label: 'Slow (1 s)' }], s.splTime, (v) => { s.splTime = v; app.save(); }, { dataset: { setting: 'splTime' } })),
       h('div', { class: 'spacer' }),
       h('button', { class: 'btn small', onclick: () => app.spl.resetLeq() }, icon('reset', 14), 'Reset Leq / Max'),
-      h('button', { class: 'btn small', onclick: () => app.setView('tools') }, icon('settings', 14), 'Calibrate…'),
+      h('button', { class: 'btn small', onclick: () => app.openTools('setup') }, icon('settings', 14), 'Calibrate…'),
       options,
     );
     this.mountDock(

@@ -26,7 +26,7 @@ const unnamed = () =>
       .map((el) => el.outerHTML.slice(0, 100));
   });
 const missing = new Set();
-for (const k of ['1', '2', '3', '4', '5', '6', '7', '8', '9']) {
+for (const k of ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']) {
   await page.keyboard.press(k);
   await page.waitForTimeout(300);
   for (const m of await unnamed()) missing.add(`tab ${k}: ${m}`);

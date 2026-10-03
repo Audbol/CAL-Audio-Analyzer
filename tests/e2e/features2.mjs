@@ -135,6 +135,7 @@ await page.screenshot({ path: `${out}/feat2-04-noise-log.png` });
 
 // --- Report: noise log, waterfall and the position photo
 await page.keyboard.press('9');
+await page.locator('[data-section="session"]').click();
 const [popup] = await Promise.all([page.waitForEvent('popup'), page.getByRole('button', { name: 'Create report' }).click()]);
 await popup.waitForLoadState();
 const rep = await popup.evaluate(() => ({ h2: [...document.querySelectorAll('h2')].map((x) => x.textContent), text: document.body.innerText, photos: document.querySelectorAll('figure.photo img').length }));

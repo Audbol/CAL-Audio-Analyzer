@@ -60,6 +60,7 @@ const rate = () =>
   );
 const normal = await rate();
 await page.keyboard.press('9');
+await page.locator('[data-section="display"]').click();
 await page.locator('select[data-setting="powerMode"]').selectOption('saver');
 await page.keyboard.press('1');
 await page.waitForTimeout(1000);
@@ -70,6 +71,7 @@ check(/battery saver/.test(await page.locator('.statusbar, .status').first().tex
 const splOk = await page.evaluate(() => { const r = window.calApp.splReading; return Number.isFinite(r.level) && r.level > -60; });
 check(splOk, 'SPL meter keeps measuring in battery saver');
 await page.keyboard.press('9');
+await page.locator('[data-section="display"]').click();
 await page.locator('select[data-setting="powerMode"]').selectOption('normal');
 check(!(await page.evaluate(() => window.calApp.powerSaving)) && (await page.evaluate(() => window.calApp.measurements[0].rta.main.hop)) < 2000, 'battery saver off restores the full rate');
 
@@ -95,7 +97,9 @@ await page.screenshot({ path: `${out}/feat4-02-room-target.png` });
 
 // --- Reset analysis & display to a profile: setup stays
 await page.keyboard.press('9');
+await page.locator('[data-section="setup"]').click();
 await page.getByRole('button', { name: 'Add microphone' }).click();
+await page.locator('[data-section="data"]').click();
 await page.evaluate(() => { const s = window.calApp.settings; s.tfSmoothing = 3; s.rtaStyle = 'bars'; window.calApp.save(); });
 const before = await page.evaluate(() => ({ mics: window.calApp.settings.mics.length, pin: window.calApp.settings.remoteServer.pin, meas: window.calApp.settings.measurements.length }));
 await page.locator('select[data-reset="profile"]').selectOption('dual-fft');

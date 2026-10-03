@@ -3221,3 +3221,132 @@ input[type='text']:hover {
 .dx-advice {
   color: var(--dim);
 }
+
+/* Tools: a section list on the left, one section at a time */
+.view.tools {
+  flex-direction: row;
+  overflow: hidden;
+}
+.tools-nav {
+  flex: none;
+  width: 210px;
+  padding: 12px 8px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+.tools-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.tools-nav-item:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.tools-nav-item.on {
+  background: var(--panel-2);
+  color: var(--text);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.tools-body {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+.tools-title {
+  margin: 14px 14px 0;
+  font-size: 15px;
+}
+html.compact .view.tools {
+  flex-direction: column;
+}
+html.compact .tools-nav {
+  width: auto;
+  flex-direction: row;
+  border-right: 0;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  padding: 6px 8px;
+}
+html.compact .tools-nav-item {
+  width: auto;
+  flex: none;
+  white-space: nowrap;
+}
+html.compact .tools-nav-item.on {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+html.compact .tools-title {
+  display: none;
+}
+
+/* Segmented choice (e.g. the reference signal) */
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border-2, var(--border));
+  border-radius: 8px;
+  overflow: hidden;
+}
+.segmented .seg {
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.segmented .seg + .seg {
+  border-left: 1px solid var(--border-2, var(--border));
+}
+.segmented .seg.on {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Room modes tab */
+.modes-view {
+  overflow: hidden;
+}
+.modes-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr);
+  gap: 12px;
+  padding: 0 14px 14px;
+}
+.modes-plots {
+  display: grid;
+  grid-template-rows: 1fr 1fr auto;
+  gap: 10px;
+  min-height: 0;
+}
+.modes-plots .pane.fill {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  min-height: 160px;
+}
+.modes-view .modes-table {
+  max-height: none;
+  overflow-y: auto;
+}
+html.compact .modes-body {
+  grid-template-columns: 1fr;
+  overflow-y: auto;
+}

@@ -112,6 +112,7 @@ await page.waitForTimeout(300);
 
 // --- Session: fill in details, save, clear everything, open it again
 await page.keyboard.press('9');
+await page.locator('[data-section="session"]').click();
 await page.locator('input[data-session="name"]').fill('Main PA tuning');
 await page.locator('input[data-session="venue"]').fill('Test Hall');
 await page.locator('textarea[data-session="notes"]').fill('Sub delayed, mains EQ.');

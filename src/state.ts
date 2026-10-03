@@ -15,7 +15,7 @@ export { PALETTE };
 /** Colours used by earlier versions; stored measurements using them are moved to the current palette. */
 const LEGACY_PALETTE = ['#2dd4bf', '#f59e0b', '#a78bfa', '#f472b6', '#60a5fa', '#a3e635', '#fb7185', '#fbbf24', '#22d3ee', '#e879f9'];
 
-export type ViewId = 'spectrum' | 'transfer' | 'spectrogram' | 'impulse' | 'room' | 'eq' | 'align' | 'spl' | 'tools';
+export type ViewId = 'spectrum' | 'transfer' | 'spectrogram' | 'impulse' | 'room' | 'eq' | 'align' | 'spl' | 'tools' | 'modes';
 
 export type Theme = 'night' | 'day';
 
@@ -142,6 +142,12 @@ export interface Settings {
   targetTolerance: number;
   /** Target curve on the Sweep & Room frequency response ('off', a built-in id or `trace:<id>`). */
   roomTargetCurve: string;
+  /** Room for the room-mode calculator (m, s). `known`: the user entered it (the diagnosis then names its modes). */
+  room: { L: number; W: number; H: number; rt: number; known: boolean };
+  /** Input last used as a loopback reference (for switching back from the internal reference). */
+  loopbackInput?: number;
+  /** Section shown on the Tools tab. */
+  toolsSection: string;
   /** Session details used for saving and for reports. */
   session: { name: string; venue: string; notes: string };
 }
@@ -202,6 +208,8 @@ export function defaultSettings(): Settings {
     targetTolerance: 3,
     roomTargetCurve: 'off',
     session: { name: '', venue: '', notes: '' },
+    room: { L: 6.5, W: 4.2, H: 2.7, rt: 0.5, known: false },
+    toolsSection: 'setup',
   };
 }
 
@@ -230,7 +238,7 @@ export function loadSettings(): Settings {
     if (!Array.isArray(s.mics)) {
       s.mics = s.splCalibrated || s.micCal ? [{ id: 'mic1', name: 'Mic 1', channel: s.splChannel ?? 0, micCal: s.micCal ?? null, splOffset: s.splOffset ?? 0, splCalibrated: !!s.splCalibrated }] : [];
     }
-    return { ...d, ...s, generator: { ...d.generator, ...(s.generator ?? {}) }, remoteServer: { ...d.remoteServer, ...(s.remoteServer ?? {}) }, playlist: { ...d.playlist, ...(s.playlist ?? {}) }, session: { ...d.session, ...(s.session ?? {}) }, nativeAudio: { ...d.nativeAudio, ...(s.nativeAudio ?? {}) } } as Settings;
+    return { ...d, ...s, generator: { ...d.generator, ...(s.generator ?? {}) }, remoteServer: { ...d.remoteServer, ...(s.remoteServer ?? {}) }, playlist: { ...d.playlist, ...(s.playlist ?? {}) }, session: { ...d.session, ...(s.session ?? {}) }, room: { ...d.room, ...(s.room ?? {}) }, nativeAudio: { ...d.nativeAudio, ...(s.nativeAudio ?? {}) } } as Settings;
   } catch {
     return d;
   }

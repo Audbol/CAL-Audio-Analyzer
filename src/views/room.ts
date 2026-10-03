@@ -13,6 +13,7 @@ import { optionsMenu, optRow, optHead } from '../ui/popover';
 import { TargetOverlay } from './target-overlay';
 import { diagnose, type Diagnosis, type FindingKind } from '../dsp/diagnose';
 import { speedOfSound } from '../dsp/delay';
+import { axialModes, modeDimension } from './modes';
 
 /** How each kind of diagnosis finding is labelled (text first, colour second). */
 const DX_KIND: Record<FindingKind, { label: string; short: string; color: string }> = {
@@ -272,12 +273,22 @@ export class RoomView implements View {
     this.app.shareSweep(state.meta, state.ir);
   }
 
+  /** The last sweep's frequency response as shown (level-normalised), for the Room modes tab; null without one. */
+  measuredResponse(): { x: ArrayLike<number>; y: ArrayLike<number> } | null {
+    const s = this.result ? this.fr.series.find((x) => x.id === 'fr') : null;
+    return s ? { x: s.x, y: s.y } : null;
+  }
+
   /** Room diagnosis of the current sweep: what causes the response's peaks and dips. */
   diagnosis: Diagnosis | null = null;
   private dxEl = h('div', { class: 'dx-list' }, h('div', { class: 'empty big' }, 'Run a sweep to see which dips and peaks come from room modes, reflections or speaker-boundary interference.'));
 
   private renderDiagnosis(r: SweepResult): void {
-    const dx = (this.diagnosis = diagnose(r.ir, r.d.fs, r.t0, { c: speedOfSound(this.app.settings.tempC), fMin: r.spec.f1 }));
+    const c = speedOfSound(this.app.settings.tempC);
+    const room = this.app.settings.room;
+    // With the room's dimensions entered on the Room modes tab, measured modes are matched to predicted ones
+    const predicted = room.known ? axialModes(room, c, 300).map((m) => ({ f: m.f, label: `${modeDimension(m)} mode ${m.n.join('·')}` })) : undefined;
+    const dx = (this.diagnosis = diagnose(r.ir, r.d.fs, r.t0, { c, fMin: r.spec.f1, predicted }));
     // Markers: modes, nulls and SBIR on the frequency response; reflections on the impulse response / ETC
     this.fr.markers = dx.findings.filter((f) => f.kind !== 'reflection' && f.f).map((f) => ({ x: f.f!, label: `${DX_KIND[f.kind].short} ${f.f! < 1000 ? Math.round(f.f!) : (f.f! / 1000).toFixed(1) + 'k'}`, color: DX_KIND[f.kind].color, top: true }));
     this.irPlot.markers = dx.findings.filter((f) => f.delayMs !== undefined).map((f) => ({ x: f.delayMs!, label: `${DX_KIND[f.kind].short} ${f.delayMs!.toFixed(1)} ms`, color: DX_KIND[f.kind].color }));

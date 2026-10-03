@@ -120,9 +120,12 @@ await page.locator('.mic-row').first().locator('input[data-mic="name"]').dispatc
 await page.locator('.mic-row').first().locator('[data-mic="calibrate"]').click();
 await page.waitForTimeout(600);
 await shot(path.join(GUIDE, 'mics.png'), { el: '.tool-card:has(h4:has-text("Microphones"))' });
-await page.locator('.tool-card:has(h4:has-text("Remote access"))').first().scrollIntoViewIfNeeded();
+await page.locator('[data-section="remote"]').click();
+await page.waitForTimeout(500);
 await shot(path.join(DOCS, 'screenshot-remote-host.png'), { el: '.tool-card:has(h4:has-text("Remote access"))' });
+await page.locator('[data-section="display"]').click();
 await shot(path.join(GUIDE, 'performance.png'), { el: '.tool-card:has(h4:has-text("Display & performance"))' });
+await page.locator('[data-section="session"]').click();
 await shot(path.join(GUIDE, 'session.png'), { el: '.tool-card:has(h4:has-text("Session & report"))' });
 
 // --- Workspace menu (the native list can't be captured: show the control itself)

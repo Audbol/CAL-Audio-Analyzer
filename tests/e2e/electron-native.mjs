@@ -78,6 +78,7 @@ await page.screenshot({ path: 'test-results/native-02-sweep.png' });
 
 // Tools card shows the stream and no dropouts
 await page.keyboard.press('9');
+await page.locator('[data-section="setup"]').click();
 await page.waitForTimeout(1200);
 const card = await page.evaluate(() => ({ visible: getComputedStyle(document.querySelector('.native-card')).display !== 'none', text: document.querySelector('.native-status').textContent, st: window.calApp.engine.nativeLink.status }));
 check(card.visible && card.text.includes('Virtual loopback interface') && card.text.includes('48 kHz'), `Tools card shows the stream (${card.text})`);

@@ -1,9 +1,7 @@
-import { CHART } from '../ui/theme';
 import type { App, View } from '../app';
-import { Plot } from '../ui/plot';
-import { h, icon, numberInput, clear, select } from '../ui/dom';
-import { roomModes, schroederFrequency, criticalDistance, type RoomMode } from '../dsp/acoustics';
+import { h, icon, numberInput, select } from '../ui/dom';
 import { speedOfSound } from '../dsp/delay';
+import { GEN_CHANNEL } from '../audio/engine';
 import { weightingDb } from '../dsp/weighting';
 import { RemoteCard } from './remote-card';
 import { NativeCard } from './native-card';
@@ -14,15 +12,26 @@ import { openReport } from '../report';
 import { replaceSettings } from '../state';
 import { DEFAULT_PROFILES, resetToProfile } from '../defaults';
 
-/** Calibration, room-mode calculator and handy system-alignment calculators. */
+/** Tools sections: one at a time, picked from the list on the left (a row of chips on small screens). */
+export type ToolsSection = 'setup' | 'session' | 'remote' | 'display' | 'calc' | 'data';
+const SECTIONS: { id: ToolsSection; label: string; icon: Parameters<typeof icon>[0]; hint: string }[] = [
+  { id: 'setup', label: 'Setup', icon: 'mic', hint: 'Reference signal, microphones and calibration, audio interface' },
+  { id: 'session', label: 'Session & report', icon: 'layers', hint: 'Save or open a job, create a report' },
+  { id: 'remote', label: 'Remote access', icon: 'wifi', hint: 'Phones, tablets and other computers' },
+  { id: 'display', label: 'Display & performance', icon: 'sliders', hint: 'Graph quality, battery saver, bass resolution' },
+  { id: 'calc', label: 'Calculators', icon: 'clock', hint: 'Delay, distance and wavelength; weighting table' },
+  { id: 'data', label: 'Data & reset', icon: 'trash', hint: 'Delete traces, reset settings' },
+];
+
+/** Setup, sessions, remote access, display settings, calculators and data, in sections. */
 export class ToolsView implements View {
   id = 'tools' as const;
   title = 'Tools';
   icon = 'settings' as const;
   el = h('div', { class: 'tools' });
-  private room = { L: 6.5, W: 4.2, H: 2.7, rt: 0.5 };
-  private modesPlot: Plot;
-  private modesTable = h('div', { class: 'modes-table' });
+  private nav = h('nav', { class: 'tools-nav', 'aria-label': 'Tools sections' });
+  private body = h('div', { class: 'tools-body' });
+  private cards = new Map<ToolsSection, HTMLElement[]>();
   readonly micsCard: MicsCard;
   private delayOut = h('div', { class: 'calc-out' });
   private dirty = true;
@@ -34,7 +43,6 @@ export class ToolsView implements View {
     this.remoteCard = new RemoteCard(app);
     this.nativeCard = new NativeCard(app);
     this.micsCard = new MicsCard(app);
-    this.modesPlot = new Plot({ xType: 'log', xMin: 15, xMax: 400, yMin: 0, yMax: 3.4, yUnit: '', title: 'Room modes (axial ▮ tangential ▮ oblique ▮)', yLimits: [0, 4] });
     this.build();
   }
 
@@ -145,16 +153,6 @@ export class ToolsView implements View {
       h('div', { class: 'row gap8 wrap' }, h('label', { class: 'inline' }, 'Temp', temp, h('span', { class: 'unit' }, '°C')), h('label', { class: 'inline' }, 'Delay', dInput, h('span', { class: 'unit' }, 'ms')), h('label', { class: 'inline' }, 'Distance', mInput, h('span', { class: 'unit' }, 'm')), h('label', { class: 'inline' }, 'Freq', fInput, h('span', { class: 'unit' }, 'Hz'))),
       this.delayOut,
     );
-    // --- Room modes
-    const r = this.room;
-    const dim = (key: keyof typeof r, label: string, unit: string) => h('label', { class: 'inline' }, label, numberInput(r[key], (v) => { r[key] = Math.max(0.1, v); this.dirty = true; }, { class: 'num', step: '0.1' }), h('span', { class: 'unit' }, unit));
-    const modesCard = h(
-      'section',
-      { class: 'tool-card wide' },
-      h('h4', {}, icon('home', 15), ' Room mode calculator (rectangular room)'),
-      h('div', { class: 'row gap8 wrap' }, dim('L', 'Length', 'm'), dim('W', 'Width', 'm'), dim('H', 'Height', 'm'), dim('rt', 'RT60', 's')),
-      h('div', { class: 'modes-split' }, h('div', { class: 'pane', style: 'height:220px' }, this.modesPlot.el), this.modesTable),
-    );
     // --- Weighting reference
     const wt = [31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
     const wCard = h(
@@ -248,8 +246,100 @@ export class ToolsView implements View {
         ? h('p', { class: 'dim small' }, 'On the host: the measurement computer runs the FFTs and sends finished spectra, so every device shows the same result and slow devices only draw. Averaging and FFT size then follow the host. On this device: the full analysis runs here with its own averaging.')
         : null,
     );
-    this.el.append(h('div', { class: 'tool-grid' }, this.sessionCard(), this.micsCard.el, this.nativeCard.el, this.remoteCard.el, perfCard, delayCard, wCard, modesCard, dataCard));
+    this.cards.set('setup', [this.referenceCard(), this.micsCard.el, this.nativeCard.el]);
+    this.cards.set('session', [this.sessionCard()]);
+    this.cards.set('remote', [this.remoteCard.el]);
+    this.cards.set('display', [perfCard]);
+    this.cards.set('calc', [delayCard, wCard]);
+    this.cards.set('data', [dataCard]);
+    this.el.append(this.nav, this.body);
+    this.open((SECTIONS.find((x) => x.id === s.toolsSection)?.id ?? 'setup') as ToolsSection);
     this.renderStatus();
+  }
+
+  /** Show one section (also from links elsewhere, e.g. SPL → Calibrate opens Setup). */
+  open(section: ToolsSection): void {
+    this.app.settings.toolsSection = section;
+    this.nav.replaceChildren(
+      ...SECTIONS.map((x) =>
+        h(
+          'button',
+          { class: `tools-nav-item${x.id === section ? ' on' : ''}`, title: x.hint, 'aria-current': x.id === section ? 'page' : null, dataset: { section: x.id }, onclick: () => { this.open(x.id); this.app.save(); } },
+          icon(x.icon, 15),
+          h('span', {}, x.label),
+        ),
+      ),
+    );
+    const sec = SECTIONS.find((x) => x.id === section)!;
+    this.body.replaceChildren(h('h3', { class: 'tools-title' }, sec.label), h('div', { class: 'tool-grid' }, ...(this.cards.get(section) ?? [])));
+    this.body.scrollTop = 0;
+    this.dirty = true;
+  }
+
+  private refHost = h('div', { class: 'ref-card-body' });
+
+  /**
+   * Reference signal for every measurement: the generator's own signal (internal, works with any interface) or a
+   * loopback input (the signal sent to the system, patched back into the interface; needed to measure with a
+   * mixing console or program material in the chain). Per measurement it can also be set in the sidebar.
+   */
+  private referenceCard(): HTMLElement {
+    this.renderReference();
+    return h(
+      'section',
+      { class: 'tool-card ref-card' },
+      h('h4', {}, icon('wave', 15), ' Reference signal'),
+      h('p', { class: 'dim small' }, 'The transfer function compares each mic with a reference: the signal sent to the system. Use the generator’s own signal (works with any interface), or a loopback input when a mixer or program material is in the chain.'),
+      this.refHost,
+    );
+  }
+
+  private renderReference(): void {
+    const app = this.app;
+    const ms = app.settings.measurements;
+    const refs = new Set(ms.map((m) => m.ref));
+    const mode: 'internal' | 'loopback' | 'mixed' = refs.size > 1 ? 'mixed' : ms[0]?.ref === GEN_CHANNEL ? 'internal' : 'loopback';
+    // Inputs that can be a loopback: any input that isn't a measurement mic
+    const mics = new Set(ms.map((m) => m.mic));
+    const inputs = app.channelOptions(false).filter((o) => !mics.has(o.value));
+    const current = mode === 'loopback' ? ms[0].ref : (app.settings.loopbackInput ?? inputs[0]?.value ?? 1);
+    const seg = (id: 'internal' | 'loopback', label: string, title: string) =>
+      h('button', { class: `seg${mode === id ? ' on' : ''}`, 'aria-pressed': String(mode === id), title, dataset: { ref: id }, onclick: () => this.setReference(id === 'internal' ? GEN_CHANNEL : current) }, label);
+    const inputSel = select(inputs.length ? inputs : [{ value: current, label: `In ${current + 1}` }], current, (v) => {
+      app.settings.loopbackInput = v;
+      if (mode !== 'internal') this.setReference(v);
+      else app.save();
+    }, { 'aria-label': 'Loopback input', dataset: { ref: 'input' } });
+    this.refHost.replaceChildren(
+      h('div', { class: 'row gap8 wrap' }, h('div', { class: 'segmented', role: 'group', 'aria-label': 'Reference signal' }, seg('internal', 'Internal (generator)', 'Compare with the generator’s own signal'), seg('loopback', 'Loopback input', 'Compare with an input carrying the signal sent to the system')), h('span', { class: 'dim small' }, 'Loopback on'), inputSel),
+      h(
+        'p',
+        { class: 'small' },
+        mode === 'mixed'
+          ? 'Measurements use different references (set per measurement in the sidebar). Choose one here to use it for all.'
+          : mode === 'internal'
+            ? 'All measurements compare the mic with the generator’s own signal. Turn the generator on to measure.'
+            : `All measurements compare the mic with In ${ms[0].ref + 1}.`,
+      ),
+    );
+  }
+
+  /** Use one reference for every measurement; the delay changes with it, so it is measured again. */
+  private setReference(ref: number): void {
+    const app = this.app;
+    if (ref !== GEN_CHANNEL) app.settings.loopbackInput = ref;
+    for (const c of app.settings.measurements) c.ref = ref;
+    for (const m of app.measurements) {
+      m.cfg.ref = ref;
+      m.reset();
+    }
+    app.save();
+    app.renderMeasurements();
+    this.renderReference();
+    const gen = app.settings.generator.type !== 'off';
+    app.toast(ref === GEN_CHANNEL ? `Reference: the internal generator${gen ? '. Measuring the delay again…' : '. Turn the generator on (Space), then Find delay (D).'}` : `Reference: In ${ref + 1}${gen ? '. Measuring the delay again…' : '. Play the signal, then Find delay (D).'}`, 'info');
+    // The path (and so the delay) to the mic differs between the two references
+    if (app.engine.running && (gen || ref !== GEN_CHANNEL)) setTimeout(() => app.measurements.forEach((m) => m.cfg.enabled && app.findDelay(m)), 1200);
   }
 
   private renderStatus(): void {
@@ -258,6 +348,7 @@ export class ToolsView implements View {
 
   show(): void {
     this.renderStatus();
+    this.renderReference();
     this.dirty = true;
   }
 
@@ -270,39 +361,6 @@ export class ToolsView implements View {
     if (!this.dirty) return;
     this.dirty = false;
     this.remoteCard.render();
-    const { L, W, H, rt } = this.room;
-    const c = speedOfSound(this.app.settings.tempC);
-    const modes = roomModes(L, W, H, c, 400);
-    const V = L * W * H;
-    const fs = schroederFrequency(rt, V);
-    const color = (m: RoomMode) => (m.kind === 'axial' ? CHART.warn : m.kind === 'tangential' ? CHART.accent : '#b18cff');
-    const height = (m: RoomMode) => (m.kind === 'axial' ? 3 : m.kind === 'tangential' ? 2 : 1);
-    this.modesPlot.series = modes.map((m, i) => ({
-      id: `m${i}`,
-      label: `${m.n.join(',')} ${m.kind}`,
-      x: [m.f * 0.999, m.f, m.f * 1.001],
-      y: [0, height(m), 0],
-      color: color(m),
-      width: 1.5,
-      quiet: true,
-    }));
-    this.modesPlot.markers = [{ x: fs, color: CHART.marker, label: `Schroeder ${fs.toFixed(0)} Hz` }];
-    // Highlight clusters / gaps of axial modes (Bonello-style quick check)
-    const axial = modes.filter((m) => m.kind === 'axial' && m.f < fs * 1.2);
-    const rows = axial
-      .slice(0, 18)
-      .map((m) => `<tr><td>${m.f.toFixed(1)} Hz</td><td>${m.n.join(' · ')}</td><td>${m.n[0] ? 'length' : m.n[1] ? 'width' : 'height'}</td></tr>`)
-      .join('');
-    let issue = '';
-    for (let i = 1; i < axial.length; i++) {
-      if (axial[i].f - axial[i - 1].f < 2) {
-        issue = `<p class="warn-text small">Coincident axial modes near ${axial[i].f.toFixed(0)} Hz — expect a strong resonance there.</p>`;
-        break;
-      }
-    }
-    clear(this.modesTable);
-    this.modesTable.innerHTML = `<p class="small">Volume <b>${V.toFixed(1)} m³</b> · Schroeder frequency <b>${fs.toFixed(0)} Hz</b> · critical distance ≈ <b>${criticalDistance(V, rt).toFixed(2)} m</b> (Q=2)</p>${issue}<table class="mini-table"><tr><th>Axial mode</th><th>n</th><th>Dimension</th></tr>${rows}</table>`;
-    this.modesPlot.draw();
   }
 
   /** Reset the analysis and display settings to a profile, keeping the setup (mics, calibration, inputs, remote). */

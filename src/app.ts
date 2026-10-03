@@ -17,7 +17,8 @@ import { RoomView } from './views/room';
 import { EqView } from './views/eq';
 import { AlignView } from './views/align';
 import { SplView } from './views/spl';
-import { ToolsView } from './views/tools';
+import { ToolsView, type ToolsSection } from './views/tools';
+import { ModesView } from './views/modes';
 import { showWizard, showHelp, showRemoteConnect } from './ui/dialogs';
 import { applyChartTheme } from './ui/theme';
 import { Dock } from './ui/dock';
@@ -866,7 +867,7 @@ export class App {
       b.className = `remote-badge ${eng.state === 'connected' ? 'on' : 'off'}`;
       b.replaceChildren(icon('wifi', 14), h('span', {}, eng.state === 'connected' ? 'Remote' : eng.state === 'connecting' ? 'Connecting…' : 'Offline'));
       b.title = eng.state === 'connected' ? `Connected to the measurement host at ${location.host}` : 'Not connected to the measurement host · click to connect';
-      b.onclick = () => (eng.state === 'connected' ? this.setView('tools') : this.start());
+      b.onclick = () => (eng.state === 'connected' ? this.openTools('remote') : this.start());
       return;
     }
     const link = this.hostLink;
@@ -879,7 +880,7 @@ export class App {
     b.className = `remote-badge on${n ? ' busy' : ''}`;
     b.replaceChildren(icon('wifi', 14), h('span', {}, n ? `${n} remote${n > 1 ? 's' : ''}` : 'Remote on'));
     b.title = 'Remote access is on · click for connection details';
-    b.onclick = () => this.setView('tools');
+    b.onclick = () => this.openTools('remote');
   }
 
   // ---------------------------------------------------------------------------------------------------------
@@ -1008,11 +1009,12 @@ export class App {
       new AlignView(this),
       new SplView(this),
       new ToolsView(this),
+      new ModesView(this),
     ];
     this.tabs = h('nav', { class: 'tabs' });
     this.views.forEach((v, i) => {
       this.tabs.append(
-        h('button', { class: 'tab', dataset: { view: v.id }, onclick: () => this.setView(v.id), title: `${v.title} (${i + 1})` }, icon(v.icon, 15), h('span', {}, v.title)),
+        h('button', { class: 'tab', dataset: { view: v.id }, onclick: () => this.setView(v.id), title: `${v.title} (${(i + 1) % 10})` }, icon(v.icon, 15), h('span', {}, v.title)),
       );
     });
     this.tabs.append(this.workspaceHost);
@@ -1157,6 +1159,12 @@ export class App {
 
   closeOverlays(): void {
     this.root.classList.remove('drawer-open', 'sheet-open');
+  }
+
+  /** Open a section of the Tools tab. */
+  openTools(section: ToolsSection): void {
+    this.setView('tools');
+    (this.views.find((v) => v.id === 'tools') as unknown as ToolsView).open(section);
   }
 
   setView(id: ViewId): void {
@@ -1772,7 +1780,8 @@ export class App {
           this.toggleTheme();
           break;
         default:
-          if (/^[1-9]$/.test(e.key)) this.setView(this.views[+e.key - 1].id);
+          // 1–9 and 0 (the tenth tab)
+          if (/^[0-9]$/.test(e.key)) this.setView(this.views[(+e.key + 9) % 10]?.id ?? this.views[0].id);
       }
     });
   }

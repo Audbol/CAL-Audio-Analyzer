@@ -147,6 +147,39 @@ if (want('avgmulti')) {
   if (one.length === 1) check(one[0] === '#ffffff', 'a single average curve is white again');
 }
 
+// --- 6. Reference toggle (Tools → Setup), Tools sections and the Room modes tab
+if (want('tools')) {
+  await page.keyboard.press('9');
+  await page.locator('[data-section="setup"]').click();
+  const refs = () => page.evaluate(() => window.calApp.settings.measurements.map((m) => m.ref));
+  check((await refs()).every((r) => r === 1), 'the demo starts with the loopback reference (In 2)');
+  await page.locator('[data-ref="internal"]').click();
+  await page.waitForTimeout(3500);
+  const internal = await page.evaluate(() => ({ refs: window.calApp.settings.measurements.map((m) => m.ref), pressed: document.querySelector('[data-ref="internal"]').getAttribute('aria-pressed'), coh: (() => { const m = window.calApp.measurements[0]; const g = window.calApp.grid; let c = 0, n = 0; g.forEach((f, i) => { if (f > 300 && f < 8000) { c += m.result.coh[i]; n++; } }); return c / n; })() }));
+  check(internal.refs.every((r) => r === -1) && internal.pressed === 'true', 'one switch moves every measurement to the internal reference');
+  check(internal.coh > 0.5, `the delay is measured again and coherence recovers (${internal.coh.toFixed(2)})`);
+  await page.locator('[data-ref="loopback"]').click();
+  await page.waitForTimeout(400);
+  check((await refs()).every((r) => r === 1), 'and back to the loopback input');
+  // Sections: one at a time
+  for (const [id, text] of [['session', 'Create report'], ['remote', 'Remote access'], ['display', 'Battery saver'], ['calc', 'Delay · distance'], ['data', 'Reset all settings']]) {
+    await page.locator(`[data-section="${id}"]`).click();
+    const body = await page.locator('.tools-body').textContent();
+    check(body.includes(text) && (id === 'setup' || !body.includes('Microphones & calibration')), `Tools → ${id} shows only its own section`);
+  }
+  await page.screenshot({ path: `${out}/feat5-07-tools.png` });
+  // Room modes: its own tab (key 0), dimensions kept, the last sweep compared with the modes
+  await page.keyboard.press('0');
+  await page.waitForTimeout(600);
+  check(await page.evaluate(() => window.calApp.settings.view === 'modes'), 'the 0 key opens the Room modes tab');
+  await page.getByLabel('Length (m)').fill('7.3');
+  await page.getByLabel('Length (m)').dispatchEvent('change');
+  await page.waitForTimeout(400);
+  const room = await page.evaluate(() => window.calApp.settings.room);
+  check(room.L === 7.3 && room.known, 'room dimensions are kept');
+  await page.screenshot({ path: `${out}/feat5-08-modes.png` });
+}
+
 check(errors.length === 0, `no console errors ${errors.join(' | ')}`);
 await browser.close();
 await new Promise((r) => server.httpServer.close(r));

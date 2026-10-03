@@ -60,6 +60,8 @@ export interface DiagnoseOptions {
   modalLimit?: number;
   /** Lowest frequency measured (Hz): nothing is reported below it (e.g. the sweep's start). */
   fMin?: number;
+  /** The room's predicted modes (when its dimensions are known): a measured mode is matched to the nearest. */
+  predicted?: { f: number; label: string }[];
 }
 
 const fmtF = (f: number) => (f >= 1000 ? `${(f / 1000).toFixed(2)} kHz` : `${f.toFixed(f < 100 ? 1 : 0)} Hz`);
@@ -229,6 +231,8 @@ export function diagnose(ir: Float64Array, fs: number, t0: number, opts: Diagnos
     if (!rings && (q < 3 || dev[i] < 3.5 || (f >= 150 && dev[i] < 5))) continue;
     const likely = rings || (dev[i] >= 5 && q >= 3 && f < 150);
     const dims = [1, 2, 3].map((k) => (k * c) / (2 * f)).filter((d) => d >= 1.8 && d <= 30);
+    // With the room's dimensions known: the predicted mode it matches (within 6 %)
+    const match = (opts.predicted ?? []).reduce<{ f: number; label: string } | null>((best, p) => (Math.abs(p.f / f - 1) < 0.06 && (!best || Math.abs(p.f - f) < Math.abs(best.f - f)) ? p : best), null);
     findings.push({
       kind: 'mode',
       f,
@@ -238,7 +242,7 @@ export function diagnose(ir: Float64Array, fs: number, t0: number, opts: Diagnos
       decayRef,
       confidence: likely ? 'likely' : 'possible',
       title: `Room mode at ${fmtF(f)}`,
-      detail: `A ${dev[i].toFixed(1)} dB peak (Q ${q.toFixed(1)})${rings ? ` that keeps ringing: ${decay.toFixed(2)} s decay against ${decayRef.toFixed(2)} s for the room's low end` : ''}. An axial mode of a ${dims.map((d) => `${d.toFixed(2)} m`).join(' or ') || 'large'} room dimension would fall here.`,
+      detail: `A ${dev[i].toFixed(1)} dB peak (Q ${q.toFixed(1)})${rings ? ` that keeps ringing: ${decay.toFixed(2)} s decay against ${decayRef.toFixed(2)} s for the room's low end` : ''}. ${match ? `It matches your room’s ${match.label} (${fmtF(match.f)}).` : `An axial mode of a ${dims.map((d) => `${d.toFixed(2)} m`).join(' or ') || 'large'} room dimension would fall here.`}`,
       advice: 'Cut it with a narrow EQ filter (it is the same everywhere it rings), and treat it with bass traps or by moving subs and listeners away from its pressure maxima.',
     });
   }

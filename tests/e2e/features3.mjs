@@ -158,6 +158,7 @@ await page.screenshot({ path: `${out}/feat3-02-align.png` });
 
 // Report: alignment plan with every part, and the mics
 await page.keyboard.press('9');
+await page.locator('[data-section="session"]').click();
 const [popup] = await Promise.all([page.waitForEvent('popup'), page.getByRole('button', { name: 'Create report' }).click()]);
 await popup.waitForLoadState();
 const rep = await popup.evaluate(() => document.body.innerText);
