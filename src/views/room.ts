@@ -286,7 +286,7 @@ export class RoomView implements View {
   private renderDiagnosis(r: SweepResult): void {
     const c = speedOfSound(this.app.settings.tempC);
     const room = this.app.settings.room;
-    // With the room's dimensions entered on the Room modes tab, measured modes are matched to predicted ones
+    // With the room's dimensions entered in Tools → Calculators → Room modes, measured modes are matched to predicted ones
     const predicted = room.known ? axialModes(room, c, 300).map((m) => ({ f: m.f, label: `${modeDimension(m)} mode ${m.n.join('·')}` })) : undefined;
     const dx = (this.diagnosis = diagnose(r.ir, r.d.fs, r.t0, { c, fMin: r.spec.f1, predicted }));
     // Markers: modes, nulls and SBIR on the frequency response; reflections on the impulse response / ETC

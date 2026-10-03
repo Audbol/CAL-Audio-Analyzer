@@ -194,6 +194,7 @@ if (want('tools')) {
 
 // --- Averaging: "None" is instant, and the panel shows how long each setting takes
 if (want('averaging')) {
+  await page.evaluate(() => document.activeElement?.blur());
   await page.keyboard.press('1');
   await page.locator('[data-options="spectrum"]').click();
   await page.locator('select[data-setting="rtaAveraging"]').selectOption('4');

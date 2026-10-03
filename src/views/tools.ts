@@ -291,6 +291,7 @@ export class ToolsView implements View {
     this.body.replaceChildren(h('h3', { class: 'tools-title' }, sec.label), h('div', { class: 'tool-grid' }, ...(this.cards.get(section) ?? [])));
     this.body.scrollTop = 0;
     if (section === 'calc') this.modesCard.invalidate();
+    this.syncAssistant();
     this.dirty = true;
   }
 
@@ -375,13 +376,17 @@ export class ToolsView implements View {
     this.dirty = true;
   }
 
-  tick(): void {
-    if ((this.nativeTick = (this.nativeTick + 1) % 15) === 0) this.nativeCard.update();
-    if (this.app.settings.toolsSection === 'calc') this.modesCard.tick();
-    // The Assistant can also be hidden from its own close button
+  /** The Assistant can also be hidden from its own close button: keep the Display setting in step. */
+  private syncAssistant(): void {
     const assistant = this.el.querySelector<HTMLSelectElement>('select[data-assistant]');
     const shown = this.app.settings.showAssistant ? 'on' : 'off';
     if (assistant && assistant.value !== shown) assistant.value = shown;
+  }
+
+  tick(): void {
+    if ((this.nativeTick = (this.nativeTick + 1) % 15) === 0) this.nativeCard.update();
+    if (this.app.settings.toolsSection === 'calc') this.modesCard.tick();
+    this.syncAssistant();
     if (!this.dirty) return;
     this.dirty = false;
     this.remoteCard.render();

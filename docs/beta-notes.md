@@ -4,12 +4,12 @@
 
 | System | File |
 | --- | --- |
-| **Windows 10/11** – installer | `CAL-Audio-Analyzer-1.11.0-beta.2-win-x64.exe` |
-| **Windows 10/11** – portable (no install) | `CAL-Audio-Analyzer-1.11.0-beta.2-portable.exe` |
-| **macOS** – Apple Silicon (M1–M4) | `CAL-Audio-Analyzer-1.11.0-beta.2-mac-arm64.dmg` |
-| **macOS** – Intel | `CAL-Audio-Analyzer-1.11.0-beta.2-mac-x64.dmg` |
-| **Linux** – x64 | `CAL-Audio-Analyzer-1.11.0-beta.2-linux-x86_64.AppImage` |
-| **Linux** – ARM64 (e.g. Raspberry Pi 5) | `CAL-Audio-Analyzer-1.11.0-beta.2-linux-arm64.AppImage` |
+| **Windows 10/11** – installer | `CAL-Audio-Analyzer-1.11.0-beta.3-win-x64.exe` |
+| **Windows 10/11** – portable (no install) | `CAL-Audio-Analyzer-1.11.0-beta.3-portable.exe` |
+| **macOS** – Apple Silicon (M1–M4) | `CAL-Audio-Analyzer-1.11.0-beta.3-mac-arm64.dmg` |
+| **macOS** – Intel | `CAL-Audio-Analyzer-1.11.0-beta.3-mac-x64.dmg` |
+| **Linux** – x64 | `CAL-Audio-Analyzer-1.11.0-beta.3-linux-x86_64.AppImage` |
+| **Linux** – ARM64 (e.g. Raspberry Pi 5) | `CAL-Audio-Analyzer-1.11.0-beta.3-linux-arm64.AppImage` |
 
 The builds are not code-signed yet:
 
@@ -19,12 +19,19 @@ The builds are not code-signed yet:
 
 On first launch, choose **Explore with the demo room** to try every feature without hardware.
 
+## New in beta 3
+
+- **Room modes in Tools → Calculators:** the room mode calculator is back under *Tools → Calculators* instead of its own tab. It keeps the room's dimensions and shows the last sweep against the predicted axial modes.
+- **Averaging "None" is instant:** on the Spectrum, *Averaging: None* now shows each new spectrum as it is, with no smoothing between frames. *Spectrum → Options → Averaging* shows how long each setting takes to follow a change (for example "≈ 0.7 s" for 4 with a 16k FFT at 48 kHz). The screen still updates just as often; more averaging only makes the curve steadier and slower to follow changes.
+- **Hide the Assistant:** the × on the Assistant in the sidebar hides it, and the traces get the space. *Tools → Display & performance → Assistant* shows it again.
+- **Sweeps on the Spectrum:** a sweep saved with *Sweep & Room → Save FR as trace* now shows on the Spectrum as well as on Transfer. A sweep measures the shape of the response, not a sound level, so on the Spectrum it is moved to sit on the live curve (same average level from 250 Hz to 4 kHz). *Spectrum → Options → Sweeps* turns this off, and the eye in the trace list hides a sweep everywhere.
+
 ## New in beta 2
 
 - **Several mics, several average curves:** with more than one mic, each average curve is drawn in its mic's colour (lightened, so it stands apart from the live trace) and with its own dash pattern (solid, long dash, dots, dash-dot). A single average curve stays white.
 - **Reference toggle:** *Tools → Setup → Reference signal* switches every measurement between the internal generator reference and a loopback input (which input is remembered). The delay is measured again after switching.
 - **Tidier Tools:** Tools is split into sections (Setup, Session & report, Remote access, Display & performance, Calculators, Data & reset), one at a time. The remote-access badge and *SPL → Calibrate…* open the right section.
-- **Room modes tab:** the room mode calculator is its own tab (key **0**). The room's dimensions are now kept, and the last sweep is shown against the room's predicted axial modes. With the dimensions entered, the room diagnosis names the predicted mode a measured one matches.
+- **Room modes:** the room's dimensions are now kept, and the last sweep is shown against the room's predicted axial modes. With the dimensions entered, the room diagnosis names the predicted mode a measured one matches.
 - **SPL readout scales:** the SPL tab's sound level numbers grow and shrink with their panel when you drag a splitter, float, resize or detach it. The fourth reading shows the other time weighting (Slow when the readout is Fast).
 
 ## New in beta 1

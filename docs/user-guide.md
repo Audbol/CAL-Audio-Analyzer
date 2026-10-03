@@ -116,7 +116,7 @@ The **workspace** button sits at the right end of the tab row. See [Workspaces](
 
 - **Measurements**: each measurement microphone, its input, its reference and its delay.
 - **Traces**: saved measurements you can show, hide and compare.
-- **Assistant**: tips about what the app sees, for example clipping or low coherence.
+- **Assistant**: tips about what the app sees, for example clipping or low coherence. The × hides it; *Tools → Display & performance → Assistant* shows it again.
 
 On a phone, the sidebar opens from the menu button in the top-left corner.
 
