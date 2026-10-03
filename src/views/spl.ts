@@ -60,7 +60,8 @@ export class SplView extends DockedView implements View {
     );
     this.mountDock(
       [
-        { id: 'meter', title: 'Sound level', body: h('div', { class: 'spl-top' }, this.big, this.stats) },
+        // The readout scales with its panel (CSS container units): resize, float or detach it and the text follows
+        { id: 'meter', title: 'Sound level', body: h('div', { class: 'spl-fit' }, h('div', { class: 'spl-top' }, this.big, this.stats)) },
         this.plotPanel('history', 'History (2 min)', this.history),
         { id: 'log', title: 'Noise log', body: h('div', { class: 'spl-log' }, logToolbar, this.logStatus, h('div', { class: 'pane-fill' }, this.logPlot.el)), onResize: () => this.logPlot.resize() },
       ],
@@ -265,7 +266,8 @@ export class SplView extends DockedView implements View {
         ['L<sub>eq</sub>', fmt(r?.leq), `over ${Math.floor(dur / 60)}:${String(Math.floor(dur % 60)).padStart(2, '0')}`],
         ['L<sub>max</sub> (F)', fmt(r?.max), 'since reset'],
         ['Peak (Z)', fmt(r?.peakHold), r && r.peakHold > (s.splCalibrated ? s.splOffset - 1 : -1) ? '<span class="warn-text">near clipping</span>' : 'since reset'],
-        ['Fast / Slow', `${fmt(r?.fast)} / ${fmt(r?.slow)}`, unit],
+        // The other time weighting than the big readout's (one number per card, so it fits when the panel shrinks)
+        s.splTime === 'fast' ? ['Slow (1 s)', fmt(r?.slow), unit] : ['Fast (125 ms)', fmt(r?.fast), unit],
       ]
         .map(([k, v, sub]) => `<div class="stat"><span>${k}</span><b>${v}</b><em>${sub}</em></div>`)
         .join('');

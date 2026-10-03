@@ -66,6 +66,18 @@ if (want('spl')) {
   await page.locator('.dpanel[data-panel="meter"] [data-act="float"]').first().click();
   await page.waitForTimeout(400);
   check(await page.locator('.dpanel[data-panel="meter"].floating').count() === 1, 'the sound level panel floats');
+  // The readout scales with the panel: bigger panel, bigger numbers
+  const fontAt = (w, hgt) =>
+    page.evaluate(([w, hgt]) => {
+      const p = document.querySelector('.dpanel[data-panel="meter"]');
+      Object.assign(p.style, { width: `${w}px`, height: `${hgt}px` });
+      return new Promise((r) => requestAnimationFrame(() => r(parseFloat(getComputedStyle(document.querySelector('.spl-big .val')).fontSize))));
+    }, [w, hgt]);
+  const small = await fontAt(420, 180);
+  const large = await fontAt(1000, 480);
+  check(large > small * 1.8, `the level readout grows with its panel (${small.toFixed(0)} px → ${large.toFixed(0)} px)`);
+  const fits = await page.evaluate(() => [...document.querySelectorAll('.spl-fit .stat b, .spl-fit .spl-big .val')].every((b) => b.scrollWidth <= b.parentElement.clientWidth + 1));
+  check(fits, 'every reading fits its card');
   await page.locator('.dpanel[data-panel="meter"] [data-act="float"]').first().click();
   await page.waitForTimeout(300);
   const [popup] = await Promise.all([ctx.waitForEvent('page'), page.locator('.dpanel[data-panel="meter"] [data-act="popout"]').first().click()]);

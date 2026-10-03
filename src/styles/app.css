@@ -3132,13 +3132,6 @@ input[type='text']:hover {
 }
 
 /* SPL tab panels: the readout and the noise log fill their panels */
-.spl .dpanel .spl-top {
-  position: absolute;
-  inset: 0;
-  padding: 10px;
-  overflow: auto;
-  align-content: flex-start;
-}
 .spl-log {
   position: absolute;
   inset: 0;
@@ -3153,21 +3146,6 @@ input[type='text']:hover {
 }
 .spl-log .log-status {
   padding: 4px 10px;
-}
-.spl .dpanel .spl-stats {
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  align-content: start;
-}
-.spl .dpanel .spl-big {
-  padding: 12px 22px;
-  min-width: 240px;
-}
-.spl .dpanel .spl-big .val {
-  font-size: 60px;
-}
-.spl .dpanel .stat b {
-  font-size: 22px;
-  white-space: nowrap;
 }
 
 /* Room diagnosis */
@@ -3349,4 +3327,97 @@ html.compact .tools-title {
 html.compact .modes-body {
   grid-template-columns: 1fr;
   overflow-y: auto;
+}
+
+/* SPL tab: the sound level readout fills its panel and scales with it (container units: cqw/cqh are 1 % of the
+   panel's width/height), so dragging a splitter, floating or detaching the panel grows or shrinks the numbers */
+.spl-fit {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+  overflow: hidden;
+}
+.spl-fit .spl-top {
+  display: flex;
+  flex-wrap: nowrap;
+  width: 100%;
+  height: 100%;
+  padding: clamp(6px, 2.2cqmin, 18px);
+  gap: clamp(6px, 2.2cqmin, 18px);
+  box-sizing: border-box;
+}
+.spl-fit .spl-big {
+  flex: 0 0 36%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(6px, 3cqh, 28px) clamp(10px, 2.4cqw, 32px);
+  box-sizing: border-box;
+}
+.spl-fit .spl-big .val {
+  font-size: clamp(26px, min(46cqh, 9.6cqw), 280px);
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+}
+.spl-fit .spl-big .unit,
+.spl-fit .spl-big .small {
+  font-size: clamp(10px, min(6cqh, 1.5cqw), 22px);
+}
+.spl-fit .spl-stats {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
+  gap: clamp(6px, 1.8cqmin, 14px);
+}
+.spl-fit .stat {
+  min-width: 0;
+  justify-content: center;
+  padding: clamp(4px, 2cqh, 18px) clamp(8px, 1.6cqw, 20px);
+  overflow: hidden;
+}
+.spl-fit .stat span,
+.spl-fit .stat em {
+  font-size: clamp(10px, min(4.6cqh, 1.2cqw), 18px);
+  white-space: nowrap;
+}
+.spl-fit .stat b {
+  font-size: clamp(13px, min(14cqh, 2.8cqw), 84px);
+  white-space: nowrap;
+}
+/* Wide and short: the four readings in one row next to the readout */
+@container (min-aspect-ratio: 3.4 / 1) {
+  .spl-fit .spl-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .spl-fit .stat b {
+    font-size: clamp(13px, min(22cqh, 2.6cqw), 84px);
+  }
+  .spl-fit .stat span,
+  .spl-fit .stat em {
+    font-size: clamp(9px, min(6.5cqh, 1.1cqw), 18px);
+  }
+}
+/* Narrow (e.g. a tall floating panel or a phone): the readout above the readings */
+@container (max-aspect-ratio: 1.15 / 1) {
+  .spl-fit .spl-top {
+    flex-direction: column;
+  }
+  .spl-fit .spl-big {
+    flex: 0 0 auto;
+    align-items: center;
+    text-align: center;
+  }
+  .spl-fit .spl-big .val {
+    font-size: clamp(26px, min(22cqh, 24cqw), 280px);
+  }
+  .spl-fit .stat b {
+    font-size: clamp(13px, min(7cqh, 8cqw), 84px);
+  }
+  .spl-fit .stat span,
+  .spl-fit .stat em {
+    font-size: clamp(9px, min(2.6cqh, 3.2cqw), 18px);
+  }
 }
