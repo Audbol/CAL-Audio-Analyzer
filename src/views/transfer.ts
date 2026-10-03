@@ -8,12 +8,13 @@ import { DockedView } from './docked';
 import { optionsMenu, optRow, optHead } from '../ui/popover';
 import { TargetOverlay } from './target-overlay';
 import { micAverageControl, micAverageSeries } from './mic-average-overlay';
+import { groupDelayMs, smoothGroupDelay } from '../dsp/groupdelay';
 
 export function defaultTransferLayout(): DockLayout {
   return {
-    order: ['mag', 'phase', 'spl', 'levels'],
-    sizes: { mag: 1.5, phase: 1, spl: 0.5, levels: 0.6 },
-    hidden: ['spl'],
+    order: ['mag', 'phase', 'gd', 'spl', 'levels'],
+    sizes: { mag: 1.5, phase: 1, gd: 1, spl: 0.5, levels: 0.6 },
+    hidden: ['spl', 'gd'],
     floating: {
       levels: { x: -14, y: -40, w: 250, h: 190 },
       spl: { x: -276, y: -40, w: 230, h: 150 },
@@ -21,7 +22,7 @@ export function defaultTransferLayout(): DockLayout {
   };
 }
 
-/** Dual-channel transfer function: magnitude with coherence, phase, plus SPL and level meters. */
+/** Dual-channel transfer function: magnitude with coherence, phase, group delay, plus SPL and level meters. */
 export class TransferView extends DockedView implements View {
   id = 'transfer' as const;
   readonly needs = { tf: true };
@@ -29,6 +30,8 @@ export class TransferView extends DockedView implements View {
   icon = 'wave' as const;
   private mag: Plot;
   private phase: Plot;
+  private gd: Plot;
+  private gdBufs = new Map<string, Float64Array>();
   private alphas = new Map<string, Float64Array>();
   readonly target: TargetOverlay;
 
@@ -38,12 +41,14 @@ export class TransferView extends DockedView implements View {
     const s = app.settings;
     this.mag = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: s.magRange[0], yMax: s.magRange[1], yUnit: 'dB', yStep: 6, secondaryLabel: 'Coherence', showNote: true, yLimits: [-120, 120] });
     this.phase = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: -180, yMax: 180, yUnit: 'deg', yStep: 45, yLimits: [-540, 540] });
+    // Group delay: how late each frequency arrives (ms), e.g. a sub behind the mains, or a crossover's delay
+    this.gd = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: -5, yMax: 30, yUnit: 'ms', yStep: 5, yLimits: [-500, 1000] });
     this.mag.onRangeChange = (a, b) => {
       s.magRange = [a, b];
       app.save();
     };
     this.mountDock(
-      [this.plotPanel('mag', 'Transfer function · magnitude & coherence', this.mag), this.plotPanel('phase', 'Transfer function · phase', this.phase), ...this.meterPanels()],
+      [this.plotPanel('mag', 'Transfer function · magnitude & coherence', this.mag), this.plotPanel('phase', 'Transfer function · phase', this.phase), { ...this.plotPanel('gd', 'Transfer function · group delay', this.gd), hiddenByDefault: true }, ...this.meterPanels()],
       this.toolbar(),
     );
   }
@@ -61,7 +66,7 @@ export class TransferView extends DockedView implements View {
     const options = optionsMenu(
       [
         optHead('Panels'),
-        h('div', { class: 'opt-ctl' }, this.panelChip('mag', 'Magnitude', 'magnitude'), this.panelChip('phase', 'Phase', 'phase'), this.panelChip('spl', 'SPL meter', 'SPL meter'), this.panelChip('levels', 'Input levels', 'input level')),
+        h('div', { class: 'opt-ctl' }, this.panelChip('mag', 'Magnitude', 'magnitude'), this.panelChip('phase', 'Phase', 'phase'), this.panelChip('gd', 'Group delay', 'group delay (how late each frequency arrives, in ms)'), this.panelChip('spl', 'SPL meter', 'SPL meter'), this.panelChip('levels', 'Input levels', 'input level')),
         optHead('Display'),
         optRow('Blank below', cohSlider, cohVal),
         optRow('Target tolerance', this.target.toleranceControl()),
@@ -69,7 +74,7 @@ export class TransferView extends DockedView implements View {
         optHead('Layout'),
         h('div', { class: 'opt-ctl' }, this.resetLayoutButton()),
       ],
-      { title: 'Transfer options: panels, coherence blanking, tolerance, several mics', id: 'transfer' },
+      { title: 'Transfer options: panels (magnitude, phase, group delay), coherence blanking, tolerance, several mics', id: 'transfer' },
     );
     return h(
       'div',
@@ -109,10 +114,25 @@ export class TransferView extends DockedView implements View {
     const g = app.grid;
     const magS: Series[] = [];
     const phS: Series[] = [];
+    const gdS: Series[] = [];
+    const showGd = this.visible('gd');
+    // Smoothed over 1/6 octave, weighted by energy and coherence (the raw curve spikes at every dip)
+    const gdOf = (id: string, x: ArrayLike<number>, ph: ArrayLike<number>, magDb: ArrayLike<number>, coh?: ArrayLike<number>) => {
+      const n = x.length;
+      let b = this.gdBufs.get(id);
+      let raw = this.gdBufs.get(`${id}:raw`);
+      let w = this.gdBufs.get(`${id}:w`);
+      if (!b || b.length !== n) this.gdBufs.set(id, (b = new Float64Array(n)));
+      if (!raw || raw.length !== n) this.gdBufs.set(`${id}:raw`, (raw = new Float64Array(n)));
+      if (!w || w.length !== n) this.gdBufs.set(`${id}:w`, (w = new Float64Array(n)));
+      for (let i = 0; i < n; i++) w[i] = 10 ** (magDb[i] / 10) * (coh ? coh[i] : 1);
+      return smoothGroupDelay(x, groupDelayMs(x, ph, raw), w, 6, b);
+    };
     for (const t of app.traces.traces) {
       if (!t.visible || t.kind === 'rta') continue;
       magS.push({ id: t.id, label: t.name, x: t.freqs, y: t.offset ? t.mag.map((v) => v + t.offset) : t.mag, color: t.color, width: 1.3, dash: [5, 3] });
       if (t.phase) phS.push({ id: t.id, label: t.name, x: t.freqs, y: t.phase, color: t.color, width: 1.1, dash: [5, 3], wrap: 180 });
+      if (t.phase && showGd) gdS.push({ id: t.id, label: t.name, x: t.freqs, y: gdOf(t.id, t.freqs, t.phase, t.mag, t.coh), color: t.color, width: 1.1, dash: [5, 3] });
     }
     const live = app.measurements.filter((m) => m.cfg.enabled && m.tfReady);
     const only = s.micAverage === 'only' && live.length > 1;
@@ -122,6 +142,7 @@ export class TransferView extends DockedView implements View {
       magS.push({ id: m.cfg.id, label: m.cfg.name, x: g, y: m.mag, color: c, width: 2, alpha: a });
       if (s.showCoherence) magS.push({ id: `${m.cfg.id}-coh`, label: `${m.cfg.name} coh`, x: g, y: m.result.coh, color: `${c}66`, width: 1, secondary: true, unit: '%' });
       phS.push({ id: m.cfg.id, label: m.cfg.name, x: g, y: m.phase, color: c, width: 1.6, alpha: a, wrap: 180 });
+      if (showGd) gdS.push({ id: m.cfg.id, label: m.cfg.name, x: g, y: gdOf(m.cfg.id, g, m.phase, m.mag, m.result.coh), color: c, width: 1.6, alpha: a });
     }
     // Several mics: their coherence-weighted power average and spread
     magS.push(...micAverageSeries(app, g, live.map((m) => m.mag), live.map((m) => m.result.coh)));
@@ -135,6 +156,10 @@ export class TransferView extends DockedView implements View {
     if (this.visible('phase')) {
       this.phase.series = phS;
       this.phase.draw();
+    }
+    if (showGd) {
+      this.gd.series = gdS;
+      this.gd.draw();
     }
     this.tickMeters();
   }

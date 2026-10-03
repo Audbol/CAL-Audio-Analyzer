@@ -16,6 +16,7 @@ import { PinkNoise } from '../src/audio/noise';
 import { alignSubMain, alignFullRange } from '../src/dsp/align';
 import { targetShape, targetLevel, targetDeviation } from '../src/dsp/target';
 import { Biquad } from '../src/audio/biquad';
+import { groupDelayMs, smoothGroupDelay } from '../src/dsp/groupdelay';
 
 const FS = 48000;
 
@@ -733,5 +734,39 @@ describe('spectrum peak highlights on a slope', () => {
     const p = rangePeaks(grid, y);
     expect(p.every((x) => !x.isPeak)).toBe(true);
     expect(p[2].f).toBeCloseTo(4000, -2);
+  });
+});
+
+describe('group delay', () => {
+  it('reads a pure delay from a wrapped phase', () => {
+    const grid = logGrid(20, 20000, 48);
+    const tau = 0.0025; // 2.5 ms
+    const wrapped = Array.from(grid, (f) => {
+      const p = -360 * f * tau;
+      return p - 360 * Math.round(p / 360);
+    });
+    const gd = groupDelayMs(grid, wrapped);
+    for (const f of [30, 100, 1000, 5000]) expect(interp(grid, gd, f)).toBeCloseTo(2.5, 2);
+  });
+
+  it('shows the extra delay of a low-pass filter at its corner', () => {
+    const grid = logGrid(20, 20000, 48);
+    // 2nd-order Butterworth low-pass at 100 Hz: τ = (√2 / ω0)·(1 + w²) / (1 + w⁴), w = f / 100
+    const ph = Array.from(grid, (f) => {
+      const w = f / 100;
+      return (-Math.atan2(Math.SQRT2 * w, 1 - w * w) * 180) / Math.PI;
+    });
+    const gd = groupDelayMs(grid, ph);
+    const exact = (f: number) => ((Math.SQRT2 / (2 * Math.PI * 100)) * (1 + (f / 100) ** 2)) / (1 + (f / 100) ** 4) * 1000;
+    for (const f of [20, 70, 100, 200]) expect(interp(grid, gd, f)).toBeCloseTo(exact(f), 1);
+    expect(interp(grid, gd, 5000)).toBeLessThan(0.1);
+  });
+
+  it('smoothing ignores the spikes in dips that carry no energy', () => {
+    const grid = logGrid(20, 20000, 48);
+    const gd = Array.from(grid, (_, i) => (i % 40 === 0 ? 80 : 3));
+    const w = Array.from(grid, (_, i) => (i % 40 === 0 ? 1e-4 : 1));
+    const sm = smoothGroupDelay(grid, gd, w, 6);
+    for (const f of [50, 500, 5000]) expect(interp(grid, sm, f)).toBeCloseTo(3, 1);
   });
 });

@@ -15,6 +15,8 @@ export interface DockPanel {
   body: HTMLElement;
   /** Called whenever the panel's size or host window may have changed. */
   onResize?: () => void;
+  /** Panels added in a later version: hidden in layouts saved before they existed. */
+  hiddenByDefault?: boolean;
 }
 
 export interface FloatRect {
@@ -92,9 +94,7 @@ export class Dock {
     this.indicator = h('div', { class: 'dock-drop' });
     this.empty = h('div', { class: 'dock-empty' }, 'All panels are floating, detached or hidden. Use the toolbar to show panels or Reset layout.');
     this.el.append(this.stack, this.layer, this.indicator);
-    // Make sure every known panel appears in the order list
-    for (const p of panels) if (!layout.order.includes(p.id)) layout.order.push(p.id);
-    layout.order = layout.order.filter((id) => panels.some((p) => p.id === id));
+    this.normalise(layout);
     for (const p of panels) this.frames.set(p.id, this.buildFrame(p));
     new ResizeObserver(() => this.clampFloating()).observe(this.el);
     window.addEventListener('beforeunload', () => {
@@ -332,8 +332,19 @@ export class Dock {
     this.render();
   }
 
+  /** Make sure every known panel appears in the order list (new ones hidden when they ask for it). */
+  private normalise(layout: DockLayout): void {
+    for (const p of this.panels) {
+      if (layout.order.includes(p.id)) continue;
+      layout.order.push(p.id);
+      if (p.hiddenByDefault && !layout.hidden.includes(p.id)) layout.hidden.push(p.id);
+    }
+    layout.order = layout.order.filter((id) => this.panels.some((p) => p.id === id));
+  }
+
   reset(layout: DockLayout): void {
     this.popups.forEach((w) => w.close());
+    this.normalise(layout);
     this.layout = layout;
     this.commit();
   }
