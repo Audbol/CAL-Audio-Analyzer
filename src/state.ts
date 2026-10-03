@@ -15,7 +15,7 @@ export { PALETTE };
 /** Colours used by earlier versions; stored measurements using them are moved to the current palette. */
 const LEGACY_PALETTE = ['#2dd4bf', '#f59e0b', '#a78bfa', '#f472b6', '#60a5fa', '#a3e635', '#fb7185', '#fbbf24', '#22d3ee', '#e879f9'];
 
-export type ViewId = 'spectrum' | 'transfer' | 'spectrogram' | 'impulse' | 'room' | 'eq' | 'align' | 'spl' | 'tools' | 'modes';
+export type ViewId = 'spectrum' | 'transfer' | 'spectrogram' | 'impulse' | 'room' | 'eq' | 'align' | 'spl' | 'tools';
 
 export type Theme = 'night' | 'day';
 

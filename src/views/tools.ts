@@ -6,6 +6,7 @@ import { weightingDb } from '../dsp/weighting';
 import { RemoteCard } from './remote-card';
 import { NativeCard } from './native-card';
 import { MicsCard } from './mics-card';
+import { RoomModesCard } from './modes';
 import { modal } from '../ui/dialogs';
 import { applySession, buildSession, downloadText, parseSession, sessionFileName, type SessionFile } from '../session';
 import { openReport } from '../report';
@@ -19,7 +20,7 @@ const SECTIONS: { id: ToolsSection; label: string; icon: Parameters<typeof icon>
   { id: 'session', label: 'Session & report', icon: 'layers', hint: 'Save or open a job, create a report' },
   { id: 'remote', label: 'Remote access', icon: 'wifi', hint: 'Phones, tablets and other computers' },
   { id: 'display', label: 'Display & performance', icon: 'sliders', hint: 'Graph quality, battery saver, bass resolution' },
-  { id: 'calc', label: 'Calculators', icon: 'clock', hint: 'Delay, distance and wavelength; weighting table' },
+  { id: 'calc', label: 'Calculators', icon: 'clock', hint: 'Room modes; delay, distance and wavelength; weighting table' },
   { id: 'data', label: 'Data & reset', icon: 'trash', hint: 'Delete traces, reset settings' },
 ];
 
@@ -33,6 +34,7 @@ export class ToolsView implements View {
   private body = h('div', { class: 'tools-body' });
   private cards = new Map<ToolsSection, HTMLElement[]>();
   readonly micsCard: MicsCard;
+  private modesCard: RoomModesCard;
   private delayOut = h('div', { class: 'calc-out' });
   private dirty = true;
   private remoteCard: RemoteCard;
@@ -43,6 +45,7 @@ export class ToolsView implements View {
     this.remoteCard = new RemoteCard(app);
     this.nativeCard = new NativeCard(app);
     this.micsCard = new MicsCard(app);
+    this.modesCard = new RoomModesCard(app);
     this.build();
   }
 
@@ -138,7 +141,7 @@ export class ToolsView implements View {
     const dInput = h('input', { type: 'number', class: 'num', value: '10', step: '0.01' });
     const mInput = h('input', { type: 'number', class: 'num', value: '3.43', step: '0.01' });
     const fInput = h('input', { type: 'number', class: 'num', value: '100', step: '1' });
-    const temp = numberInput(s.tempC, (v) => { s.tempC = v; this.app.save(); update(); this.dirty = true; }, { class: 'num', step: '1', 'aria-label': 'Air temperature (°C)' });
+    const temp = numberInput(s.tempC, (v) => { s.tempC = v; this.app.save(); update(); this.dirty = true; this.modesCard.invalidate(); }, { class: 'num', step: '1', 'aria-label': 'Air temperature (°C)' });
     const update = () => {
       const c = speedOfSound(s.tempC);
       const f = +fInput.value || 100;
@@ -250,7 +253,7 @@ export class ToolsView implements View {
     this.cards.set('session', [this.sessionCard()]);
     this.cards.set('remote', [this.remoteCard.el]);
     this.cards.set('display', [perfCard]);
-    this.cards.set('calc', [delayCard, wCard]);
+    this.cards.set('calc', [this.modesCard.el, delayCard, wCard]);
     this.cards.set('data', [dataCard]);
     this.el.append(this.nav, this.body);
     this.open((SECTIONS.find((x) => x.id === s.toolsSection)?.id ?? 'setup') as ToolsSection);
@@ -273,6 +276,7 @@ export class ToolsView implements View {
     const sec = SECTIONS.find((x) => x.id === section)!;
     this.body.replaceChildren(h('h3', { class: 'tools-title' }, sec.label), h('div', { class: 'tool-grid' }, ...(this.cards.get(section) ?? [])));
     this.body.scrollTop = 0;
+    if (section === 'calc') this.modesCard.invalidate();
     this.dirty = true;
   }
 
@@ -353,11 +357,13 @@ export class ToolsView implements View {
   }
 
   invalidate(): void {
+    this.modesCard.invalidate();
     this.dirty = true;
   }
 
   tick(): void {
     if ((this.nativeTick = (this.nativeTick + 1) % 15) === 0) this.nativeCard.update();
+    if (this.app.settings.toolsSection === 'calc') this.modesCard.tick();
     if (!this.dirty) return;
     this.dirty = false;
     this.remoteCard.render();

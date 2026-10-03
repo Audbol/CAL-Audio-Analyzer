@@ -18,7 +18,6 @@ import { EqView } from './views/eq';
 import { AlignView } from './views/align';
 import { SplView } from './views/spl';
 import { ToolsView, type ToolsSection } from './views/tools';
-import { ModesView } from './views/modes';
 import { showWizard, showHelp, showRemoteConnect } from './ui/dialogs';
 import { applyChartTheme } from './ui/theme';
 import { Dock } from './ui/dock';
@@ -1009,12 +1008,11 @@ export class App {
       new AlignView(this),
       new SplView(this),
       new ToolsView(this),
-      new ModesView(this),
     ];
     this.tabs = h('nav', { class: 'tabs' });
     this.views.forEach((v, i) => {
       this.tabs.append(
-        h('button', { class: 'tab', dataset: { view: v.id }, onclick: () => this.setView(v.id), title: `${v.title} (${(i + 1) % 10})` }, icon(v.icon, 15), h('span', {}, v.title)),
+        h('button', { class: 'tab', dataset: { view: v.id }, onclick: () => this.setView(v.id), title: `${v.title} (${i + 1})` }, icon(v.icon, 15), h('span', {}, v.title)),
       );
     });
     this.tabs.append(this.workspaceHost);
@@ -1780,8 +1778,7 @@ export class App {
           this.toggleTheme();
           break;
         default:
-          // 1–9 and 0 (the tenth tab)
-          if (/^[0-9]$/.test(e.key)) this.setView(this.views[(+e.key + 9) % 10]?.id ?? this.views[0].id);
+          if (/^[1-9]$/.test(e.key)) this.setView(this.views[+e.key - 1].id);
       }
     });
   }

@@ -180,10 +180,10 @@ if (want('tools')) {
     check(body.includes(text) && (id === 'setup' || !body.includes('Microphones & calibration')), `Tools → ${id} shows only its own section`);
   }
   await page.screenshot({ path: `${out}/feat5-07-tools.png` });
-  // Room modes: its own tab (key 0), dimensions kept, the last sweep compared with the modes
-  await page.keyboard.press('0');
+  // Room modes: in Tools → Calculators, dimensions kept, the last sweep compared with the modes
+  await page.locator('[data-section="calc"]').click();
   await page.waitForTimeout(600);
-  check(await page.evaluate(() => window.calApp.settings.view === 'modes'), 'the 0 key opens the Room modes tab');
+  check((await page.locator('.tools-body .modes-card canvas').count()) === 2, 'the room mode calculator is in Tools → Calculators');
   await page.getByLabel('Length (m)').fill('7.3');
   await page.getByLabel('Length (m)').dispatchEvent('change');
   await page.waitForTimeout(400);

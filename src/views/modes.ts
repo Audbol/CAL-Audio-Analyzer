@@ -1,5 +1,5 @@
 import { CHART } from '../ui/theme';
-import type { App, View } from '../app';
+import type { App } from '../app';
 import { Plot } from '../ui/plot';
 import { h, icon, numberInput, clear } from '../ui/dom';
 import { roomModes, schroederFrequency, criticalDistance, type RoomMode } from '../dsp/acoustics';
@@ -15,14 +15,11 @@ const DIM_NAME = ['length', 'width', 'height'];
 export const modeDimension = (m: RoomMode): string => DIM_NAME[m.n.findIndex((k) => k > 0)] ?? '';
 
 /**
- * Room modes of a rectangular room: axial, tangential and oblique modes up to 400 Hz, the Schroeder frequency,
- * the critical distance, and the room's axial modes against the last sweep's measured response.
+ * Room mode calculator (Tools → Calculators): axial, tangential and oblique modes of a rectangular room up to
+ * 400 Hz, the Schroeder frequency, the critical distance, and the room's axial modes against the last sweep.
  */
-export class ModesView implements View {
-  id = 'modes' as const;
-  title = 'Room modes';
-  icon = 'cube' as const;
-  el = h('div', { class: 'modes-view' });
+export class RoomModesCard {
+  readonly el = h('section', { class: 'tool-card wide modes-card' });
   private plot: Plot;
   private measured: Plot;
   private table = h('div', { class: 'modes-table' });
@@ -48,12 +45,8 @@ export class ModesView implements View {
         h('span', { class: 'unit' }, unit),
       );
     this.el.append(
-      h(
-        'div',
-        { class: 'toolbar' },
-        h('div', { class: 'tb-group' }, icon('cube', 15), h('span', { class: 'tb-label' }, 'Rectangular room')),
-        h('div', { class: 'tb-group' }, dim('L', 'Length', 'm'), dim('W', 'Width', 'm'), dim('H', 'Height', 'm'), dim('rt', 'RT60', 's')),
-      ),
+      h('h4', {}, icon('cube', 15), ' Room modes (rectangular room)'),
+      h('div', { class: 'row gap8 wrap' }, dim('L', 'Length', 'm'), dim('W', 'Width', 'm'), dim('H', 'Height', 'm'), dim('rt', 'RT60', 's')),
       h(
         'div',
         { class: 'modes-body' },
@@ -61,10 +54,6 @@ export class ModesView implements View {
         this.table,
       ),
     );
-  }
-
-  show(): void {
-    this.dirty = true;
   }
 
   invalidate(): void {

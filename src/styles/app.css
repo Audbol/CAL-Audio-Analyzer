@@ -3295,38 +3295,32 @@ html.compact .tools-title {
   color: #fff;
 }
 
-/* Room modes tab */
-.modes-view {
-  overflow: hidden;
-}
-.modes-body {
-  flex: 1;
-  min-height: 0;
+/* Room modes (Tools → Calculators) */
+.modes-card .modes-body {
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr);
+  grid-template-columns: minmax(0, 1.7fr) minmax(240px, 1fr);
   gap: 12px;
-  padding: 0 14px 14px;
 }
 .modes-plots {
   display: grid;
-  grid-template-rows: 1fr 1fr auto;
+  grid-template-rows: 220px 220px auto;
   gap: 10px;
-  min-height: 0;
+  min-width: 0;
 }
 .modes-plots .pane.fill {
   position: relative;
+  min-height: 0;
+  height: 220px;
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
-  min-height: 160px;
 }
-.modes-view .modes-table {
-  max-height: none;
+.modes-card .modes-table {
+  max-height: 470px;
   overflow-y: auto;
 }
-html.compact .modes-body {
+html.compact .modes-card .modes-body {
   grid-template-columns: 1fr;
-  overflow-y: auto;
 }
 
 /* SPL tab: the sound level readout fills its panel and scales with it (container units: cqw/cqh are 1 % of the
