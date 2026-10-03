@@ -2,7 +2,7 @@ import type { App, View } from '../app';
 import { Plot, type Series } from '../ui/plot';
 import { h, icon, select } from '../ui/dom';
 import type { DockLayout } from '../ui/dock';
-import { octaveBandCentres, sampleLogGrid, type Smoothing } from '../dsp/freq';
+import { interp, octaveBandCentres, sampleLogGrid, type Smoothing } from '../dsp/freq';
 import { AVG_OPTIONS } from './meters';
 import { DockedView } from './docked';
 import { optionsMenu, optRow, optHead, colourChoice } from '../ui/popover';
@@ -196,6 +196,7 @@ export class SpectrumView extends DockedView implements View {
         optHead('Target & mics'),
         optRow('Target tolerance', this.target.toleranceControl()),
         optRow('Several mics', micAverageControl(app)),
+        optRow('Sweeps', this.settingChip('rtaShowSweeps', 'Show saved sweeps', 'Show saved sweep traces here too, levelled to the live spectrum: a sweep measures the shape of the response, not its level')),
         optHead('Layout'),
         h('div', { class: 'opt-ctl' }, this.resetLayoutButton()),
       ],
@@ -250,6 +251,35 @@ export class SpectrumView extends DockedView implements View {
     );
   }
 
+  /**
+   * Saved sweeps (Sweep & Room → Save as trace) on the Spectrum. A sweep gives the response's shape relative to
+   * the test signal, not a sound level, so each is moved to sit on the live curve: same mean level over
+   * 250 Hz–4 kHz (on the middle of the graph when nothing is measured).
+   */
+  private sweepSeries(live: ArrayLike<number> | null): Series[] {
+    const out: Series[] = [];
+    const g = this.app.grid;
+    const at: number[] = [];
+    for (let f = 250; f <= 4000; f *= 2 ** (1 / 6)) at.push(f);
+    const mean = (fn: (f: number) => number) => {
+      let sum = 0;
+      let n = 0;
+      for (const f of at) {
+        const v = fn(f);
+        if (Number.isFinite(v)) (sum += v), n++;
+      }
+      return n ? sum / n : NaN;
+    };
+    const level = live ? mean((f) => sampleLogGrid(g, live, f)) : (this.rta.cfg.yMin + this.rta.cfg.yMax) / 2;
+    for (const t of this.app.traces.traces) {
+      if (!t.visible || t.kind !== 'sweep' || !t.freqs.length) continue;
+      const own = mean((f) => (f < t.freqs[0] || f > t.freqs[t.freqs.length - 1] ? NaN : interp(t.freqs, t.mag, f)));
+      const add = (Number.isFinite(level) && Number.isFinite(own) ? level - own : 0) + t.offset;
+      out.push({ id: t.id, label: `${t.name} (sweep, levelled)`, x: t.freqs, y: t.mag.map((v) => v + add), color: t.color, width: 1.4, dash: [8, 3, 2, 3] });
+    }
+    return out;
+  }
+
   tick(detachedOnly = false): void {
     this.detachedOnly = detachedOnly;
     const app = this.app;
@@ -257,7 +287,7 @@ export class SpectrumView extends DockedView implements View {
     this.renderAvgHint();
     if (this.visible('rta')) {
       // Redraw only when what is shown changed (new analysis data arrives ~6–12 times a second)
-      const key = `${app.traces.version}|${s.rtaStyle}|${s.rtaSmoothing}|${s.peakHold}|${s.rtaAverageCurve}|${s.rtaAverageSmoothing}|${s.avgCurveShow}|${s.rtaPeakMarks}|${s.rtaTraceColor}|${s.rtaFillColor}|${s.rtaFillOpacity}|${s.avgCurveColor}|${s.avgCurveWidth}|${s.micAverage}|${s.targetCurve}|${s.targetTolerance}|${s.theme}|${s.splCalibrated}|${s.splOffset}|${JSON.stringify(s.mics.map((mc) => [mc.channel, mc.splCalibrated && mc.splOffset]))}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.rtaShown}`).join(',')}`;
+      const key = `${app.traces.version}|${s.rtaStyle}|${s.rtaSmoothing}|${s.peakHold}|${s.rtaAverageCurve}|${s.rtaAverageSmoothing}|${s.avgCurveShow}|${s.rtaPeakMarks}|${s.rtaShowSweeps}|${s.rtaTraceColor}|${s.rtaFillColor}|${s.rtaFillOpacity}|${s.avgCurveColor}|${s.avgCurveWidth}|${s.micAverage}|${s.targetCurve}|${s.targetTolerance}|${s.theme}|${s.splCalibrated}|${s.splOffset}|${JSON.stringify(s.mics.map((mc) => [mc.channel, mc.splCalibrated && mc.splOffset]))}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.rtaShown}`).join(',')}`;
       if (key === this.lastKey) return this.tickMeters();
       this.lastKey = key;
       const g = app.grid;
@@ -320,6 +350,7 @@ export class SpectrumView extends DockedView implements View {
       });
       // Target curve, levelled to the first shown measurement (its average curve when there is one)
       const ref = app.measurements.find((m) => m.cfg.enabled && m.hasRta);
+      if (s.rtaShowSweeps) series.unshift(...this.sweepSeries(ref ? shiftBy(ref.averageDb() ?? ref.rtaOut, offOf(ref.cfg.mic)) : null));
       if (ref) {
         const data = ref.averageDb() ?? ref.rtaOut;
         series.unshift(...this.target.series(g, shiftBy(data, offOf(ref.cfg.mic))));

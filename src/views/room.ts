@@ -122,7 +122,7 @@ export class RoomView implements View {
     );
     const bar = h('div', { class: 'progress-row' }, this.progress, this.statusText);
     this.renderTabs();
-    const tabsRow = h('div', { class: 'room-tabs-row' }, this.tabHost, h('div', { class: 'spacer' }), this.target.targetControl(), analysisOptions, h('button', { class: 'btn small', onclick: () => this.saveTrace(), title: 'Store the frequency response as a trace' }, icon('camera', 14), 'Save FR as trace'));
+    const tabsRow = h('div', { class: 'room-tabs-row' }, this.tabHost, h('div', { class: 'spacer' }), this.target.targetControl(), analysisOptions, h('button', { class: 'btn small', onclick: () => this.saveTrace(), title: 'Store the frequency response as a trace (shown on Transfer and on Spectrum, levelled to the live curve)' }, icon('camera', 14), 'Save FR as trace'));
     this.el.append(settings, bar, this.cards, tabsRow, this.content);
     this.showTab();
   }
@@ -584,7 +584,7 @@ export class RoomView implements View {
       mag: idx.map((i) => +r.fr[i].toFixed(2)),
       note: `${r.spec.duration}s log sweep, ${this.opts.window} ms window, 1/${this.opts.smoothing} oct`,
     });
-    this.app.toast('Frequency response saved as trace', 'ok');
+    this.app.toast('Frequency response saved as a trace: it shows on Transfer and on Spectrum', 'ok');
   }
 
   private exportIr(): void {

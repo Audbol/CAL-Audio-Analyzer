@@ -219,6 +219,33 @@ if (want('assistant')) {
   check((await page.locator('.assistant').isVisible()) && (await page.locator('.assistant .hint').count()) > 0, 'the Assistant comes back with its tips');
 }
 
+// --- A saved sweep shows on the Spectrum too, levelled to the live curve
+if (want('sweep')) {
+  await page.keyboard.press('5');
+  await page.getByRole('button', { name: 'Measure sweep' }).click();
+  await page.waitForFunction(() => window.calApp.views.find((v) => v.id === 'room').result !== null, null, { timeout: 40000 });
+  await page.getByRole('button', { name: 'Save FR as trace' }).click();
+  await page.keyboard.press('1');
+  await page.waitForTimeout(1500);
+  const lv = await page.evaluate(() => {
+    const plot = window.calApp.views.find((v) => v.id === 'spectrum').rta;
+    const sw = plot.series.find((x) => x.label.includes('(sweep'));
+    const live = plot.series.find((x) => x.id === 'm1');
+    if (!sw || !live) return null;
+    const near = (s, f) => { let k = 0; for (let i = 0; i < s.x.length; i++) if (Math.abs(Math.log(s.x[i] / f)) < Math.abs(Math.log(s.x[k] / f))) k = i; return s.y[k]; };
+    return { sweep: near(sw, 1000), live: near(live, 1000) };
+  });
+  check(lv && Math.abs(lv.sweep - lv.live) < 12, `the saved sweep is on the Spectrum near the live level (${lv && lv.sweep.toFixed(1)} vs ${lv && lv.live.toFixed(1)} at 1 kHz)`);
+  await page.screenshot({ path: `${out}/feat5-09-sweep-on-spectrum.png` });
+  await page.locator('[data-options="spectrum"]').click();
+  await page.locator('.opt-wrap.open [data-chip="rtaShowSweeps"]').click();
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(600);
+  const gone = await page.evaluate(() => !window.calApp.views.find((v) => v.id === 'spectrum').rta.series.some((x) => x.label.includes('(sweep')));
+  check(gone, 'the sweeps can be turned off in Spectrum options');
+  await page.evaluate(() => { window.calApp.settings.rtaShowSweeps = true; window.calApp.traces.clear?.(); });
+}
+
 check(errors.length === 0, `no console errors ${errors.join(' | ')}`);
 await browser.close();
 await new Promise((r) => server.httpServer.close(r));

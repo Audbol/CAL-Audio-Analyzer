@@ -123,6 +123,8 @@ export interface Settings {
   rtaFillOpacity: number;
   /** Highlight the highest peak in the low, mid and high ranges of the spectrum. */
   rtaPeakMarks: boolean;
+  /** Saved sweep traces on the Spectrum too, levelled to the live curve (a sweep measures shape, not level). */
+  rtaShowSweeps: boolean;
   /** How the average curve is drawn: shown or hidden (still measured), colour ('auto' = white / black by theme), line width (px). */
   avgCurveShow: boolean;
   avgCurveColor: string;
@@ -198,6 +200,7 @@ export function defaultSettings(): Settings {
     rtaFillColor: 'auto',
     rtaFillOpacity: 0,
     rtaPeakMarks: true,
+    rtaShowSweeps: true,
     avgCurveShow: true,
     avgCurveColor: 'auto',
     avgCurveWidth: 2,

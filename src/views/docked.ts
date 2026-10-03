@@ -6,7 +6,7 @@ import { SplPanel, LevelsPanel } from './meters';
 
 type LayoutKey = 'spectrumLayout' | 'transferLayout' | 'splLayout';
 /** On/off settings shown as chips. */
-type ChipKey = 'showCoherence' | 'peakHold' | 'avgCurveShow' | 'rtaPeakMarks';
+type ChipKey = 'showCoherence' | 'peakHold' | 'avgCurveShow' | 'rtaPeakMarks' | 'rtaShowSweeps';
 
 /**
  * Base for views whose displays live in a panel dock (Spectrum, Transfer). Handles the dock, layout
