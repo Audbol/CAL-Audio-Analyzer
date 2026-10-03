@@ -145,6 +145,23 @@ describe('spectrum analyzer', () => {
     expect(peak).toBeCloseTo(-6.02, 0);
   });
 
+  it('follows a level change at once with averaging set to None', () => {
+    const grid = logGrid(20, 20000, 48);
+    const sa = new SpectrumAnalyzer(FS, 8192, grid, 1024);
+    sa.averaging = 1;
+    const ring = new RingBuffer(1 << 17);
+    const f0 = (171 * FS) / 8192;
+    const tone = (amp: number, n: number, from: number) => Float32Array.from({ length: n }, (_, i) => amp * Math.sin((2 * Math.PI * f0 * (i + from)) / FS));
+    ring.push(tone(0.5, 40000, 0));
+    sa.process(ring, 100);
+    // 20 dB quieter: the very next frame that holds only the new level reads it
+    ring.push(tone(0.05, 8192, 40000));
+    sa.process(ring, 100);
+    const out = new Float64Array(grid.length);
+    sa.render(3, 'avg', out);
+    expect(interp(grid, out, f0)).toBeCloseTo(-26.02, 0);
+  });
+
   it('shows pink noise as roughly flat in 1/3 octave bands', () => {
     const grid = logGrid(20, 20000, 24);
     const sa = new SpectrumAnalyzer(FS, 16384, grid);

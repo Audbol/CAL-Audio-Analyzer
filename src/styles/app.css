@@ -3415,3 +3415,8 @@ html.compact .modes-card .modes-body {
     font-size: clamp(9px, min(2.6cqh, 3.2cqw), 18px);
   }
 }
+.opt-note {
+  color: var(--text-2);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}

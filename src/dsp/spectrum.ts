@@ -107,7 +107,8 @@ export class SpectrumAnalyzer {
     const norm = (2 * 2) / (n * powerSum);
     this.frames++;
     this.version++;
-    const a = this.averaging === 0 ? 1 / this.frames : Math.max(1 / (this.averaging * this.avgScale), 1 / this.frames);
+    // "None" shows each frame as it is (no smoothing over the overlapped frames)
+    const a = this.averaging === 0 ? 1 / this.frames : this.averaging === 1 ? 1 : Math.max(1 / (this.averaging * this.avgScale), 1 / this.frames);
     const b = 1 - a;
     const last = (this.last ??= new Float64Array(this.bins));
     const power = this.power;

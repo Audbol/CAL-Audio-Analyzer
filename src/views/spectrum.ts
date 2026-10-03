@@ -78,6 +78,17 @@ export class SpectrumView extends DockedView implements View {
   }
 
   private resHost = h('span', { class: 'tb-res' });
+  /** How long the chosen averaging takes to follow a change (next to the Averaging setting). */
+  private avgHint = h('span', { class: 'opt-note' });
+
+  private renderAvgHint(): void {
+    const s = this.app.settings;
+    const fs = this.app.fs || 48000;
+    const n = s.rtaAveraging;
+    // Exponential average over n half-overlapped frames: settles in about n × (FFT / 2) samples
+    const text = n === 1 ? 'instant' : n === 0 ? 'until reset' : `≈ ${((n * s.rtaFft) / 2 / fs).toFixed(1)} s`;
+    if (this.avgHint.textContent !== text) this.avgHint.textContent = text;
+  }
 
   /** Resolution choices: bars come in whole fractional-octave bands only. */
   private renderResolution(): void {
@@ -121,7 +132,7 @@ export class SpectrumView extends DockedView implements View {
         h('div', { class: 'opt-ctl' }, this.panelChip('rta', 'Spectrum', 'spectrum'), this.panelChip('spl', 'SPL meter', 'SPL meter'), this.panelChip('levels', 'Input levels', 'input level')),
         optHead('Analysis'),
         optRow('FFT size', select([4096, 8192, 16384, 32768, 65536].map((n) => ({ value: n, label: `${n / 1024}k` })), s.rtaFft, (v) => { s.rtaFft = v; app.applyAnalysisSettings(); }, { dataset: { setting: 'rtaFft' }, title: 'Longer FFTs resolve lower frequencies but react more slowly' })),
-        optRow('Averaging', select(AVG_OPTIONS, s.rtaAveraging, (v) => { s.rtaAveraging = v; app.applyAnalysisSettings(); }, { dataset: { setting: 'rtaAveraging' } })),
+        optRow('Averaging', select(AVG_OPTIONS, s.rtaAveraging, (v) => { s.rtaAveraging = v; app.applyAnalysisSettings(); }, { dataset: { setting: 'rtaAveraging' }, title: 'More averaging steadies the curve but makes it slower to follow changes' }), this.avgHint),
         optHead('Colours'),
         optRow('Trace', colourChoice(s.rtaTraceColor, (v) => { s.rtaTraceColor = v; app.save(); }, { auto: 'Measurement colour', label: 'Spectrum trace colour' })),
         optRow('Fill', colourChoice(s.rtaFillColor, (v) => { s.rtaFillColor = v; app.save(); }, { auto: 'Same as the trace', none: true, label: 'Spectrum fill colour' })),
@@ -243,6 +254,7 @@ export class SpectrumView extends DockedView implements View {
     this.detachedOnly = detachedOnly;
     const app = this.app;
     const s = app.settings;
+    this.renderAvgHint();
     if (this.visible('rta')) {
       // Redraw only when what is shown changed (new analysis data arrives ~6–12 times a second)
       const key = `${app.traces.version}|${s.rtaStyle}|${s.rtaSmoothing}|${s.peakHold}|${s.rtaAverageCurve}|${s.rtaAverageSmoothing}|${s.avgCurveShow}|${s.rtaPeakMarks}|${s.rtaTraceColor}|${s.rtaFillColor}|${s.rtaFillOpacity}|${s.avgCurveColor}|${s.avgCurveWidth}|${s.micAverage}|${s.targetCurve}|${s.targetTolerance}|${s.theme}|${s.splCalibrated}|${s.splOffset}|${JSON.stringify(s.mics.map((mc) => [mc.channel, mc.splCalibrated && mc.splOffset]))}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.rtaShown}`).join(',')}`;
