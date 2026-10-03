@@ -12,7 +12,7 @@ import { rangePeaks, type RangePeak } from '../dsp/peaks';
 
 /** Colours offered for the average curve ('auto': white at night, black by day). */
 export const AVG_COLORS = [
-  { value: 'auto', label: 'Auto (white / black)' },
+  { value: 'auto', label: 'Auto (white, or each mic’s colour)' },
   { value: '#ffd60a', label: 'Yellow' },
   { value: '#ff9f1c', label: 'Orange' },
   { value: '#ff4d6d', label: 'Red' },
@@ -20,6 +20,18 @@ export const AVG_COLORS = [
   { value: '#4cc9f0', label: 'Cyan' },
   { value: '#7cff6b', label: 'Green' },
 ];
+
+/** Dash patterns that tell several average curves apart (solid, long dash, dots, dash-dot). */
+const AVG_DASHES: (number[] | undefined)[] = [undefined, [12, 5], [3, 4], [12, 4, 3, 4]];
+
+/** Mix a #rrggbb colour with another by `amount` (0 = unchanged, 1 = the other colour). */
+function tint(c: string, toward: string, amount: number): string {
+  const p = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const a = p(c);
+  const b = p(toward);
+  if (a.some(Number.isNaN) || b.some(Number.isNaN)) return c;
+  return `#${a.map((v, i) => Math.round(v + (b[i] - v) * amount).toString(16).padStart(2, '0')).join('')}`;
+}
 
 export function defaultSpectrumLayout(): DockLayout {
   return {
@@ -282,14 +294,18 @@ export class SpectrumView extends DockedView implements View {
       // Average curves (for tuning) on top of everything: the long-term balance behind the live RTA
       const day = s.theme === 'day';
       series.push(...micAverageSeries(app, g, app.measurements.filter((m) => m.cfg.enabled && m.hasRta).map((m) => shiftBy(m.rtaOut, offOf(m.cfg.mic)))));
-      const avgColor = s.avgCurveColor === 'auto' ? (day ? '#111111' : '#ffffff') : s.avgCurveColor;
-      for (const m of app.measurements) {
-        const avg = m.cfg.enabled && !only && s.avgCurveShow ? m.averageDb() : null;
-        if (!avg) continue;
+      // One average curve: white (black by day). Several (one per mic): each in its mic's colour, lightened (darkened
+      // by day) so it stands apart from the live trace, and each with its own dash pattern, so they can be told
+      // apart even when two colours look alike
+      const avgs = app.measurements.filter((m) => m.cfg.enabled && !only && s.avgCurveShow && m.averageDb());
+      const several = avgs.length > 1;
+      avgs.forEach((m, k) => {
+        const avg = m.averageDb()!;
         const label = `${m.cfg.name} average${s.rtaAverageCurve > 0 ? ` (${s.rtaAverageCurve} s)` : ''}`;
+        const color = s.avgCurveColor !== 'auto' ? s.avgCurveColor : several ? tint(m.cfg.color, day ? '#000000' : '#ffffff', 0.45) : day ? '#111111' : '#ffffff';
         // Drawn as a smooth curve on the fine grid in both display styles (over bars too)
-        series.push({ id: `${m.cfg.id}-avg`, label, x: g, y: shiftBy(avg, offOf(m.cfg.mic)), color: avgColor, width: s.avgCurveWidth, halo: day ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)' });
-      }
+        series.push({ id: `${m.cfg.id}-avg`, label, x: g, y: shiftBy(avg, offOf(m.cfg.mic)), color, width: s.avgCurveWidth, dash: several ? AVG_DASHES[k % AVG_DASHES.length] : undefined, halo: day ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)' });
+      });
       // Target curve, levelled to the first shown measurement (its average curve when there is one)
       const ref = app.measurements.find((m) => m.cfg.enabled && m.hasRta);
       if (ref) {

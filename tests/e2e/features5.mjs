@@ -131,6 +131,22 @@ if (want('peaks')) {
   await page.keyboard.press('b');
 }
 
+// --- 5. Several mics: each average curve in its own (lightened) colour with its own dash pattern
+if (want('avgmulti')) {
+  await page.keyboard.press('1');
+  await page.getByRole('button', { name: 'Add', exact: true }).first().click();
+  await page.waitForTimeout(4000);
+  const avgs = await page.evaluate(() => window.calApp.views.find((v) => v.id === 'spectrum').rta.series.filter((x) => x.id.endsWith('-avg')).map((x) => ({ c: x.color, d: JSON.stringify(x.dash ?? null), l: x.label })));
+  check(avgs.length === 2, `two average curves (${avgs.map((a) => a.l).join(', ')})`);
+  check(avgs.length === 2 && avgs[0].c !== avgs[1].c && avgs[0].d !== avgs[1].d && avgs.every((a) => a.c !== '#ffffff'), `they differ in colour and dash pattern (${avgs.map((a) => `${a.c} ${a.d}`).join(' | ')})`);
+  await page.screenshot({ path: `${out}/feat5-06-avg-multi.png` });
+  // Back to one measurement: the single average curve is white again
+  await page.evaluate(() => { const a = window.calApp; a.removeMeasurement?.(a.settings.measurements[1].id); });
+  await page.waitForTimeout(1500);
+  const one = await page.evaluate(() => window.calApp.views.find((v) => v.id === 'spectrum').rta.series.filter((x) => x.id.endsWith('-avg')).map((x) => x.color));
+  if (one.length === 1) check(one[0] === '#ffffff', 'a single average curve is white again');
+}
+
 check(errors.length === 0, `no console errors ${errors.join(' | ')}`);
 await browser.close();
 await new Promise((r) => server.httpServer.close(r));
