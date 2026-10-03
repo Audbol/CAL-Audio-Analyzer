@@ -17,6 +17,7 @@ import { alignSubMain, alignFullRange } from '../src/dsp/align';
 import { targetShape, targetLevel, targetDeviation } from '../src/dsp/target';
 import { Biquad } from '../src/audio/biquad';
 import { groupDelayMs, smoothGroupDelay } from '../src/dsp/groupdelay';
+import { compareCurves } from '../src/dsp/compare';
 
 const FS = 48000;
 
@@ -768,5 +769,28 @@ describe('group delay', () => {
     const w = Array.from(grid, (_, i) => (i % 40 === 0 ? 1e-4 : 1));
     const sm = smoothGroupDelay(grid, gd, w, 6);
     for (const f of [50, 500, 5000]) expect(interp(grid, sm, f)).toBeCloseTo(3, 1);
+  });
+});
+
+describe('before/after compare', () => {
+  const grid = logGrid(20, 20000, 24);
+  const flat = new Float64Array(grid.length);
+  // Before: a 10 dB room-mode peak at 50 Hz; after: the peak mostly removed and 6 dB louder overall
+  const peak = (f: number, g: number) => g * Math.exp(-((Math.log2(f / 50) / 0.25) ** 2));
+  const before = { freqs: Array.from(grid), mag: Array.from(grid, (f) => peak(f, 10)) };
+  const after = { freqs: Array.from(grid), mag: Array.from(grid, (f) => 6 + peak(f, 2)) };
+
+  it('scores each curve against the target, ignoring the level change', () => {
+    const r = compareCurves(grid, before, after, flat, { fMin: 20, fMax: 20000, tolerance: 3, matchLevels: true });
+    expect(r.devAfter!.rms).toBeLessThan(r.devBefore!.rms / 3);
+    expect(r.devBefore!.worst.f).toBeCloseTo(50, -1);
+    expect(r.shift).toBeCloseTo(6, 1);
+  });
+
+  it('shows only the change in shape when levels are matched', () => {
+    const r = compareCurves(grid, before, after, null, { fMin: 20, fMax: 20000, tolerance: 3, matchLevels: true });
+    expect(interp(grid, r.diff, 1000)).toBeCloseTo(0, 1);
+    expect(interp(grid, r.diff, 50)).toBeCloseTo(-8, 0);
+    expect(r.devBefore).toBeNull();
   });
 });

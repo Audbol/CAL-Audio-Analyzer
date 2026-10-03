@@ -11,6 +11,7 @@ import type { RoomView } from './views/room';
 import { downloadText, sessionFileName } from './session';
 import { WaterfallPlot } from './ui/waterfall-plot';
 import type { WaterfallResult } from './dsp/waterfall';
+import { runCompare, compareSeries, compareSummary } from './views/compare';
 
 const TARGET_COLOR = '#ffb020';
 
@@ -248,6 +249,25 @@ function buildReportHtml(app: App): string {
         <p>Source “${escapeHtml(e.source)}” → target ${escapeHtml(e.targetLabel)}, ${Math.round(e.opt.fMin)} Hz – ${formatFreq(e.opt.fMax)}. RMS deviation ${fmt(e.rmsBefore, 1, ' dB')} → <b>${fmt(e.rmsAfter, 1, ' dB')}</b>.</p>
         ${figHtml('Deviation, EQ and predicted result', f)}
         ${rows ? `<table class="grid"><tr><th>#</th><th>Type</th><th>Frequency</th><th>Gain</th><th>Q</th></tr>${rows}</table>` : '<p>No filters.</p>'}
+      </section>`);
+    }
+  }
+
+  // Before / after ----------------------------------------------------------------------------------------------
+  {
+    const o = s.compare?.report ? runCompare(app, s.compare) : null;
+    if (o) {
+      const { curves, change } = compareSeries(o);
+      const shades = [{ x0: o.cfg.fMin, x1: o.cfg.fMax, color: 'rgba(120,140,170,0.10)' }];
+      const fc = figure({ xType: 'log', xMin: 20, xMax: 20000, yMin: -30, yMax: 12, yUnit: 'dB', yStep: 6 }, curves, { fit: true, maxSpan: 48, shades });
+      const fd = figure({ xType: 'log', xMin: 20, xMax: 20000, yMin: -15, yMax: 15, yUnit: 'dB', yStep: 5 }, change, { shades });
+      const row = (label: string, d: typeof o.result.devBefore) => (d ? `<tr><td>${label}</td><td>±${fmt(d.rms, 1, ' dB')}</td><td>${Math.round(d.within * 100)} %</td><td>${d.worst.dev > 0 ? '+' : ''}${fmt(d.worst.dev, 1, ' dB')} at ${formatFreq(d.worst.f)}</td></tr>` : '');
+      const table = o.result.devBefore && o.result.devAfter ? `<table class="grid"><tr><th></th><th>RMS deviation</th><th>Within ±${s.targetTolerance || 3} dB</th><th>Worst</th></tr>${row('Before', o.result.devBefore)}${row('After', o.result.devAfter)}</table>` : '';
+      sections.push(`<section><h2>Before / after</h2>
+        <p>“${escapeHtml(o.before.name)}” → “${escapeHtml(o.after.name)}”, against ${escapeHtml(o.targetName)}: <b>${escapeHtml(compareSummary(o))}</b>.</p>
+        ${table}
+        ${figHtml('Before and after', fc)}
+        ${figHtml('Change (after − before)', fd)}
       </section>`);
     }
   }

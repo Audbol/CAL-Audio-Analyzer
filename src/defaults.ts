@@ -15,6 +15,7 @@ const KEEP = [
   'graphQuality',
   'powerMode',
   'showAssistant',
+  'compare',
   'remoteServer',
   'splOffset',
   'splCalibrated',

@@ -59,6 +59,18 @@ export interface MeasurementConfig {
   invert: boolean;
 }
 
+export interface CompareSettings {
+  before: string;
+  after: string;
+  /** A built-in target id ('flat', 'house'…). */
+  target: string;
+  fMin: number;
+  fMax: number;
+  /** Move "before" to the level of "after", so only the change in shape shows. */
+  matchLevels: boolean;
+  report: boolean;
+}
+
 export interface Settings {
   view: ViewId;
   /** Night = OLED black; Day = high-contrast light scheme for use in direct sunlight. */
@@ -146,6 +158,8 @@ export interface Settings {
   targetTolerance: number;
   /** Target curve on the Sweep & Room frequency response ('off', a built-in id or `trace:<id>`). */
   roomTargetCurve: string;
+  /** The last before/after comparison (trace ids, target, scoring range) and whether the report shows it. */
+  compare: CompareSettings | null;
   /** Room for the room-mode calculator (m, s). `known`: the user entered it (the diagnosis then names its modes). */
   room: { L: number; W: number; H: number; rt: number; known: boolean };
   /** Input last used as a loopback reference (for switching back from the internal reference). */
@@ -213,6 +227,7 @@ export function defaultSettings(): Settings {
     targetCurve: 'off',
     targetTolerance: 3,
     roomTargetCurve: 'off',
+    compare: null,
     session: { name: '', venue: '', notes: '' },
     room: { L: 6.5, W: 4.2, H: 2.7, rt: 0.5, known: false },
     toolsSection: 'setup',

@@ -3467,3 +3467,105 @@ html.compact .modes-card .modes-body {
   flex: 1 1 260px;
   font-size: 13px;
 }
+
+/* Before / after compare */
+.modal.cmp-modal {
+  width: min(980px, 100%);
+}
+.cmp {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cmp-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+.cmp-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+  min-width: 0;
+}
+.cmp-field select {
+  max-width: 300px;
+}
+.cmp-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.cmp-scores {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+.cmp-score {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+.cmp-score b {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+.cmp-score.after b {
+  color: #2ec4b6;
+}
+.cmp-score-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-2);
+}
+.cmp-arrow {
+  align-self: center;
+  color: var(--text-2);
+  font-size: 18px;
+}
+.cmp-summary {
+  margin: 0;
+  font-size: 13px;
+}
+.cmp-plot {
+  position: relative;
+  height: 280px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.cmp-plot.small {
+  height: 160px;
+}
+html.compact .cmp-scores {
+  flex-direction: column;
+}
+html.compact .cmp-arrow {
+  display: none;
+}
+.cmp-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.cmp-legend .lg {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.cmp-legend i {
+  width: 22px;
+  display: inline-block;
+}

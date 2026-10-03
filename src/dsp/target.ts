@@ -62,7 +62,7 @@ export function targetDeviation(
   return n ? { rms: Math.sqrt(sq / n), within: inside / n, worst } : null;
 }
 
-function interpLog(x: number[], y: number[], xi: number): number {
+export function interpLog(x: ArrayLike<number>, y: ArrayLike<number>, xi: number): number {
   const n = x.length;
   if (xi <= x[0]) return y[0];
   if (xi >= x[n - 1]) return y[n - 1];

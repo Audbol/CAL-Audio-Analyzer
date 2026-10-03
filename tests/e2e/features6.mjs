@@ -69,6 +69,40 @@ if (want('positions')) {
   check(await page.locator('.series-bar').isHidden(), 'the prompt closes when the series is done');
 }
 
+// --- 3. Before / after compare with a score against the target, and in the report
+if (want('compare')) {
+  await page.evaluate(() => {
+    const grid = Array.from(window.calApp.grid);
+    const peak = (f, g) => g * Math.exp(-((Math.log2(f / 50) / 0.25) ** 2));
+    const t = window.calApp.traces;
+    t.add({ name: 'Before EQ', kind: 'sweep', freqs: grid, mag: grid.map((f) => peak(f, 10)) });
+    t.traces[t.traces.length - 1].created -= 1000;
+    t.add({ name: 'After EQ', kind: 'sweep', freqs: grid, mag: grid.map((f) => 4 + peak(f, 2)) });
+  });
+  await page.locator('[data-action="compare"]').click();
+  await page.waitForSelector('.cmp-modal .cmp-score.after b');
+  await page.locator('.cmp-modal select[data-compare="target"]').selectOption('flat');
+  await page.waitForTimeout(300);
+  const before = await page.locator('.cmp-modal select[data-compare="before"] option:checked').textContent();
+  const after = await page.locator('.cmp-modal select[data-compare="after"] option:checked').textContent();
+  check(before.startsWith('Before EQ') && after.startsWith('After EQ'), `the two newest traces are compared, older as before (${before} → ${after})`);
+  const sum = await page.locator('.cmp-summary').textContent();
+  check(/closer to the target/.test(sum), `the summary scores the improvement (${sum})`);
+  const [b, a] = await page.locator('.cmp-score b').allTextContents();
+  check(parseFloat(b.replace('±', '')) > 2 * parseFloat(a.replace('±', '')), `RMS deviation before vs after (${b} → ${a})`);
+  await page.screenshot({ path: `${out}/feat6-03-compare.png` });
+  await page.getByRole('button', { name: 'Done' }).click();
+  await page.waitForSelector('.cmp-modal', { state: 'detached' });
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.press('9');
+  await page.locator('[data-section="session"]').click();
+  const [popup] = await Promise.all([page.waitForEvent('popup'), page.getByRole('button', { name: 'Create report' }).click()]);
+  await popup.waitForLoadState();
+  const rep = await popup.evaluate(() => document.body.innerText);
+  check(rep.includes('Before / after') && rep.includes('closer to the target'), 'the comparison is in the report');
+  await popup.close();
+}
+
 check(errors.length === 0, `no console errors ${errors.join(' | ')}`);
 await browser.close();
 await new Promise((r) => server.httpServer.close(r));

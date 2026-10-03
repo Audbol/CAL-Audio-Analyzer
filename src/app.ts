@@ -25,6 +25,7 @@ import { Plot } from './ui/plot';
 import { Playlist, RemotePlaylist, type PlaylistApi } from './audio/playlist';
 import { MusicControls, showPlaylist } from './ui/music';
 import { showTraceNotes } from './ui/trace-notes';
+import { showCompare } from './views/compare';
 import { SplLogger } from './logger';
 import { NativeAudio } from './native/client';
 import type { NativeDevice, NativeOpenOptions } from './native/protocol';
@@ -1051,6 +1052,7 @@ export class App {
             { class: 'row gap4' },
             h('button', { class: 'btn small ghost', onclick: () => fileInput.click(), title: 'Import measurement text (CSV, FRD, TXT)' }, icon('upload', 14)),
             h('button', { class: 'btn small ghost', onclick: () => this.averageSelected(), title: 'Power-average the selected traces' }, 'Avg'),
+            h('button', { class: 'btn small ghost', onclick: () => showCompare(this, [...this.selectedTraces]), title: 'Compare two traces: before / after, with a score against the target', dataset: { action: 'compare' } }, 'Compare'),
           ),
         ),
         this.sidebarTraces,
