@@ -3420,3 +3420,6 @@ html.compact .modes-card .modes-body {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
+.assistant[hidden] {
+  display: none;
+}

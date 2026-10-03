@@ -213,6 +213,20 @@ export class ToolsView implements View {
       h(
         'div',
         { class: 'row gap8' },
+        h('span', {}, 'Assistant'),
+        select(
+          [
+            { value: 'on' as const, label: 'Show tips in the sidebar' },
+            { value: 'off' as const, label: 'Hidden' },
+          ],
+          s.showAssistant ? 'on' : 'off',
+          (v) => app.setAssistant(v === 'on'),
+          { dataset: { assistant: '' }, 'aria-label': 'Assistant' },
+        ),
+      ),
+      h(
+        'div',
+        { class: 'row gap8' },
         h('span', {}, 'Bass resolution'),
         select(
           [
@@ -364,6 +378,10 @@ export class ToolsView implements View {
   tick(): void {
     if ((this.nativeTick = (this.nativeTick + 1) % 15) === 0) this.nativeCard.update();
     if (this.app.settings.toolsSection === 'calc') this.modesCard.tick();
+    // The Assistant can also be hidden from its own close button
+    const assistant = this.el.querySelector<HTMLSelectElement>('select[data-assistant]');
+    const shown = this.app.settings.showAssistant ? 'on' : 'off';
+    if (assistant && assistant.value !== shown) assistant.value = shown;
     if (!this.dirty) return;
     this.dirty = false;
     this.remoteCard.render();

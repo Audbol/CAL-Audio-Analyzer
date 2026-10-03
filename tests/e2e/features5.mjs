@@ -192,6 +192,33 @@ if (want('tools')) {
   await page.screenshot({ path: `${out}/feat5-08-modes.png` });
 }
 
+// --- Averaging: "None" is instant, and the panel shows how long each setting takes
+if (want('averaging')) {
+  await page.keyboard.press('1');
+  await page.locator('[data-options="spectrum"]').click();
+  await page.locator('select[data-setting="rtaAveraging"]').selectOption('4');
+  await page.waitForTimeout(300);
+  const hint = await page.locator('.opt-wrap.open .opt-note').first().textContent();
+  check(/≈ \d\.\d s/.test(hint), `the averaging time is shown (${hint})`);
+  await page.locator('select[data-setting="rtaAveraging"]').selectOption('1');
+  await page.waitForTimeout(300);
+  check((await page.locator('.opt-wrap.open .opt-note').first().textContent()) === 'instant', 'None is shown as instant');
+  await page.keyboard.press('Escape');
+}
+
+// --- The Assistant can be hidden and shown again
+if (want('assistant')) {
+  await page.locator('.assistant .sec-head button').click();
+  await page.waitForTimeout(200);
+  check(!(await page.locator('.assistant').isVisible()) && (await page.evaluate(() => window.calApp.settings.showAssistant)) === false, 'the Assistant hides from its close button');
+  await page.keyboard.press('9');
+  await page.locator('[data-section="display"]').click();
+  check((await page.locator('select[data-assistant]').inputValue()) === 'off', 'Tools → Display shows the Assistant as hidden');
+  await page.locator('select[data-assistant]').selectOption('on');
+  await page.waitForTimeout(900);
+  check((await page.locator('.assistant').isVisible()) && (await page.locator('.assistant .hint').count()) > 0, 'the Assistant comes back with its tips');
+}
+
 check(errors.length === 0, `no console errors ${errors.join(' | ')}`);
 await browser.close();
 await new Promise((r) => server.httpServer.close(r));

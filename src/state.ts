@@ -129,6 +129,8 @@ export interface Settings {
   avgCurveWidth: number;
   /** Battery saver: fewer updates and lighter drawing. 'auto' turns it on while the device runs on battery. */
   powerMode: 'auto' | 'normal' | 'saver';
+  /** The Assistant tips in the sidebar (hidden: the traces get the space). */
+  showAssistant: boolean;
   /** Several mics: show their live power average (and the spread between them) on Spectrum and Transfer. */
   micAverage: 'off' | 'avg' | 'spread' | 'only';
   /** Workspaces saved by the user (built-in ones live in workspaces.ts), and the last one chosen. */
@@ -200,6 +202,7 @@ export function defaultSettings(): Settings {
     avgCurveColor: 'auto',
     avgCurveWidth: 2,
     powerMode: 'auto',
+    showAssistant: true,
     micAverage: 'off',
     workspaces: [],
     workspace: '',

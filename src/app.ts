@@ -96,6 +96,7 @@ export class App {
   private sidebarMeas!: HTMLElement;
   private sidebarTraces!: HTMLElement;
   private hintsEl!: HTMLElement;
+  private assistantEl!: HTMLElement;
   private statusEl!: HTMLElement;
   private metersEl!: HTMLElement;
   private startBtn!: HTMLButtonElement;
@@ -1055,7 +1056,12 @@ export class App {
         this.sidebarTraces,
         fileInput,
       ),
-      h('section', { class: 'assistant' }, h('div', { class: 'sec-head' }, h('h3', {}, icon('sparkle', 13), ' Assistant')), this.hintsEl),
+      (this.assistantEl = h(
+        'section',
+        { class: 'assistant', hidden: !this.settings.showAssistant },
+        h('div', { class: 'sec-head' }, h('h3', {}, icon('sparkle', 13), ' Assistant'), h('button', { class: 'btn small ghost', title: 'Hide the Assistant (show it again in Tools → Display)', onclick: () => this.setAssistant(false) }, icon('x', 14))),
+        this.hintsEl,
+      )),
     );
 
     this.metersEl = h('div', { class: 'meters' });
@@ -1694,7 +1700,17 @@ export class App {
     return out;
   }
 
+  /** Show or hide the Assistant tips in the sidebar. */
+  setAssistant(show: boolean): void {
+    this.settings.showAssistant = show;
+    this.assistantEl.hidden = !show;
+    this.lastHints = '';
+    this.save();
+    if (!show) this.toast('Assistant hidden. Show it again in Tools → Display & performance.');
+  }
+
   private updateHints(): void {
+    if (!this.settings.showAssistant) return;
     const hints = this.hints();
     const key = hints.map((x) => x.text).join('|');
     if (key === this.lastHints) return;
