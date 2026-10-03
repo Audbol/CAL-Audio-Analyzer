@@ -3569,3 +3569,32 @@ html.compact .cmp-arrow {
   width: 22px;
   display: inline-block;
 }
+
+/* Notes on graphs */
+.plot.adding-note canvas {
+  cursor: copy;
+}
+.note-editor {
+  position: absolute;
+  top: 34px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  width: min(370px, calc(100% - 16px));
+  background: var(--panel);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(var(--shadow-rgb), 0.5);
+}
+.note-editor input {
+  flex: 1;
+  min-width: 0;
+}
+.note-f {
+  font-size: 11px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

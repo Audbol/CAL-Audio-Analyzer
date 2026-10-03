@@ -12,6 +12,8 @@ import { downloadText, sessionFileName } from './session';
 import { WaterfallPlot } from './ui/waterfall-plot';
 import type { WaterfallResult } from './dsp/waterfall';
 import { runCompare, compareSeries, compareSummary } from './views/compare';
+import { noteFreq } from './views/graph-notes';
+import type { GraphNote } from './state';
 
 const TARGET_COLOR = '#ffb020';
 
@@ -25,7 +27,7 @@ function view<T>(app: App, id: string): T {
 }
 
 /** Draw a plot off screen in the day (print) scheme and return it as a PNG data URL with its legend. */
-function figure(cfg: PlotConfig, series: Series[], opts: { fit?: boolean; maxSpan?: number; shades?: Plot['shades']; markers?: Marker[] } = {}): Figure {
+function figure(cfg: PlotConfig, series: Series[], opts: { fit?: boolean; maxSpan?: number; shades?: Plot['shades']; markers?: Marker[]; notes?: GraphNote[] } = {}): Figure {
   const host = document.createElement('div');
   host.style.cssText = 'position:fixed;left:-20000px;top:0;width:960px;height:360px;';
   const p = new Plot({ ...cfg, title: undefined, autoFit: false });
@@ -36,6 +38,8 @@ function figure(cfg: PlotConfig, series: Series[], opts: { fit?: boolean; maxSpa
   p.series = series;
   p.shades = opts.shades ?? [];
   p.markers = opts.markers ?? [];
+  // Notes on graphs, in a darker shade that reads on the white print background
+  p.notes = (opts.notes ?? []).map((n) => ({ x: n.f, label: n.text, color: '#a21caf' }));
   p.resize();
   if (opts.fit) {
     p.fitY();
@@ -108,6 +112,7 @@ export function buildReport(app: App): string {
 
 function buildReportHtml(app: App): string {
   const s = app.settings;
+  const notesOf = (graph: GraphNote['graph']) => s.graphNotes.filter((n) => n.graph === graph);
   const g = app.grid;
   const sess = s.session;
   const now = new Date();
@@ -162,7 +167,7 @@ function buildReportHtml(app: App): string {
       const t = targetInfo(app, g);
       const ts = t && ref ? targetSeries(t, g, ref) : null;
       if (ts) series.unshift(...ts.series);
-      const f = figure({ xType: 'log', xMin: 20, xMax: 20000, yMin: -100, yMax: 0, yUnit: spl ? 'dB SPL' : 'dBFS', yStep: 10 }, series, { fit: true });
+      const f = figure({ xType: 'log', xMin: 20, xMax: 20000, yMin: -100, yMax: 0, yUnit: spl ? 'dB SPL' : 'dBFS', yStep: 10 }, series, { fit: true, notes: notesOf('spectrum') });
       sections.push(`<section><h2>Spectrum</h2>${figHtml('Spectrum (RTA)', f, spl ? 'dB SPL' : 'dBFS')}</section>`);
     }
   }
@@ -204,7 +209,7 @@ function buildReportHtml(app: App): string {
       if (s.targetCurve !== `trace:${tr.id}`) addDeviation(tr.name, tr.freqs, y, tr.coh ?? null);
     }
     if (mag.length) {
-      const fm = figure({ xType: 'log', xMin: 20, xMax: 20000, yMin: -30, yMax: 18, yUnit: 'dB', yStep: 6 }, mag, { fit: true, maxSpan: 48 });
+      const fm = figure({ xType: 'log', xMin: 20, xMax: 20000, yMin: -30, yMax: 18, yUnit: 'dB', yStep: 6 }, mag, { fit: true, maxSpan: 48, notes: notesOf('transfer') });
       const fp = ph.length ? figure({ xType: 'log', xMin: 20, xMax: 20000, yMin: -180, yMax: 180, yUnit: 'deg', yStep: 45 }, ph) : null;
       const dev = devRows.length
         ? `<table class="grid"><tr><th>Response vs target (40 Hz – 16 kHz)</th><th>RMS deviation</th><th>Within ±${t?.tol || 3} dB</th><th>Largest deviation</th></tr>${devRows.join('')}</table>`
@@ -217,7 +222,7 @@ function buildReportHtml(app: App): string {
   {
     const r = view<RoomView>(app, 'room').reportData();
     if (r) {
-      const f = figure({ xType: 'log', xMin: 20, xMax: 20000, yMin: -30, yMax: 12, yUnit: 'dB', yStep: 6 }, [{ id: 'fr', label: 'Sweep frequency response', x: g, y: r.fr, color: '#00c8ff', width: 2 }], { fit: true });
+      const f = figure({ xType: 'log', xMin: 20, xMax: 20000, yMin: -30, yMax: 12, yUnit: 'dB', yStep: 6 }, [{ id: 'fr', label: 'Sweep frequency response', x: g, y: r.fr, color: '#00c8ff', width: 2 }], { fit: true, notes: notesOf('room') });
       const cards = r.cards.map((c) => `<div class="card"><span>${escapeHtml(c.label)}</span><b>${escapeHtml(c.value)}</b><em>${escapeHtml(c.sub)}</em></div>`).join('');
       const wfData = view<RoomView>(app, 'room').waterfallData('bass');
       const wf = wfData ? waterfallImage(wfData) : null;
@@ -353,6 +358,11 @@ function buildReportHtml(app: App): string {
     sections.push(`<section><h2>Stored traces</h2><table class="grid"><tr><th>Name</th><th>Type</th><th>Captured</th><th>Offset</th><th>Note</th></tr>${rows}</table>${photos ? `<h3>Measurement positions</h3><div class="photos">${photos}</div>` : ''}</section>`);
   }
 
+  if (s.graphNotes.length) {
+    const where = { spectrum: 'Spectrum', transfer: 'Transfer', room: 'Sweep frequency response' } as const;
+    const rows = [...s.graphNotes].sort((a, b) => a.graph.localeCompare(b.graph) || a.f - b.f).map((n) => `<tr><td>${where[n.graph]}</td><td>${noteFreq(n.f)}</td><td>${escapeHtml(n.text)}</td></tr>`).join('');
+    sections.push(`<section><h2>Notes on graphs</h2><table class="grid"><tr><th>Graph</th><th>Frequency</th><th>Note</th></tr>${rows}</table></section>`);
+  }
   if (sess.notes.trim()) sections.push(`<section><h2>Notes</h2><p class="notes">${escapeHtml(sess.notes)}</p></section>`);
 
   const title = sess.name || 'Measurement report';

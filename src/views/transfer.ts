@@ -9,6 +9,7 @@ import { optionsMenu, optRow, optHead } from '../ui/popover';
 import { TargetOverlay } from './target-overlay';
 import { micAverageControl, micAverageSeries } from './mic-average-overlay';
 import { groupDelayMs, smoothGroupDelay } from '../dsp/groupdelay';
+import { GraphNotes } from './graph-notes';
 
 export function defaultTransferLayout(): DockLayout {
   return {
@@ -31,6 +32,7 @@ export class TransferView extends DockedView implements View {
   private mag: Plot;
   private phase: Plot;
   private gd: Plot;
+  private notes!: GraphNotes;
   private gdBufs = new Map<string, Float64Array>();
   private alphas = new Map<string, Float64Array>();
   readonly target: TargetOverlay;
@@ -47,6 +49,7 @@ export class TransferView extends DockedView implements View {
       s.magRange = [a, b];
       app.save();
     };
+    this.notes = new GraphNotes(app, 'transfer', this.mag);
     this.mountDock(
       [this.plotPanel('mag', 'Transfer function · magnitude & coherence', this.mag), this.plotPanel('phase', 'Transfer function · phase', this.phase), { ...this.plotPanel('gd', 'Transfer function · group delay', this.gd), hiddenByDefault: true }, ...this.meterPanels()],
       this.toolbar(),
@@ -82,6 +85,7 @@ export class TransferView extends DockedView implements View {
       h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Smoothing'), select(SMOOTHING_OPTIONS.filter((o) => o.value !== 0), s.tfSmoothing, (v: Smoothing) => { s.tfSmoothing = v; app.save(); }, { dataset: { setting: 'tfSmoothing' } }), h('span', { class: 'tb-label' }, 'Avg'), select(AVG_OPTIONS, s.tfAveraging, (v) => { s.tfAveraging = v; app.applyAnalysisSettings(); }, { dataset: { setting: 'tfAveraging' } })),
       this.target.targetControl(),
       this.settingChip('showCoherence', 'Coherence', 'Show coherence trace on the magnitude plot'),
+      this.notes.button(),
       h('div', { class: 'spacer' }),
       options,
       this.resetButton(),
@@ -107,6 +111,7 @@ export class TransferView extends DockedView implements View {
     this.detachedOnly = detachedOnly;
     const app = this.app;
     const s = app.settings;
+    if (this.notes.apply()) this.lastKey = '';
     // Redraw only when what is shown changed
     const key = `${app.traces.version}|${s.targetCurve}|${s.targetTolerance}|${s.micAverage}|${s.coherenceThreshold}|${s.showCoherence}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.tfReady}:${m.tfShown}`).join(',')}`;
     if (key === this.lastKey) return this.tickMeters();

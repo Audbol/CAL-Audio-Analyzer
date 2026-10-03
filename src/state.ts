@@ -59,6 +59,15 @@ export interface MeasurementConfig {
   invert: boolean;
 }
 
+/** A note the user put on a graph at a frequency (Spectrum, Transfer or the sweep's frequency response). */
+export interface GraphNote {
+  id: string;
+  graph: 'spectrum' | 'transfer' | 'room';
+  f: number;
+  text: string;
+  created: number;
+}
+
 export interface CompareSettings {
   before: string;
   after: string;
@@ -160,6 +169,8 @@ export interface Settings {
   roomTargetCurve: string;
   /** The last before/after comparison (trace ids, target, scoring range) and whether the report shows it. */
   compare: CompareSettings | null;
+  /** Notes on graphs: saved with the session, shared with remote devices and listed in the report. */
+  graphNotes: GraphNote[];
   /** Room for the room-mode calculator (m, s). `known`: the user entered it (the diagnosis then names its modes). */
   room: { L: number; W: number; H: number; rt: number; known: boolean };
   /** Input last used as a loopback reference (for switching back from the internal reference). */
@@ -228,6 +239,7 @@ export function defaultSettings(): Settings {
     targetTolerance: 3,
     roomTargetCurve: 'off',
     compare: null,
+    graphNotes: [],
     session: { name: '', venue: '', notes: '' },
     room: { L: 6.5, W: 4.2, H: 2.7, rt: 0.5, known: false },
     toolsSection: 'setup',

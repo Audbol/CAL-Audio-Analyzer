@@ -42,6 +42,13 @@ export interface Marker {
   top?: boolean;
 }
 
+/** A user's note at a frequency: a flag at the top of the plot with a line down to the axis. */
+export interface PlotNote {
+  x: number;
+  label: string;
+  color: string;
+}
+
 /** A labelled point (e.g. a highlighted peak): a ring at (x, y) with a label above it. */
 export interface Pin {
   x: number;
@@ -110,6 +117,12 @@ export class Plot {
   series: Series[] = [];
   markers: Marker[] = [];
   pins: Pin[] = [];
+  notes: PlotNote[] = [];
+  /** Where each note's flag was drawn (CSS px), for clicks. */
+  private noteBoxes: { x0: number; x1: number; y0: number; y1: number }[] = [];
+  /** A click (or tap) on a note's flag. */
+  onNoteClick?: (index: number) => void;
+  private tap: { x: number; y: number } | null = null;
   shades: { x0: number; x1: number; color: string }[] = [];
   cfg: PlotConfig;
   private readonly defaults: { yMin: number; yMax: number; xMin: number; xMax: number };
@@ -195,6 +208,7 @@ export class Plot {
         // Touch: tap / slide sideways to read values; vertical swipes scroll the page (no axis panning)
         const r = c.getBoundingClientRect();
         this.mouse = { x: e.clientX - r.left, y: e.clientY - r.top };
+        this.tap = { ...this.mouse };
         this.draw();
         return;
       }
@@ -204,10 +218,12 @@ export class Plot {
     });
     c.addEventListener('pointerup', (e) => {
       if (c.hasPointerCapture(e.pointerId)) c.releasePointerCapture(e.pointerId);
-      if (this.drag && this.mouse && Math.abs(this.mouse.y - this.drag.y) < 3 && Math.abs(this.mouse.x - this.drag.x) < 3) {
-        this.onClick?.(this.xFromPx(this.mouse.x));
-      }
+      const r = c.getBoundingClientRect();
+      const at = { x: e.clientX - r.left, y: e.clientY - r.top };
+      const start = e.pointerType === 'touch' ? this.tap : this.drag;
+      if (start && Math.abs(at.y - start.y) < (e.pointerType === 'touch' ? 8 : 3) && Math.abs(at.x - start.x) < (e.pointerType === 'touch' ? 8 : 3)) this.click(at.x, at.y);
       this.drag = null;
+      this.tap = null;
     });
     c.addEventListener('dblclick', () => this.resetZoom());
     c.addEventListener(
@@ -263,6 +279,59 @@ export class Plot {
   }
 
   /** Scale the y range around its centre (k > 1 zooms out). */
+  /** A click: on a note's flag, else at a frequency. */
+  private click(px: number, py: number): void {
+    const i = this.noteBoxes.findIndex((b) => px >= b.x0 && px <= b.x1 && py >= b.y0 && py <= b.y1);
+    if (i >= 0 && this.onNoteClick) return this.onNoteClick(i);
+    this.onClick?.(this.xFromPx(px));
+  }
+
+  /** Note flags at the top of the plot, in rows so they don't overlap. */
+  private drawNotes(): void {
+    const ctx = this.ctx;
+    const { w, hgt: H, pad } = this;
+    this.noteBoxes = [];
+    if (!this.notes.length) return;
+    ctx.font = "600 11px 'Inter Variable', Inter, system-ui, sans-serif";
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    const rows: number[] = [];
+    const rowH = 18;
+    for (const n of this.notes) {
+      const x = this.xToPx(n.x);
+      const tw = Math.min(220, ctx.measureText(n.label).width) + 12;
+      // Flag to the right of its line, flipped left near the right edge
+      const left = x + tw > w - pad.r ? x - tw : x;
+      let row = rows.findIndex((end) => end < left - 4);
+      if (row < 0) row = rows.length;
+      rows[row] = left + tw;
+      const y0 = pad.t + 4 + row * (rowH + 3);
+      const c = seriesColor(n.color);
+      ctx.strokeStyle = c;
+      ctx.globalAlpha = 0.8;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(x, y0);
+      ctx.lineTo(x, H - pad.b);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = c;
+      ctx.beginPath();
+      ctx.roundRect(left, y0, tw, rowH, 4);
+      ctx.fill();
+      // Dark text on a light flag, white on a dark one
+      const rgb = /^#([0-9a-f]{6})$/i.test(c) ? [0, 2, 4].map((k) => parseInt(c.slice(1 + k, 3 + k), 16)) : [255, 255, 255];
+      ctx.fillStyle = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2] > 140 ? '#0b0d12' : '#ffffff';
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(left, y0, tw - 4, rowH);
+      ctx.clip();
+      ctx.fillText(n.label, left + 6, y0 + rowH / 2 + 0.5);
+      ctx.restore();
+      this.noteBoxes.push({ x0: left, x1: left + tw, y0, y1: y0 + rowH });
+    }
+  }
+
   zoomY(k: number): void {
     const c = (this.cfg.yMin + this.cfg.yMax) / 2;
     const half = ((this.cfg.yMax - this.cfg.yMin) / 2) * k;
@@ -440,6 +509,7 @@ export class Plot {
     }
     for (const s of this.series) this.drawSeries(s);
     this.drawPins();
+    this.drawNotes();
     for (const m of this.markers) {
       const x = this.xToPx(m.x);
       ctx.strokeStyle = seriesColor(m.color);

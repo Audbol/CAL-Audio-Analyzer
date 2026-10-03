@@ -601,11 +601,11 @@ export class App {
     if (!t) return;
     const s = this.settings;
     // Keys an older version doesn't send stay as they are
-    const changed = TUNING_KEYS.filter((k) => t[k] !== undefined && s[k] !== t[k]);
+    const changed = TUNING_KEYS.filter((k) => t[k] !== undefined && JSON.stringify(s[k]) !== JSON.stringify(t[k]));
     if (!changed.length) return;
     // A different averaging time or smoothing starts the average curve again
     const restart = changed.includes('rtaAverageCurve');
-    for (const k of changed) (s as unknown as Record<string, unknown>)[k] = t[k];
+    for (const k of changed) (s as unknown as Record<string, unknown>)[k] = JSON.parse(JSON.stringify(t[k]));
     if (restart) for (const m of this.measurements) m.resetAverage();
     this.syncSettingControls();
     for (const v of this.views) v.invalidate?.();

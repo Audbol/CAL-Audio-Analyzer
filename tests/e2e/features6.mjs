@@ -103,6 +103,46 @@ if (want('compare')) {
   await popup.close();
 }
 
+// --- 4. Notes on graphs: add one by clicking the graph, edit it from its flag, list it in the report
+if (want('notes')) {
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.press('1');
+  await page.waitForTimeout(600);
+  await page.locator('[data-notes="spectrum"]').click();
+  const canvas = page.locator('.view:not([hidden]) .plot canvas, .live .plot canvas').first();
+  const box = await canvas.boundingBox();
+  const at1k = await page.evaluate(() => window.calApp.views.find((v) => v.id === 'spectrum').rta.xToPx(1000));
+  await canvas.click({ position: { x: at1k, y: box.height / 2 } });
+  await page.locator('.note-editor input').fill('Desk reflection');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(400);
+  let notes = await page.evaluate(() => window.calApp.settings.graphNotes);
+  check(notes.length === 1 && notes[0].graph === 'spectrum' && Math.abs(Math.log2(notes[0].f / 1000)) < 0.05 && notes[0].text === 'Desk reflection', `a note is added where the graph was clicked (${notes[0]?.f?.toFixed(0)} Hz)`);
+  check((await page.evaluate(() => window.calApp.views.find((v) => v.id === 'spectrum').rta.notes.length)) === 1, 'the note is drawn on the Spectrum');
+  await page.screenshot({ path: `${out}/feat6-04-notes.png` });
+  // Click its flag to edit it
+  await canvas.click({ position: { x: at1k + 20, y: 20 } });
+  await page.waitForSelector('.note-editor');
+  await page.locator('.note-editor input').fill('Desk reflection (moved desk)');
+  await page.locator('.note-editor').getByRole('button', { name: 'Save' }).click();
+  notes = await page.evaluate(() => window.calApp.settings.graphNotes);
+  check(notes.length === 1 && notes[0].text === 'Desk reflection (moved desk)', 'clicking a note edits it');
+  // Notes are in the report
+  await page.keyboard.press('9');
+  await page.locator('[data-section="session"]').click();
+  const [popup] = await Promise.all([page.waitForEvent('popup'), page.getByRole('button', { name: 'Create report' }).click()]);
+  await popup.waitForLoadState();
+  const rep = await popup.evaluate(() => document.body.innerText);
+  check(rep.includes('Notes on graphs') && rep.includes('Desk reflection (moved desk)'), 'notes are listed in the report');
+  await popup.close();
+  // Delete
+  await page.keyboard.press('1');
+  await page.waitForTimeout(500);
+  await canvas.click({ position: { x: at1k + 20, y: 20 } });
+  await page.locator('.note-editor').getByRole('button', { name: 'Delete this note' }).click();
+  check((await page.evaluate(() => window.calApp.settings.graphNotes.length)) === 0, 'a note can be deleted');
+}
+
 check(errors.length === 0, `no console errors ${errors.join(' | ')}`);
 await browser.close();
 await new Promise((r) => server.httpServer.close(r));

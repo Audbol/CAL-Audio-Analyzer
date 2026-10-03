@@ -16,6 +16,7 @@ const KEEP = [
   'powerMode',
   'showAssistant',
   'compare',
+  'graphNotes',
   'remoteServer',
   'splOffset',
   'splCalibrated',

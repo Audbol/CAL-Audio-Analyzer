@@ -214,6 +214,27 @@ await host.waitForFunction(() => window.calApp.traces.traces.some((t) => t.name.
   .catch(() => check(false, 'a multi-position series run from a remote ends in a spatial average on the host'));
 await rem.locator('select[data-sweep="positions"]').selectOption('1');
 
+// --- Notes on graphs are shared: added on a remote, they show on the host and the other devices
+await rem.evaluate(() => {
+  const a = window.calApp;
+  a.settings.graphNotes = [...a.settings.graphNotes, { id: 'nr1', graph: 'spectrum', f: 250, text: 'Remote note', created: Date.now() }];
+  a.save();
+});
+await host.waitForFunction(() => window.calApp.settings.graphNotes.some((n) => n.text === 'Remote note'), null, { timeout: 8000 })
+  .then(() => check(true, 'a note added on a remote reaches the host'))
+  .catch(() => check(false, 'a note added on a remote reaches the host'));
+await phone.waitForFunction(() => window.calApp.settings.graphNotes.some((n) => n.text === 'Remote note'), null, { timeout: 8000 })
+  .then(() => check(true, 'and the other remote'))
+  .catch(() => check(false, 'and the other remote'));
+await host.evaluate(() => {
+  const a = window.calApp;
+  a.settings.graphNotes = a.settings.graphNotes.filter((n) => n.id !== 'nr1');
+  a.save();
+});
+await rem.waitForFunction(() => !window.calApp.settings.graphNotes.length, null, { timeout: 8000 })
+  .then(() => check(true, 'a note deleted on the host goes from the remotes'))
+  .catch(() => check(false, 'a note deleted on the host goes from the remotes'));
+
 // --- Traces are shared: captured on one device, visible (and deletable) everywhere
 const nTraces = await host.evaluate(() => window.calApp.traces.traces.length);
 await rem.evaluate(() => window.calApp.captureTrace(window.calApp.measurements[0], 'tf'));

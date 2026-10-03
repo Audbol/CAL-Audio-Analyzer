@@ -8,6 +8,7 @@ import { DockedView } from './docked';
 import { optionsMenu, optRow, optHead, colourChoice } from '../ui/popover';
 import { TargetOverlay } from './target-overlay';
 import { micAverageControl, micAverageSeries } from './mic-average-overlay';
+import { GraphNotes } from './graph-notes';
 import { rangePeaks, type RangePeak } from '../dsp/peaks';
 
 /** Colours offered for the average curve ('auto': white at night, black by day). */
@@ -55,6 +56,7 @@ export class SpectrumView extends DockedView implements View {
   private bands: number[] = [];
   private lastKey = '';
   readonly target: TargetOverlay;
+  private notes!: GraphNotes;
   /** The highlighted peaks (low, mid, high) last drawn. */
   peaks: RangePeak[] = [];
 
@@ -74,6 +76,7 @@ export class SpectrumView extends DockedView implements View {
       s.rtaRange = [a - this.appliedCal, b - this.appliedCal];
       app.save();
     };
+    this.notes = new GraphNotes(app, 'spectrum', this.rta);
     this.mountDock([this.plotPanel('rta', 'Spectrum (RTA)', this.rta), ...this.meterPanels()], this.toolbar());
   }
 
@@ -245,6 +248,7 @@ export class SpectrumView extends DockedView implements View {
       this.target.targetControl(),
       this.settingChip('peakHold', 'Peak hold', 'Peak hold (P)'),
       this.settingChip('rtaPeakMarks', 'Peaks', 'Highlight the highest peak in the low (20–250 Hz), mid (250 Hz–4 kHz) and high (4–20 kHz) ranges'),
+      this.notes.button(),
       h('div', { class: 'spacer' }),
       options,
       this.resetButton(),
@@ -285,6 +289,7 @@ export class SpectrumView extends DockedView implements View {
     const app = this.app;
     const s = app.settings;
     this.renderAvgHint();
+    if (this.notes.apply()) this.lastKey = '';
     if (this.visible('rta')) {
       // Redraw only when what is shown changed (new analysis data arrives ~6–12 times a second)
       const key = `${app.traces.version}|${s.rtaStyle}|${s.rtaSmoothing}|${s.peakHold}|${s.rtaAverageCurve}|${s.rtaAverageSmoothing}|${s.avgCurveShow}|${s.rtaPeakMarks}|${s.rtaShowSweeps}|${s.rtaTraceColor}|${s.rtaFillColor}|${s.rtaFillOpacity}|${s.avgCurveColor}|${s.avgCurveWidth}|${s.micAverage}|${s.targetCurve}|${s.targetTolerance}|${s.theme}|${s.splCalibrated}|${s.splOffset}|${JSON.stringify(s.mics.map((mc) => [mc.channel, mc.splCalibrated && mc.splOffset]))}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.rtaShown}`).join(',')}`;

@@ -15,6 +15,7 @@ import { diagnose, type Diagnosis, type FindingKind } from '../dsp/diagnose';
 import { speedOfSound } from '../dsp/delay';
 import { axialModes, modeDimension } from './modes';
 import type { Trace } from '../traces';
+import { GraphNotes } from './graph-notes';
 
 /** How each kind of diagnosis finding is labelled (text first, colour second). */
 const DX_KIND: Record<FindingKind, { label: string; short: string; color: string }> = {
@@ -77,11 +78,13 @@ export class RoomView implements View {
   /** Target curve on the frequency response (its own choice, separate from the live views). */
   private target: TargetOverlay;
   private targetKey = '';
+  private notes: GraphNotes;
 
   constructor(private app: App) {
     this.target = new TargetOverlay(app, 'roomTargetCurve', false);
     this.fr = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: -50, yMax: 10, yUnit: 'dB', yStep: 6, title: 'Frequency response & harmonic distortion', showNote: true, yLimits: [-200, 100] });
     this.irPlot = new Plot({ xType: 'lin', xMin: -5, xMax: 300, yMin: -90, yMax: 3, yUnit: 'dB', xUnit: 'ms', yStep: 10, title: 'Energy-time curve', yLimits: [-200, 20] });
+    this.notes = new GraphNotes(app, 'room', this.fr);
     this.decay = new Plot({ xType: 'lin', xMin: 0, xMax: 1500, yMin: -70, yMax: 2, yUnit: 'dB', xUnit: 'ms', yStep: 10, title: 'Schroeder decay curves', yLimits: [-200, 20] });
     this.build();
   }
@@ -142,7 +145,7 @@ export class RoomView implements View {
     );
     const bar = h('div', { class: 'progress-row' }, this.progress, this.statusText);
     this.renderTabs();
-    const tabsRow = h('div', { class: 'room-tabs-row' }, this.tabHost, h('div', { class: 'spacer' }), this.target.targetControl(), analysisOptions, h('button', { class: 'btn small', onclick: () => this.saveTrace(), title: 'Store the frequency response as a trace (shown on Transfer and on Spectrum, levelled to the live curve)' }, icon('camera', 14), 'Save FR as trace'));
+    const tabsRow = h('div', { class: 'room-tabs-row' }, this.tabHost, h('div', { class: 'spacer' }), this.target.targetControl(), this.notes.button(), analysisOptions, h('button', { class: 'btn small', onclick: () => this.saveTrace(), title: 'Store the frequency response as a trace (shown on Transfer and on Spectrum, levelled to the live curve)' }, icon('camera', 14), 'Save FR as trace'));
     this.el.append(settings, bar, this.seriesBar, this.cards, tabsRow, this.content);
     this.showTab();
   }
@@ -738,6 +741,7 @@ export class RoomView implements View {
   tick(): void {
     const s = this.app.settings;
     this.target.refresh();
+    if (this.notes.apply()) this.dirty = true;
     if (this.result && this.targetKey !== `${s.roomTargetCurve}|${s.targetTolerance}|${this.app.traces.version}`) {
       this.applyTarget();
       this.dirty = true;
