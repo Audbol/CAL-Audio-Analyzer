@@ -14,6 +14,7 @@ import { TargetOverlay } from './target-overlay';
 import { diagnose, type Diagnosis, type FindingKind } from '../dsp/diagnose';
 import { speedOfSound } from '../dsp/delay';
 import { axialModes, modeDimension } from './modes';
+import type { Trace } from '../traces';
 
 /** How each kind of diagnosis finding is labelled (text first, colour second). */
 const DX_KIND: Record<FindingKind, { label: string; short: string; color: string }> = {
@@ -49,7 +50,12 @@ export class RoomView implements View {
   title = 'Sweep & Room';
   icon = 'home' as const;
   el = h('div', { class: 'room' });
-  private opts = { duration: 4, level: -12, repeats: 1, f1: 20, f2: 20000, fraction: 1 as 1 | 3, window: 500, smoothing: 6 as Smoothing, measIdx: 0 };
+  private opts = { duration: 4, level: -12, repeats: 1, f1: 20, f2: 20000, fraction: 1 as 1 | 3, window: 500, smoothing: 6 as Smoothing, measIdx: 0, positions: 1 };
+  /** A guided series of sweeps at several mic positions (null when none is running). */
+  private series: { n: number; traces: Trace[]; answer: ((choice: 'go' | 'finish' | 'cancel') => void) | null } | null = null;
+  private seriesBar = h('div', { class: 'series-bar', hidden: true });
+  /** Remote devices: resolves when the sweep this device asked the host for has finished (true with a result). */
+  private hostWaiter: ((ok: boolean) => void) | null = null;
   private running: { cancelled: boolean } | null = null;
   private progress = h('div', { class: 'progress' }, h('i', {}));
   private statusText = h('span', { class: 'dim' }, 'Ready.');
@@ -82,7 +88,7 @@ export class RoomView implements View {
 
   private build(): void {
     const o = this.opts;
-    this.measureBtn = h('button', { class: 'btn accent big', onclick: () => (this.running ? this.cancel() : this.measure()) });
+    this.measureBtn = h('button', { class: 'btn accent big', onclick: () => (this.running ? this.cancel() : this.opts.positions > 1 ? this.measurePositions(this.opts.positions) : this.measure()) });
     this.setMeasureLabel();
     const lvl = h('input', { type: 'number', class: 'num', value: String(o.level), min: '-60', max: '0', step: '1' });
     lvl.addEventListener('change', () => (o.level = Math.min(0, Math.max(-60, +lvl.value))));
@@ -105,6 +111,20 @@ export class RoomView implements View {
       h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Measurement'), this.selHost),
       h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Sweep'), select([1, 2, 4, 8, 16].map((v) => ({ value: v, label: `${v} s` })), o.duration, (v) => (o.duration = v))),
       h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Level'), lvl, h('span', { class: 'unit' }, 'dBFS')),
+      h(
+        'div',
+        { class: 'tb-group' },
+        h('span', { class: 'tb-label' }, 'Positions'),
+        select(
+          [1, 3, 4, 5, 6, 8].map((v) => ({ value: v, label: v === 1 ? '1 (one spot)' : `${v} (averaged)` })),
+          o.positions,
+          (v) => {
+            o.positions = v;
+            this.setMeasureLabel();
+          },
+          { title: 'Measure at several mic positions, one sweep each, guided step by step; the result is their power average (a spatial average, the best basis for room EQ)', dataset: { sweep: 'positions' } },
+        ),
+      ),
       sweepOptions,
       h('div', { class: 'spacer' }),
       this.measureBtn,
@@ -123,13 +143,14 @@ export class RoomView implements View {
     const bar = h('div', { class: 'progress-row' }, this.progress, this.statusText);
     this.renderTabs();
     const tabsRow = h('div', { class: 'room-tabs-row' }, this.tabHost, h('div', { class: 'spacer' }), this.target.targetControl(), analysisOptions, h('button', { class: 'btn small', onclick: () => this.saveTrace(), title: 'Store the frequency response as a trace (shown on Transfer and on Spectrum, levelled to the live curve)' }, icon('camera', 14), 'Save FR as trace'));
-    this.el.append(settings, bar, this.cards, tabsRow, this.content);
+    this.el.append(settings, bar, this.seriesBar, this.cards, tabsRow, this.content);
     this.showTab();
   }
 
   private setMeasureLabel(): void {
     clear(this.measureBtn);
-    this.measureBtn.append(icon(this.running ? 'stop' : 'play', 16), h('span', {}, this.running ? 'Cancel' : 'Measure sweep'));
+    this.measureBtn.append(icon(this.running ? 'stop' : 'play', 16), h('span', {}, this.running ? 'Cancel' : this.opts.positions > 1 ? `Measure ${this.opts.positions} positions` : 'Measure sweep'));
+    this.measureBtn.style.display = this.series && !this.running ? 'none' : '';
   }
 
   private renderTabs(): void {
@@ -211,7 +232,10 @@ export class RoomView implements View {
 
   /** Remote devices: progress of a sweep running on the measurement host. */
   showHostProgress(running: boolean, frac: number, text: string): void {
+    const wasRunning = !!this.running;
     this.running = running ? (this.running ?? { cancelled: false }) : null;
+    // A sweep that ended without a result (cancelled, failed); a finished one resolves when its result arrives
+    if (!running && wasRunning && !/^(Done|Measured on the host)/.test(text)) this.resolveHostWaiter(false);
     this.setMeasureLabel();
     (this.progress.firstChild as HTMLElement).style.width = `${Math.round(frac * 100)}%`;
     this.statusText.textContent = text;
@@ -242,6 +266,7 @@ export class RoomView implements View {
     this.result = this.analyse(d, meta.spec, meta.channel);
     this.result.when = new Date(meta.when);
     this.renderResults();
+    this.resolveHostWaiter(true);
     const bb = this.result.acoustics.broadband;
     this.showHostProgress(false, 1, `Measured on the host${meta.by ? ` (requested by ${meta.by})` : ''} at ${this.result.when.toLocaleTimeString()} · peak-to-noise ${this.result.peakDb.toFixed(0)} dB · T30 ${fmtS(bb.t30.rt)} · EDT ${fmtS(bb.edt.rt)}`);
   }
@@ -571,20 +596,115 @@ export class RoomView implements View {
     this.table.innerHTML = `<table>${head}${body}</table>${note}`;
   }
 
-  private saveTrace(): void {
+  private saveTrace(name?: string): Trace | null {
     const r = this.result;
-    if (!r) return this.app.toast('Run a sweep first', 'warn');
+    if (!r) {
+      this.app.toast('Run a sweep first', 'warn');
+      return null;
+    }
     const grid = this.app.grid;
     const idx: number[] = [];
     grid.forEach((_, i) => Number.isFinite(r.fr[i]) && idx.push(i));
-    this.app.traces.add({
-      name: `Sweep In${r.channel + 1} ${r.when.toLocaleTimeString()}`,
+    const t = this.app.traces.add({
+      name: name ?? `Sweep In${r.channel + 1} ${r.when.toLocaleTimeString()}`,
       kind: 'sweep',
       freqs: idx.map((i) => grid[i]),
       mag: idx.map((i) => +r.fr[i].toFixed(2)),
       note: `${r.spec.duration}s log sweep, ${this.opts.window} ms window, 1/${this.opts.smoothing} oct`,
     });
-    this.app.toast('Frequency response saved as a trace: it shows on Transfer and on Spectrum', 'ok');
+    if (!name) this.app.toast('Frequency response saved as a trace: it shows on Transfer and on Spectrum', 'ok');
+    return t;
+  }
+
+  private resolveHostWaiter(ok: boolean): void {
+    const done = this.hostWaiter;
+    this.hostWaiter = null;
+    done?.(ok);
+  }
+
+  /** One sweep with the current settings; true when it produced a new result. */
+  private async sweepOnce(): Promise<boolean> {
+    const before = this.result;
+    if (!this.app.remote) {
+      await this.measure();
+      return this.result !== before;
+    }
+    // Remote: the host runs the sweep and shares the result; wait for it to finish
+    const done = new Promise<boolean>((resolve) => (this.hostWaiter = resolve));
+    await this.measure();
+    if (!this.running) {
+      this.hostWaiter = null;
+      return false;
+    }
+    return done;
+  }
+
+  /** Between two positions: say where to put the mic and wait for the user. */
+  private askNext(k: number, failed: boolean): Promise<'go' | 'finish' | 'cancel'> {
+    const s = this.series!;
+    const done = s.traces.length;
+    this.seriesBar.hidden = false;
+    this.setMeasureLabel();
+    const steps = h('div', { class: 'series-steps' }, ...Array.from({ length: s.n }, (_, i) => h('span', { class: `series-step${i < done ? ' done' : i === k - 1 ? ' now' : ''}`, title: `Position ${i + 1}` }, String(i + 1))));
+    const text = failed
+      ? `The sweep at position ${k} did not finish. Check the levels and try again.`
+      : k === 1
+        ? `Put the mic at the first listening position (ear height), then measure.`
+        : `Move the mic to position ${k} of ${s.n}: 30–60 cm from the last one, not along the same line, at ear height. Keep quiet during the sweep.`;
+    return new Promise((resolve) => {
+      s.answer = resolve;
+      const go = h('button', { class: 'btn accent', dataset: { series: 'go' }, onclick: () => resolve('go') }, icon('play', 14), failed ? `Try position ${k} again` : `Measure position ${k}`);
+      const finish = h('button', { class: 'btn', dataset: { series: 'finish' }, onclick: () => resolve('finish') }, `Finish with ${done} positions`);
+      this.seriesBar.replaceChildren(steps, h('p', { class: 'series-text' }, text), go, ...(done >= 2 ? [finish] : []), h('button', { class: 'btn ghost', dataset: { series: 'cancel' }, onclick: () => resolve('cancel') }, 'Cancel'));
+      go.focus();
+      this.app.announce(text);
+    });
+  }
+
+  /**
+   * Guided spatial average: one sweep at each of `n` mic positions, each saved as a (hidden) trace, then their
+   * power average as one trace for the EQ tab. Between sweeps the user moves the mic and presses Measure.
+   */
+  async measurePositions(n: number): Promise<void> {
+    if (this.series) return;
+    const s = (this.series = { n, traces: [] as Trace[], answer: null as ((c: 'go' | 'finish' | 'cancel') => void) | null });
+    const stamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    let finish = false;
+    try {
+      for (let k = 1; k <= n && !finish; k++) {
+        let failed = false;
+        for (;;) {
+          // The first position starts at once (the user just pressed Measure), unless its sweep failed
+          const choice = k === 1 && !failed ? 'go' : await this.askNext(k, failed);
+          if (choice === 'cancel') return this.app.toast(s.traces.length ? `Stopped: the ${s.traces.length} positions measured are kept as hidden traces` : 'Cancelled', 'info');
+          if (choice === 'finish') {
+            finish = true;
+            break;
+          }
+          this.seriesBar.hidden = true;
+          if (await this.sweepOnce()) break;
+          failed = true;
+        }
+        if (finish) break;
+        const t = this.saveTrace(`Position ${k}/${n} · ${stamp}`);
+        if (t) {
+          s.traces.push(t);
+          this.app.traces.update(t.id, { visible: false });
+        }
+      }
+      if (s.traces.length < 2) return;
+      const avg = this.app.traces.average(s.traces.map((t) => t.id), `Spatial average (${s.traces.length} positions) · ${stamp}`);
+      if (avg) {
+        this.app.traces.update(avg.id, { note: `Power average of sweeps at ${s.traces.length} mic positions` });
+        this.app.toast(`“${avg.name}” saved: use it on the EQ tab. Each position is kept as a hidden trace.`, 'ok');
+        this.setProgress(1, `Done · ${s.traces.length} positions averaged`, false);
+      }
+    } finally {
+      this.series = null;
+      this.seriesBar.hidden = true;
+      this.seriesBar.replaceChildren();
+      this.setMeasureLabel();
+    }
   }
 
   private exportIr(): void {

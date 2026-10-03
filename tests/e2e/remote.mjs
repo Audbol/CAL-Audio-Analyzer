@@ -202,6 +202,18 @@ await late.goto(`http://127.0.0.1:${PORT}/?pin=${PIN}`);
 await late.waitForFunction(() => window.calApp.views.find((v) => v.id === 'room').result !== null, null, { timeout: 15000 }).catch(() => undefined);
 check((await t20(late)) !== null, 'a device joining later receives the latest sweep');
 
+// --- A guided series of sweeps at two positions, run from a remote: the averaged trace reaches the host
+await rem.locator('select[data-sweep="positions"]').selectOption('3');
+await rem.getByRole('button', { name: 'Measure 3 positions' }).click();
+await rem.waitForSelector('.series-bar:not([hidden]) [data-series="go"]', { timeout: 40000 });
+await rem.locator('[data-series="go"]').click();
+await rem.waitForSelector('.series-bar:not([hidden]) [data-series="finish"]', { timeout: 40000 });
+await rem.locator('[data-series="finish"]').click();
+await host.waitForFunction(() => window.calApp.traces.traces.some((t) => t.name.startsWith('Spatial average (2 positions)')), null, { timeout: 10000 })
+  .then(() => check(true, 'a multi-position series run from a remote ends in a spatial average on the host'))
+  .catch(() => check(false, 'a multi-position series run from a remote ends in a spatial average on the host'));
+await rem.locator('select[data-sweep="positions"]').selectOption('1');
+
 // --- Traces are shared: captured on one device, visible (and deletable) everywhere
 const nTraces = await host.evaluate(() => window.calApp.traces.traces.length);
 await rem.evaluate(() => window.calApp.captureTrace(window.calApp.measurements[0], 'tf'));

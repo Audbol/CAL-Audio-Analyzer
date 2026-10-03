@@ -46,6 +46,29 @@ if (want('gd')) {
   await page.screenshot({ path: `${out}/feat6-01-group-delay.png` });
 }
 
+// --- 2. Guided sweeps at several mic positions, averaged into one trace
+if (want('positions')) {
+  await page.keyboard.press('5');
+  await page.waitForTimeout(500);
+  await page.locator('select[data-sweep="positions"]').selectOption('3');
+  await page.locator('.room .toolbar').getByLabel('Sweep', { exact: true }).selectOption('1');
+  await page.getByRole('button', { name: 'Measure 3 positions' }).click();
+  const sweepDone = (k) => page.waitForSelector('.series-bar:not([hidden]) [data-series="go"]', { timeout: 40000 }).then(() => k);
+  await sweepDone(1);
+  check((await page.locator('.series-bar .series-step.done').count()) === 1, 'after the first sweep the user is asked to move the mic');
+  check(await page.getByRole('button', { name: 'Measure 3 positions' }).isHidden(), 'the main Measure button steps aside while the prompt is shown');
+  await page.screenshot({ path: `${out}/feat6-02-positions.png` });
+  await page.locator('[data-series="go"]').click();
+  await sweepDone(2);
+  check(await page.locator('[data-series="finish"]').isVisible(), 'after two positions the series can be finished early');
+  await page.locator('[data-series="go"]').click();
+  await page.waitForFunction(() => window.calApp.traces.traces.some((t) => t.name.startsWith('Spatial average (3 positions)')), null, { timeout: 40000 });
+  const tr = await page.evaluate(() => window.calApp.traces.traces.map((t) => ({ name: t.name, visible: t.visible, kind: t.kind })));
+  check(tr.filter((t) => t.name.startsWith('Position ')).length === 3 && tr.filter((t) => t.name.startsWith('Position ')).every((t) => !t.visible), 'each position is kept as a hidden trace');
+  check(tr.some((t) => t.name.startsWith('Spatial average') && t.visible && t.kind === 'sweep'), 'the spatial average is a visible sweep trace');
+  check(await page.locator('.series-bar').isHidden(), 'the prompt closes when the series is done');
+}
+
 check(errors.length === 0, `no console errors ${errors.join(' | ')}`);
 await browser.close();
 await new Promise((r) => server.httpServer.close(r));

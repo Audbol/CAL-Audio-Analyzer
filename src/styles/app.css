@@ -3423,3 +3423,47 @@ html.compact .modes-card .modes-body {
 .assistant[hidden] {
   display: none;
 }
+
+/* Guided multi-position sweeps (Sweep & Room) */
+.series-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(var(--accent-rgb), 0.08);
+  flex: none;
+}
+.series-bar[hidden] {
+  display: none;
+}
+.series-steps {
+  display: flex;
+  gap: 4px;
+}
+.series-step {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  color: var(--text-2);
+}
+.series-step.done {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.series-step.now {
+  border-color: var(--accent);
+  color: var(--text);
+  font-weight: 600;
+}
+.series-text {
+  margin: 0;
+  flex: 1 1 260px;
+  font-size: 13px;
+}
