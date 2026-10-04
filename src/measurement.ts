@@ -28,7 +28,12 @@ export class Measurement {
   frozen = false;
   /** True once the transfer function (local or from the host) has data. */
   tfReady = false;
-  /** Latest analysis frame computed by the measurement host (remote devices in host-processing mode). */
+  /** Counts resets of the averages (the background analysis resets its copy when this changes). */
+  resets = 0;
+  /** Frame counters of the background analysis (for diagnostics and tests). */
+  workerVersions = { rta: 0, tf: 0 };
+  /** Latest analysis frame computed elsewhere: by the measurement host (remote devices in host-processing mode)
+   * or by the background analysis thread. */
   hostFrame: AnalysisFrame | null = null;
   hostFrameAt = 0;
   private hostKey = '';
@@ -90,6 +95,8 @@ export class Measurement {
   }
 
   reset(): void {
+    this.resets++;
+    this.hostFrame = null;
     this.tf.reset();
     this.rta.reset();
     this.tfReady = false;
@@ -299,6 +306,12 @@ export class Measurement {
 
   /** Host: uncalibrated fine-resolution arrays for remote devices (see encodeAnalysis). */
   hostArrays(bufs: Float64Array[]): { tfReady: boolean; rtaReady: boolean; arrays: Float64Array[] } {
+    // Analysed in the background thread: pass its frame on
+    const f = this.hostFrame;
+    if (f && performance.now() - this.hostFrameAt < 1500) {
+      [f.rtaBands, f.rtaFft, f.peakBands, f.peakFft, f.mag, f.phase, f.coh].forEach((a, i) => bufs[i].set(a));
+      return { tfReady: f.tfReady, rtaReady: f.rtaReady, arrays: bufs };
+    }
     const [rb, rf, pb, pf, mag, phase, coh] = bufs;
     this.rta.render(48, 'avg', rb);
     this.rta.render(0, 'avg', rf);

@@ -27,6 +27,7 @@ import { MusicControls, showPlaylist } from './ui/music';
 import { showTraceNotes } from './ui/trace-notes';
 import { showCompare } from './views/compare';
 import { MeterBallistics, type MeterReading } from './audio/meter-ballistics';
+import { AnalysisWorkerClient } from './analysis/client';
 import { SplLogger } from './logger';
 import { NativeAudio } from './native/client';
 import type { NativeDevice, NativeOpenOptions } from './native/protocol';
@@ -103,6 +104,8 @@ export class App {
   private metersEl!: HTMLElement;
   /** Level meter ballistics, read once per drawn frame: inputs in order, then the generator. */
   readonly meterBallistics = new MeterBallistics();
+  /** The live analysis in a background thread (on the computer that measures). */
+  readonly analysisWorker = new AnalysisWorkerClient(this);
   meterReadings: MeterReading[] = [];
   private startBtn!: HTMLButtonElement;
   private genBtn!: HTMLButtonElement;
@@ -316,6 +319,7 @@ export class App {
       }
       if (this.settings.splChannel >= nCh) this.settings.splChannel = 0;
       this.rebuildMeasurements();
+      this.analysisWorker.restart();
       this.spl = new SplMeter(this.fs, this.settings.splWeighting);
       // A running noise log continues on the new meter (new stream, possibly a new sample rate)
       if (this.logger.running) this.logger.attach(this.spl);
@@ -530,8 +534,11 @@ export class App {
 
   /** What the visible views (active tab and detached panels) need computed this frame. */
   private analysisNeeds(): AnalysisNeeds & { tfLocal: boolean } {
-    // The measurement host computes everything: remote devices in host-processing mode rely on it
-    if (!this.remote) return { rta: true, tf: true, tfLocal: true };
+    // The measurement host computes everything: remote devices in host-processing mode rely on it. With the
+    // background analysis, the main thread only keeps a transfer function for the views that need its raw
+    // data (the impulse response).
+    if (!this.remote && !this.analysisWorker.active) return { rta: true, tf: true, tfLocal: true };
+    if (!this.remote) return { rta: false, tf: false, tfLocal: this.views.some((v) => (v === this.active || v.hasDetached?.()) && !!v.needs?.tfLocal) };
     const n = { rta: false, tf: false, tfLocal: false };
     for (const v of this.views) {
       if (v !== this.active && !v.hasDetached?.()) continue;
@@ -1545,12 +1552,15 @@ export class App {
     const draw = this.frameCount++ % drawEvery === 0 && t0 - this.lastDrawAt >= (this.saving ? 50 : 15);
     if (draw) this.lastDrawAt = t0;
     if (this.engine.running) {
+      this.analysisWorker.sync();
       const needs = this.analysisNeeds();
       const now = performance.now();
+      const elsewhere = this.hostProcessing || this.analysisWorker.active;
       for (const m of this.measurements) {
-        // Host processing: use the host's analysis while it arrives, fall back to local processing otherwise
-        const fromHost = this.hostProcessing && !!m.hostFrame && now - m.hostFrameAt < 1500;
-        if (!this.busy) m.process(this.engine, fromHost ? { rta: false, tf: needs.tfLocal } : { rta: needs.rta, tf: needs.tf || needs.tfLocal });
+        // Host processing or the background thread: use their analysis while it arrives, fall back to
+        // processing here otherwise
+        const fromHost = elsewhere && !!m.hostFrame && now - m.hostFrameAt < 1500;
+        if (!this.busy) m.process(this.engine, fromHost ? { rta: false, tf: needs.tfLocal } : this.remote ? { rta: needs.rta, tf: needs.tf || needs.tfLocal } : { rta: true, tf: true });
         if (draw) {
           const cal = this.calFor(m.cfg.mic);
           if (fromHost) m.renderHost(this.settings, cal);
@@ -1639,7 +1649,7 @@ export class App {
     const avg = this.frameTimes.reduce((a, b) => a + b, 0) / Math.max(1, this.frameTimes.length);
     const remoteInfo = this.remote ? ' · remote client' : this.hostLink?.connected ? ` · remote access on (${this.hostLink.clients.length} connected)` : '';
     const status = e.running
-      ? `${e.deviceLabel} · ${(e.sampleRate / 1000).toFixed(1)} kHz · ${e.channelCount} in · DSP ${avg.toFixed(1)} ms/frame${this.saving ? ' · battery saver' : ''}${remoteInfo}`
+      ? `${e.deviceLabel} · ${(e.sampleRate / 1000).toFixed(1)} kHz · ${e.channelCount} in · DSP ${avg.toFixed(1)} ms/frame${this.analysisWorker.active ? ` (+ ${this.analysisWorker.busyMs.toFixed(1)} ms in the background)` : ''}${this.saving ? ' · battery saver' : ''}${remoteInfo}`
       : this.remote
         ? (this.engine as RemoteEngine).state === 'connected'
           ? 'Connected · audio on the measurement host is stopped'

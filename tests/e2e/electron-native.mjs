@@ -62,6 +62,8 @@ const tf = await page.evaluate(() => {
 });
 check(tf.delay === 480, `delay found against the internal reference: ${tf.delay} samples (expected 480)`);
 check(tf.coh > 0.97, `coherence ${tf.coh.toFixed(3)}`);
+const bgAnalysis = await page.evaluate(() => new Promise((res) => { const a = window.calApp; const f0 = a.analysisWorker.frames; setTimeout(() => res({ active: a.analysisWorker.active, frames: a.analysisWorker.frames - f0 }), 1000); }));
+check(bgAnalysis.active && bgAnalysis.frames > 10, `the analysis runs in a background thread (${bgAnalysis.frames} frames in 1 s)`);
 check(Math.abs(tf.mag + 6.02) < 0.3, `transfer function level −6 dB as simulated (${tf.mag.toFixed(2)} dB)`);
 await page.screenshot({ path: 'test-results/native-01-transfer.png' });
 

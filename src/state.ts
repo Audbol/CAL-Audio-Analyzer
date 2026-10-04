@@ -148,6 +148,8 @@ export interface Settings {
   rtaMotion: 'smooth' | 'stepped';
   /** New spectra per second (more = smoother and quicker, about twice the processing at 50). */
   rtaUpdates: 25 | 50;
+  /** Where the live analysis runs: a background thread (smoother drawing) or the main thread. */
+  analysisThread: 'worker' | 'main';
   /** Saved sweep traces on the Spectrum too, levelled to the live curve (a sweep measures shape, not level). */
   rtaShowSweeps: boolean;
   /** How the average curve is drawn: shown or hidden (still measured), colour ('auto' = white / black by theme), line width (px). */
@@ -231,6 +233,7 @@ export function defaultSettings(): Settings {
     rtaPeakMarks: true,
     rtaMotion: 'smooth',
     rtaUpdates: 25,
+    analysisThread: 'worker',
     rtaShowSweeps: true,
     avgCurveShow: true,
     avgCurveColor: 'auto',

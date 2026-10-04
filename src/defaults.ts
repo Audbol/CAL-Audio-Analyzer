@@ -17,6 +17,7 @@ const KEEP = [
   'showAssistant',
   'compare',
   'graphNotes',
+  'analysisThread',
   'remoteServer',
   'splOffset',
   'splCalibrated',

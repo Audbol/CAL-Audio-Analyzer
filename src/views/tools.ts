@@ -210,6 +210,26 @@ export class ToolsView implements View {
           { dataset: { setting: 'powerMode' }, title: 'Fewer screen updates (≈15 per second) and new spectra (10 per second), standard graph resolution. Measurements stay exact: every sample is still analysed.' },
         ),
       ),
+      app.remote
+        ? null
+        : h(
+            'div',
+            { class: 'row gap8' },
+            h('span', {}, 'Analysis'),
+            select(
+              [
+                { value: 'worker' as const, label: 'Background thread (smoother)' },
+                { value: 'main' as const, label: 'Main thread' },
+              ],
+              s.analysisThread,
+              (v) => {
+                s.analysisThread = v;
+                app.save();
+                app.analysisWorker.setEnabled(v === 'worker');
+              },
+              { dataset: { setting: 'analysisThread' }, title: 'Background thread: the spectrum and transfer function are analysed beside the drawing, so neither waits for the other. Main thread: as in earlier versions.' },
+            ),
+          ),
       h(
         'div',
         { class: 'row gap8' },

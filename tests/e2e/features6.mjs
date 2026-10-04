@@ -154,7 +154,8 @@ if (want('smooth')) {
     const a = window.calApp;
     const m = a.measurements[0];
     const s0 = m.rtaShown;
-    const v0 = m.rta.main.version;
+    const ver = () => (a.analysisWorker.active ? m.workerVersions.rta : m.rta.main.version);
+    const v0 = ver();
     let frames = 0;
     let readings = 0;
     let last = a.meterReadings;
@@ -163,7 +164,7 @@ if (want('smooth')) {
       if (a.meterReadings !== last) readings++;
       last = a.meterReadings;
       if (performance.now() - t0 < ms) requestAnimationFrame(tick);
-      else resolve({ shown: ((m.rtaShown - s0) * 1000) / ms, spectra: ((m.rta.main.version - v0) * 1000) / ms, fps: (frames * 1000) / ms, readings });
+      else resolve({ shown: ((m.rtaShown - s0) * 1000) / ms, spectra: ((ver() - v0) * 1000) / ms, fps: (frames * 1000) / ms, readings });
     };
     const t0 = performance.now();
     requestAnimationFrame(tick);
@@ -183,6 +184,33 @@ if (want('smooth')) {
   await page.locator('[data-options="spectrum"]').click();
   await page.locator('select[data-setting="rtaUpdates"]').selectOption('25');
   await page.keyboard.press('Escape');
+}
+
+// --- 6. The analysis runs in a background thread; the main thread only draws
+if (want('worker')) {
+  const probe = () => page.evaluate(() => new Promise((res) => {
+    const a = window.calApp;
+    const m = a.measurements[0];
+    const f0 = a.analysisWorker.frames;
+    const s0 = m.rtaShown;
+    setTimeout(() => res({ active: a.analysisWorker.active, frames: (a.analysisWorker.frames - f0) / 2, shown: (m.rtaShown - s0) / 2, dsp: a.frameTimes.reduce((x, y) => x + y, 0) / a.frameTimes.length, tf: m.tfReady, rta: m.hasRta }), 2000);
+  }));
+  const bg = await probe();
+  check(bg.active && bg.frames > 15 && bg.shown > 15 && bg.tf && bg.rta, `spectrum and transfer function come from the background thread (${bg.frames} frames/s, ${bg.shown} display updates/s)`);
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.press('9');
+  await page.locator('[data-section="display"]').click();
+  await page.locator('select[data-setting="analysisThread"]').selectOption('main');
+  await page.keyboard.press('1');
+  await page.waitForTimeout(1500);
+  const main = await probe();
+  check(!main.active && main.frames === 0 && main.shown > 15, `Main thread: the analysis runs as before (${main.shown} display updates/s)`);
+  check(main.dsp > bg.dsp, `the main thread does less with the background analysis (${bg.dsp.toFixed(2)} vs ${main.dsp.toFixed(2)} ms per frame)`);
+  await page.keyboard.press('9');
+  await page.locator('select[data-setting="analysisThread"]').selectOption('worker');
+  await page.keyboard.press('1');
+  await page.waitForTimeout(1500);
+  check((await probe()).active, 'background analysis can be switched on again');
 }
 
 check(errors.length === 0, `no console errors ${errors.join(' | ')}`);

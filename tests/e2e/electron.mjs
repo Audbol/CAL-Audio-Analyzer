@@ -39,6 +39,8 @@ check(s.secure, 'secure context (required for microphone access)');
 check(s.running, 'audio engine + AudioWorklet running');
 check(Math.abs(s.delayMs - 12.54) < 0.2, `delay finder (${s.delayMs.toFixed(2)} ms)`);
 check(s.coh > 0.6, `coherence ${s.coh.toFixed(2)}`);
+const bgAnalysis = await page.evaluate(() => new Promise((res) => { const a = window.calApp; const f0 = a.analysisWorker.frames; setTimeout(() => res({ active: a.analysisWorker.active, frames: a.analysisWorker.frames - f0 }), 1000); }));
+check(bgAnalysis.active && bgAnalysis.frames > 10, `the analysis runs in a background thread (${bgAnalysis.frames} frames in 1 s)`);
 const perm = await page.evaluate(async () => {
   try {
     const st = await navigator.mediaDevices.getUserMedia({ audio: true });
