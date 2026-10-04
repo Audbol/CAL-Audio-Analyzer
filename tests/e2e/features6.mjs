@@ -76,8 +76,10 @@ if (want('compare')) {
     const peak = (f, g) => g * Math.exp(-((Math.log2(f / 50) / 0.25) ** 2));
     const t = window.calApp.traces;
     t.add({ name: 'Before EQ', kind: 'sweep', freqs: grid, mag: grid.map((f) => peak(f, 10)) });
-    t.traces[t.traces.length - 1].created -= 1000;
     t.add({ name: 'After EQ', kind: 'sweep', freqs: grid, mag: grid.map((f) => 4 + peak(f, 2)) });
+    // The newest two, before first (traces made earlier in this test file are older)
+    t.traces[t.traces.length - 2].created = Date.now() + 5000;
+    t.traces[t.traces.length - 1].created = Date.now() + 6000;
   });
   await page.locator('[data-action="compare"]').click();
   await page.waitForSelector('.cmp-modal .cmp-score.after b');

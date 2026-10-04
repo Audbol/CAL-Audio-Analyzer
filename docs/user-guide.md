@@ -191,6 +191,7 @@ The transfer function shows what the system does to the signal. It compares the 
 - **Magnitude** (top graph): how much louder or quieter each frequency is. A flat line means a neutral system.
 - **Coherence** (thin line, scale on the right): how reliable the data is at each frequency. 100% is fully reliable. Where coherence is low, the data is faded, because noise or reflections are disturbing the measurement.
 - **Phase** (bottom graph): the timing of each frequency. It matters when two speakers play the same frequencies, for example a sub and a main speaker.
+- **Group delay** (turn it on under **Options → Panels**): how late each frequency arrives, in milliseconds. Near 0 ms means the frequency arrives with the rest; a sub that is 10 ms behind the mains shows as a rise of 10 ms in the bass. It is easier to read than phase. Dips in the response carry little sound, so they count less in this curve.
 
 ### Useful controls
 
@@ -199,6 +200,7 @@ The transfer function shows what the system does to the signal. It compares the 
 - **Reset** (or R) restarts all averaging.
 - **Coherence** shows or hides the coherence line.
 - **Freeze** (F) stops the display so you can study it.
+- **Note** adds a note to the graph: select it, then click where the note belongs, type, and press Enter. Click a note to change or delete it. Notes also work on the Spectrum and on the sweep's frequency response, are saved with the session, appear on every connected device, and are listed in the report.
 
 ## 8. Read the spectrum
 
@@ -245,7 +247,9 @@ In the Traces list you can:
 - add a note and a photo of the microphone position,
 - export it as a CSV file, or delete it.
 
-**Spatial average:** measure at several positions, tick the traces in the list, and select **Avg**. The app power-averages them into a new trace that represents the whole listening area.
+**Spatial average:** measure at several positions, tick the traces in the list, and select **Avg**. The app power-averages them into a new trace that represents the whole listening area. The **Sweep & Room** tab can also guide you through this (see *Measure at several positions*).
+
+**Compare before and after:** select **Compare** above the Traces list. Choose the **Before** and **After** traces (the two ticked traces, or the two newest), a **Target**, and the range to score. The dialog shows both curves, the change between them, and how far each is from the target: the RMS deviation, the share within the tolerance band and the worst point. For example: "±4.1 dB → ±1.8 dB RMS from 40 Hz to 8 kHz (56 % closer to the target)". **Match levels** moves Before to the level of After, so only the change in shape counts. With **Include in the report** on, the comparison is a page of the report.
 
 **Import:** the upload button above the list imports measurements from CSV, FRD or text files.
 
@@ -316,6 +320,17 @@ A sweep is a tone that glides from low to high frequencies. It measures the room
 ![The Sweep & Room frequency response with a dashed house curve target and a shaded tolerance band.](guide/sweep.png)
 
 ![The Waterfall view: a 3-D plot of the room modes. Ridges that reach far back are frequencies that keep ringing.](guide/waterfall.png)
+
+### Measure at several positions
+
+One microphone position shows that spot only. The room's modes change a lot from seat to seat, so EQ is best based on several positions.
+
+1. Choose **Positions**, for example **5 (averaged)**, and select **Measure 5 positions**.
+2. The first sweep plays at once. After it, the app asks you to move the microphone: 30–60 cm from the last spot, not along the same line, at ear height.
+3. Select **Measure position 2**, and so on. After two positions you can **Finish** early.
+4. At the end, the app saves the **spatial average** as a trace, ready for the EQ tab. Each position is kept as a hidden trace.
+
+This also works from a phone or tablet: the sweeps run on the measurement computer.
 
 ### Tips
 

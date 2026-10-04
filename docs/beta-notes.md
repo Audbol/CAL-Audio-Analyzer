@@ -4,12 +4,12 @@
 
 | System | File |
 | --- | --- |
-| **Windows 10/11** – installer | `CAL-Audio-Analyzer-1.11.0-beta.3-win-x64.exe` |
-| **Windows 10/11** – portable (no install) | `CAL-Audio-Analyzer-1.11.0-beta.3-portable.exe` |
-| **macOS** – Apple Silicon (M1–M4) | `CAL-Audio-Analyzer-1.11.0-beta.3-mac-arm64.dmg` |
-| **macOS** – Intel | `CAL-Audio-Analyzer-1.11.0-beta.3-mac-x64.dmg` |
-| **Linux** – x64 | `CAL-Audio-Analyzer-1.11.0-beta.3-linux-x86_64.AppImage` |
-| **Linux** – ARM64 (e.g. Raspberry Pi 5) | `CAL-Audio-Analyzer-1.11.0-beta.3-linux-arm64.AppImage` |
+| **Windows 10/11** – installer | `CAL-Audio-Analyzer-1.11.0-beta.4-win-x64.exe` |
+| **Windows 10/11** – portable (no install) | `CAL-Audio-Analyzer-1.11.0-beta.4-portable.exe` |
+| **macOS** – Apple Silicon (M1–M4) | `CAL-Audio-Analyzer-1.11.0-beta.4-mac-arm64.dmg` |
+| **macOS** – Intel | `CAL-Audio-Analyzer-1.11.0-beta.4-mac-x64.dmg` |
+| **Linux** – x64 | `CAL-Audio-Analyzer-1.11.0-beta.4-linux-x86_64.AppImage` |
+| **Linux** – ARM64 (e.g. Raspberry Pi 5) | `CAL-Audio-Analyzer-1.11.0-beta.4-linux-arm64.AppImage` |
 
 The builds are not code-signed yet:
 
@@ -18,6 +18,13 @@ The builds are not code-signed yet:
 - **Linux:** `chmod +x CAL-Audio-Analyzer-*.AppImage`, then run it.
 
 On first launch, choose **Explore with the demo room** to try every feature without hardware.
+
+## New in beta 4
+
+- **Group delay:** *Transfer → Options → Panels → Group delay* adds a graph of how late each frequency arrives, in milliseconds, for example a sub 10 ms behind the mains, or the extra delay of a crossover. It is smoothed over 1/6 octave and weighted by energy and coherence, so dips and noise don't hide the real delay.
+- **Measure at several positions:** *Sweep & Room → Positions* (3–8) runs one sweep per mic position. Between sweeps the app tells you where to move the mic, and at the end it saves the spatial average as a trace for the EQ tab (each position is kept as a hidden trace). You can finish early after two positions, and it works from a remote device too.
+- **Compare before / after:** *Compare* above the Traces list puts two traces on one graph with the change between them, and scores each against a target: RMS deviation, share within the tolerance and the worst point, for example "±4.1 dB → ±1.8 dB RMS from 40 Hz to 8 kHz (56 % closer to the target)". *Match levels* compares shape only. The comparison can be a page of the report.
+- **Notes on graphs:** *Note* in the Spectrum, Transfer and Sweep & Room toolbars, then click the graph to drop a labelled flag ("desk reflection", "sub moved 20 cm"). Click a flag to change or delete it. Notes are saved with the session, appear on every connected device, and are drawn on the report's graphs and listed in it.
 
 ## New in beta 3
 
