@@ -212,6 +212,8 @@ The spectrum, also called a real-time analyzer (RTA), shows how loud each freque
 2. Choose **Line** or **Bars** (or press B). Bars show fractional-octave bands, for example 1/3 octave.
 3. Choose the **Resolution**. 1/3 octave is easy to read, and 1/24 octave shows more detail.
 
+**Smooth or stepped:** under **Options**, *Motion* lets the curve glide from one spectrum to the next (the default) or jump, and *Updates* sets 25 or 50 new spectra per second.
+
 ### The average curve
 
 The average curve is a smooth line showing the long-term tonal balance. It is useful for tuning to music.
@@ -420,6 +422,7 @@ The app uses the music itself as the reference, so the transfer function works w
 
 - **Graph quality:** lower it on slow devices.
 - **Battery saver:** *Auto* turns it on while a laptop, tablet or phone runs on battery. It updates the screen less often and keeps every measurement exact.
+- **Analysis:** *Background thread* (the default) computes the spectrum and transfer function beside the drawing, so the display stays smooth. *Main thread* works as in earlier versions.
 - **Bass resolution:** *High* or *Maximum* shows more detail in the bass, but the bass reacts more slowly.
 
 **Reset settings** (in Tools, under **Data**):

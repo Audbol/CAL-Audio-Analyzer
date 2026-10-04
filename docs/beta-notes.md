@@ -4,12 +4,12 @@
 
 | System | File |
 | --- | --- |
-| **Windows 10/11** – installer | `CAL-Audio-Analyzer-1.11.0-beta.4-win-x64.exe` |
-| **Windows 10/11** – portable (no install) | `CAL-Audio-Analyzer-1.11.0-beta.4-portable.exe` |
-| **macOS** – Apple Silicon (M1–M4) | `CAL-Audio-Analyzer-1.11.0-beta.4-mac-arm64.dmg` |
-| **macOS** – Intel | `CAL-Audio-Analyzer-1.11.0-beta.4-mac-x64.dmg` |
-| **Linux** – x64 | `CAL-Audio-Analyzer-1.11.0-beta.4-linux-x86_64.AppImage` |
-| **Linux** – ARM64 (e.g. Raspberry Pi 5) | `CAL-Audio-Analyzer-1.11.0-beta.4-linux-arm64.AppImage` |
+| **Windows 10/11** – installer | `CAL-Audio-Analyzer-1.11.0-beta.5-win-x64.exe` |
+| **Windows 10/11** – portable (no install) | `CAL-Audio-Analyzer-1.11.0-beta.5-portable.exe` |
+| **macOS** – Apple Silicon (M1–M4) | `CAL-Audio-Analyzer-1.11.0-beta.5-mac-arm64.dmg` |
+| **macOS** – Intel | `CAL-Audio-Analyzer-1.11.0-beta.5-mac-x64.dmg` |
+| **Linux** – x64 | `CAL-Audio-Analyzer-1.11.0-beta.5-linux-x86_64.AppImage` |
+| **Linux** – ARM64 (e.g. Raspberry Pi 5) | `CAL-Audio-Analyzer-1.11.0-beta.5-linux-arm64.AppImage` |
 
 The builds are not code-signed yet:
 
@@ -18,6 +18,15 @@ The builds are not code-signed yet:
 - **Linux:** `chmod +x CAL-Audio-Analyzer-*.AppImage`, then run it.
 
 On first launch, choose **Explore with the demo room** to try every feature without hardware.
+
+## New in beta 5
+
+Smoother metering:
+
+- **Level meters at the full screen rate:** the input and generator meters (status bar and the *Input levels* panel) now move on every frame with meter ballistics: they rise at once, fall back smoothly at 20 dB per second, and hold the highest peak for 1.5 s. A short peak between two frames is never missed.
+- **The spectrum glides:** a new spectrum arrives 25 times a second; the curve now glides from one to the next on every screen refresh instead of jumping (about 40 ms behind). *Spectrum → Options → Motion* switches back to *Stepped*. Remote devices profit most: the host's spectra reach them 10–25 times a second.
+- **50 spectra per second:** *Spectrum → Options → Updates* computes twice as many spectra, for a display that follows changes faster, at about twice the processing. The averaging time stays the same.
+- **Analysis in a background thread:** the spectrum and transfer function are now computed in a separate thread beside the drawing, so neither waits for the other (fewer hiccups when you resize or detach panels or build a report). In the demo the main thread's work per frame halves. *Tools → Display & performance → Analysis* switches back to the main thread; if a computer can't run the background thread, the app falls back by itself. The status bar shows the time spent in each.
 
 ## New in beta 4
 
