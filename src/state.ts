@@ -144,6 +144,10 @@ export interface Settings {
   rtaFillOpacity: number;
   /** Highlight the highest peak in the low, mid and high ranges of the spectrum. */
   rtaPeakMarks: boolean;
+  /** Spectrum motion: 'smooth' glides the curve from one spectrum to the next, 'stepped' jumps. */
+  rtaMotion: 'smooth' | 'stepped';
+  /** New spectra per second (more = smoother and quicker, about twice the processing at 50). */
+  rtaUpdates: 25 | 50;
   /** Saved sweep traces on the Spectrum too, levelled to the live curve (a sweep measures shape, not level). */
   rtaShowSweeps: boolean;
   /** How the average curve is drawn: shown or hidden (still measured), colour ('auto' = white / black by theme), line width (px). */
@@ -225,6 +229,8 @@ export function defaultSettings(): Settings {
     rtaFillColor: 'auto',
     rtaFillOpacity: 0,
     rtaPeakMarks: true,
+    rtaMotion: 'smooth',
+    rtaUpdates: 25,
     rtaShowSweeps: true,
     avgCurveShow: true,
     avgCurveColor: 'auto',

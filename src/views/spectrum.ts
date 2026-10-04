@@ -135,6 +135,30 @@ export class SpectrumView extends DockedView implements View {
         h('div', { class: 'opt-ctl' }, this.panelChip('rta', 'Spectrum', 'spectrum'), this.panelChip('spl', 'SPL meter', 'SPL meter'), this.panelChip('levels', 'Input levels', 'input level')),
         optHead('Analysis'),
         optRow('FFT size', select([4096, 8192, 16384, 32768, 65536].map((n) => ({ value: n, label: `${n / 1024}k` })), s.rtaFft, (v) => { s.rtaFft = v; app.applyAnalysisSettings(); }, { dataset: { setting: 'rtaFft' }, title: 'Longer FFTs resolve lower frequencies but react more slowly' })),
+        optRow(
+          'Motion',
+          select(
+            [
+              { value: 'smooth' as const, label: 'Smooth (glide)' },
+              { value: 'stepped' as const, label: 'Stepped' },
+            ],
+            s.rtaMotion,
+            (v) => { s.rtaMotion = v; app.save(); },
+            { dataset: { setting: 'rtaMotion' }, title: 'Smooth: the curve glides from one spectrum to the next (≈ 40 ms behind). Stepped: it jumps to each new spectrum.' },
+          ),
+        ),
+        optRow(
+          'Updates',
+          select(
+            [
+              { value: 25 as const, label: '25 per second' },
+              { value: 50 as const, label: '50 per second' },
+            ],
+            s.rtaUpdates,
+            (v) => { s.rtaUpdates = v; app.applyAnalysisSettings(); },
+            { dataset: { setting: 'rtaUpdates' }, title: 'New spectra per second: 50 follows changes faster and moves more smoothly, with about twice the processing. The averaging time stays the same.' },
+          ),
+        ),
         optRow('Averaging', select(AVG_OPTIONS, s.rtaAveraging, (v) => { s.rtaAveraging = v; app.applyAnalysisSettings(); }, { dataset: { setting: 'rtaAveraging' }, title: 'More averaging steadies the curve but makes it slower to follow changes' }), this.avgHint),
         optHead('Colours'),
         optRow('Trace', colourChoice(s.rtaTraceColor, (v) => { s.rtaTraceColor = v; app.save(); }, { auto: 'Measurement colour', label: 'Spectrum trace colour' })),

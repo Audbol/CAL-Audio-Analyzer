@@ -145,6 +145,46 @@ if (want('notes')) {
   check((await page.evaluate(() => window.calApp.settings.graphNotes.length)) === 0, 'a note can be deleted');
 }
 
+// --- 5. Smooth metering: level bars move every frame, the spectrum glides, 50 spectra per second on request
+if (want('smooth')) {
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.press('1');
+  await page.waitForTimeout(800);
+  const rate = (ms) => page.evaluate((ms) => new Promise((resolve) => {
+    const a = window.calApp;
+    const m = a.measurements[0];
+    const s0 = m.rtaShown;
+    const v0 = m.rta.main.version;
+    let frames = 0;
+    let readings = 0;
+    let last = a.meterReadings;
+    const tick = () => {
+      frames++;
+      if (a.meterReadings !== last) readings++;
+      last = a.meterReadings;
+      if (performance.now() - t0 < ms) requestAnimationFrame(tick);
+      else resolve({ shown: ((m.rtaShown - s0) * 1000) / ms, spectra: ((m.rta.main.version - v0) * 1000) / ms, fps: (frames * 1000) / ms, readings });
+    };
+    const t0 = performance.now();
+    requestAnimationFrame(tick);
+  }), ms);
+  const smooth = await rate(3000);
+  await page.evaluate(() => { window.calApp.settings.rtaMotion = 'stepped'; });
+  const stepped = await rate(3000);
+  check(smooth.shown > smooth.fps * 0.85 && smooth.shown > stepped.shown, `the spectrum glides: ${smooth.shown.toFixed(0)} display updates per second vs ${stepped.shown.toFixed(0)} stepped (${smooth.spectra.toFixed(0)} new spectra/s, ${smooth.fps.toFixed(0)} fps)`);
+  check(smooth.readings > smooth.fps * 3 * 0.85, `the level meters update on every frame (${smooth.readings} of ${(smooth.fps * 3).toFixed(0)} frames)`);
+  await page.evaluate(() => { window.calApp.settings.rtaMotion = 'smooth'; });
+  await page.locator('[data-options="spectrum"]').click();
+  await page.locator('select[data-setting="rtaUpdates"]').selectOption('50');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(800);
+  const fast = await rate(3000);
+  check(fast.spectra > smooth.spectra * 1.6, `50 per second computes more spectra (${fast.spectra.toFixed(0)}/s vs ${smooth.spectra.toFixed(0)}/s)`);
+  await page.locator('[data-options="spectrum"]').click();
+  await page.locator('select[data-setting="rtaUpdates"]').selectOption('25');
+  await page.keyboard.press('Escape');
+}
+
 check(errors.length === 0, `no console errors ${errors.join(' | ')}`);
 await browser.close();
 await new Promise((r) => server.httpServer.close(r));

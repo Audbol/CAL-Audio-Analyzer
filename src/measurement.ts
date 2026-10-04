@@ -50,6 +50,15 @@ export class Measurement {
   private avgKey = '';
   /** Smoothing of the average curve (1/n octave, 0 = none), from the settings. */
   private avgSmoothing = 6;
+  /**
+   * Smooth motion: the displayed spectrum glides from the previous one (`glideFrom`) to the newest (`glideTo`)
+   * over about the time between two spectra, instead of jumping 25 times a second on a 60 Hz screen.
+   */
+  private glideFrom: Float64Array | null = null;
+  private glideTo: Float64Array | null = null;
+  private glideAt = 0;
+  private glideDur = 40;
+  private lastSpectrumAt = 0;
 
   constructor(
     public cfg: MeasurementConfig,
@@ -132,18 +141,57 @@ export class Measurement {
     if (!this.frozen && !this.paused.rta && this.rta.main.hasData) {
       const key = `${this.rta.version}|${s.rtaSmoothing}|${s.peakHold}|${calId(cal)}`;
       if (key !== this.rtaKey) {
+        // Only a new spectrum glides; a changed setting (smoothing, calibration) shows at once
+        const fresh = this.rtaKey.split('|')[0] !== key.split('|')[0] && this.rtaKey.slice(this.rtaKey.indexOf('|')) === key.slice(key.indexOf('|'));
         this.rtaKey = key;
-        this.rta.render(s.rtaSmoothing, 'avg', this.rtaOut);
+        const to = this.glideTarget();
+        this.rta.render(s.rtaSmoothing, 'avg', to);
         if (s.peakHold) this.rta.render(s.rtaSmoothing, 'peak', this.rtaPeakOut);
         if (cal) for (let i = 0; i < this.grid.length; i++) {
-          this.rtaOut[i] += cal[i];
+          to[i] += cal[i];
           this.rtaPeakOut[i] += cal[i];
         }
-        this.rtaShown++;
+        this.startGlide(s, fresh && this.hasRta);
         this.hasRta = true;
-        this.updateAverage(s, cal);
+        this.updateAverage(s, cal, to);
       }
     }
+    this.stepGlide();
+  }
+
+  /** The array the newest spectrum is written to (the display array itself when not gliding). */
+  private glideTarget(): Float64Array {
+    return (this.glideTo ??= new Float64Array(this.grid.length));
+  }
+
+  /** A new spectrum is in `glideTo`: glide to it from what is shown now, or jump (stepped, first, changed). */
+  private startGlide(s: Settings, glide: boolean): void {
+    const now = performance.now();
+    // Glide over the time between spectra (measured), so the curve arrives as the next one comes in
+    if (this.lastSpectrumAt) this.glideDur = Math.min(150, Math.max(16, 0.7 * this.glideDur + 0.3 * (now - this.lastSpectrumAt)));
+    this.lastSpectrumAt = now;
+    if (!glide || s.rtaMotion === 'stepped') {
+      this.rtaOut.set(this.glideTo!);
+      this.glideFrom = null;
+      this.rtaShown++;
+      return;
+    }
+    (this.glideFrom ??= new Float64Array(this.grid.length)).set(this.rtaOut);
+    this.glideAt = now;
+  }
+
+  /** Move the displayed spectrum along its glide (called every drawn frame). */
+  private stepGlide(): void {
+    const from = this.glideFrom;
+    const to = this.glideTo;
+    if (!from || !to) return;
+    const t = Math.min(1, (performance.now() - this.glideAt) / this.glideDur);
+    // Ease out: most of the way early, so the curve feels immediate
+    const k = 1 - (1 - t) * (1 - t);
+    const out = this.rtaOut;
+    for (let i = 0; i < out.length; i++) out[i] = from[i] + (to[i] - from[i]) * k;
+    this.rtaShown++;
+    if (t >= 1) this.glideFrom = null;
   }
 
   /** Display arrays from the TF result (calibration and polarity applied). */
@@ -161,7 +209,7 @@ export class Measurement {
    * Average curve: exponential average (in power) of the displayed RTA with the time constant set in the
    * settings, or cumulative for "all". Restarts when the resolution or the mic calibration changes.
    */
-  private updateAverage(s: Settings, cal: Float64Array | null): void {
+  private updateAverage(s: Settings, cal: Float64Array | null, y: Float64Array = this.rtaOut): void {
     const secs = s.rtaAverageCurve;
     if (this.avgSmoothing !== s.rtaAverageSmoothing) {
       this.avgSmoothing = s.rtaAverageSmoothing;
@@ -183,7 +231,6 @@ export class Measurement {
     this.avgCount++;
     const a = Math.max(1 / this.avgCount, secs > 0 ? 1 - Math.exp(-dt / secs) : 0);
     const p = this.avgPow;
-    const y = this.rtaOut;
     for (let i = 0; i < p.length; i++) p[i] += a * (Math.pow(10, y[i] / 10) - p[i]);
     this.avgDb = null;
   }
@@ -224,18 +271,22 @@ export class Measurement {
     };
     // Host frames arrive ~10 times a second; the display refreshes more often
     const key = `${this.hostFrameAt}|${s.rtaSmoothing}|${s.tfSmoothing}|${s.peakHold}|${this.cfg.invert}|${calId(cal)}`;
-    if (key === this.hostKey) return;
+    const prev = this.hostKey;
+    if (key === prev) return this.stepGlide();
     this.hostKey = key;
     // Frames sent while the host's analyzer had just been reset carry no spectrum (all ≈ −300 dB): skip them,
     // or they'd be drawn (and fitted to) as real data, and a calibration offset lifts them into view. (Real
     // digital silence is data and is shown.)
     if (f.rtaReady) {
-      rta(f.rtaBands, f.rtaFft, this.rtaOut);
+      const fresh = prev !== '' && prev.slice(prev.indexOf('|')) === key.slice(key.indexOf('|'));
+      const to = this.glideTarget();
+      rta(f.rtaBands, f.rtaFft, to);
       if (s.peakHold) rta(f.peakBands, f.peakFft, this.rtaPeakOut);
-      this.rtaShown++;
+      // Host frames come ~10–25 times a second: gliding between them matters most here
+      this.startGlide(s, fresh && this.hasRta);
       this.hasRta = true;
       // The average curve is built on this device from each new host frame
-      this.updateAverage(s, cal);
+      this.updateAverage(s, cal, to);
     }
     this.tfReady = f.tfReady;
     if (f.tfReady) {
@@ -243,6 +294,7 @@ export class Measurement {
       this.renderDisplay(s, cal);
       this.tfShown++;
     }
+    this.stepGlide();
   }
 
   /** Host: uncalibrated fine-resolution arrays for remote devices (see encodeAnalysis). */

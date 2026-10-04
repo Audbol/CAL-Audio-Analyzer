@@ -401,10 +401,17 @@ export class App {
   }
 
   rebuildMeasurements(): void {
+    Measurement.rtaRate = this.rtaRate();
     this.measurements = this.settings.measurements.map((c) => new Measurement(c, this.fs, this.grid, this.settings));
   }
 
+  /** New spectra per second: the setting (25 or 50), 10 with the battery saver. */
+  rtaRate(): number {
+    return this.saving ? 10 : this.settings.rtaUpdates === 50 ? 50 : RTA_RATE;
+  }
+
   applyAnalysisSettings(): void {
+    Measurement.rtaRate = this.rtaRate();
     for (const m of this.measurements) m.applySettings(this.settings);
     this.save();
     const s = this.settings;
@@ -477,7 +484,7 @@ export class App {
     const on = this.powerSaving;
     if (on === this.saving) return;
     this.saving = on;
-    Measurement.rtaRate = on ? 10 : RTA_RATE;
+    Measurement.rtaRate = this.rtaRate();
     for (const m of this.measurements) m.applySettings(this.settings);
     if (on) this.setGraphQuality(1);
     else this.setGraphQuality(this.settings.graphQuality === 'fast' ? 1 : 2);
