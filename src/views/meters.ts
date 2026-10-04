@@ -60,7 +60,6 @@ const pct = (db: number) => Math.max(0, Math.min(100, ((db - METER_FLOOR) / -MET
 /** Vertical input / generator level meters with peak, RMS, peak hold and clip indicators. */
 export class LevelsPanel {
   readonly el = h('div', { class: 'levels-panel' });
-  private holds: { v: number; t: number }[] = [];
   /** Element references and last written values of each meter column (avoids DOM queries and writes). */
   private cols: { rms: HTMLElement; peak: HTMLElement; hold: HTMLElement; val: HTMLElement; col: HTMLElement; last: string[] }[] = [];
   private textAt = 0;
@@ -83,7 +82,7 @@ export class LevelsPanel {
                 // Look the level up at click time: the engine replaces its level objects when restarted
                 const lvl = c.gen ? e.genLevel : e.levels[i];
                 if (lvl) lvl.clipped = false;
-                this.holds[i] = { v: -Infinity, t: 0 };
+                this.app.meterBallistics.resetHold(i);
               },
             },
             h('div', { class: 'lv-clip' }, 'CLIP'),
@@ -105,13 +104,12 @@ export class LevelsPanel {
     if (text) this.textAt = now;
     chans.forEach((c, i) => {
       const ref = this.cols[i];
-      const pk = 20 * Math.log10(Math.max(c.l.peak, 1e-6));
-      const rms = 20 * Math.log10(Math.max(c.l.rms, 1e-6)) + 3.01;
-      const hold = (this.holds[i] ??= { v: -Infinity, t: 0 });
-      if (pk >= hold.v || now - hold.t > 2000) {
-        hold.v = pk;
-        hold.t = now;
-      }
+      // Ballistics (smooth rise and fall at the display rate) are shared with the status bar meters
+      const m = this.app.meterReadings[i];
+      if (!m) return;
+      const pk = m.peak;
+      const rms = m.rms;
+      const hold = { v: m.hold };
       const set = (k: number, v: string, apply: (v: string) => void) => {
         if (ref.last[k] !== v) {
           ref.last[k] = v;

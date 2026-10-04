@@ -26,6 +26,7 @@ import { Playlist, RemotePlaylist, type PlaylistApi } from './audio/playlist';
 import { MusicControls, showPlaylist } from './ui/music';
 import { showTraceNotes } from './ui/trace-notes';
 import { showCompare } from './views/compare';
+import { MeterBallistics, type MeterReading } from './audio/meter-ballistics';
 import { SplLogger } from './logger';
 import { NativeAudio } from './native/client';
 import type { NativeDevice, NativeOpenOptions } from './native/protocol';
@@ -100,6 +101,9 @@ export class App {
   private assistantEl!: HTMLElement;
   private statusEl!: HTMLElement;
   private metersEl!: HTMLElement;
+  /** Level meter ballistics, read once per drawn frame: inputs in order, then the generator. */
+  readonly meterBallistics = new MeterBallistics();
+  meterReadings: MeterReading[] = [];
   private startBtn!: HTMLButtonElement;
   private genBtn!: HTMLButtonElement;
   private splMini!: HTMLElement;
@@ -1559,6 +1563,7 @@ export class App {
       this.musicCtl?.update();
     }
     if (draw) {
+      this.meterReadings = this.meterBallistics.update([...this.engine.levels, this.engine.genLevel], t0);
       this.active?.tick();
       // Detached panels of other tabs keep updating too
       for (const v of this.views) if (v !== this.active && v.hasDetached?.()) v.tick(true);
@@ -1594,7 +1599,7 @@ export class App {
       clear(this.metersEl);
       e.levels.forEach((_, i) =>
         this.metersEl.append(
-          h('div', { class: 'meter', title: `Input ${i + 1} — click to reset clip`, onclick: () => (e.levels[i].clipped = false) }, h('span', {}, `In${i + 1}`), h('div', { class: 'bar' }, h('i', {}), h('b', {})), h('em', {}, '')),
+          h('div', { class: 'meter', title: `Input ${i + 1} — click to reset clip`, onclick: () => { e.levels[i].clipped = false; this.meterBallistics.resetHold(i); } }, h('span', {}, `In${i + 1}`), h('div', { class: 'bar' }, h('i', {}), h('b', {})), h('em', {}, '')),
         ),
       );
       this.metersEl.append(h('div', { class: 'meter gen', title: 'Generator output' }, h('span', {}, 'Gen'), h('div', { class: 'bar' }, h('i', {}), h('b', {})), h('em', {}, '')));
@@ -1604,9 +1609,10 @@ export class App {
     const pct = (db: number) => `${Math.max(0, Math.min(100, ((db + 72) / 72) * 100)).toFixed(1)}%`;
     this.statusRefs.forEach((ref, i) => {
       const l = all[i];
-      if (!l) return;
-      const pkDb = 20 * Math.log10(Math.max(l.peak, 1e-6));
-      const rmsDb = 20 * Math.log10(Math.max(l.rms, 1e-6)) + 3.01;
+      const m = this.meterReadings[i];
+      if (!l || !m) return;
+      const pkDb = m.peak;
+      const rmsDb = m.rms;
       const set = (k: number, v: string, apply: (v: string) => void) => {
         if (ref.last[k] !== v) {
           ref.last[k] = v;

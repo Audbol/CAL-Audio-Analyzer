@@ -16,6 +16,8 @@ export interface ChannelLevel {
   peak: number;
   rms: number;
   clipped: boolean;
+  /** Loudest sample, sum of squares and sample count since the meters last read them (see MeterBallistics). */
+  acc?: { peak: number; ss: number; n: number };
 }
 
 /** Index used for the internal (generator) reference channel. */
@@ -212,6 +214,12 @@ export class AudioEngine {
       if (a > pk) pk = a;
       ss += block[i] * block[i];
     }
+    const acc = (l.acc ??= { peak: 0, ss: 0, n: 0 });
+    // Bounded, in case nothing reads the meters for a while (a hidden window)
+    if (acc.n > 1 << 22) acc.peak = acc.ss = acc.n = 0;
+    acc.peak = Math.max(acc.peak, pk);
+    acc.ss += ss;
+    acc.n += block.length;
     // Peak with ~1.5 s fall-back, RMS smoothed
     l.peak = Math.max(pk, l.peak * 0.93);
     l.rms = l.rms * 0.8 + Math.sqrt(ss / block.length) * 0.2;

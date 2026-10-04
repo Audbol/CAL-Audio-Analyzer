@@ -117,10 +117,10 @@ export abstract class DockedView {
     return this.dock.isVisible(id) && (!this.detachedOnly || this.dock.isPopped(id));
   }
 
-  /** Numeric meters don't need 60 fps. */
+  /** Level bars move at the full frame rate; the SPL numbers don't need 60 fps. */
   protected tickMeters(): void {
+    if (this.visible('levels')) this.levels.render();
     if (this.meterTick++ % 3 !== 0) return;
     if (this.visible('spl')) this.spl.render();
-    if (this.visible('levels')) this.levels.render();
   }
 }
