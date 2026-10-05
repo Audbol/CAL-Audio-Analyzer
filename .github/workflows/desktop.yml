@@ -63,10 +63,48 @@ jobs:
         run: |
           node -e "const a=require('./native/build/Release/cal_audio.node'); console.log('APIs', a.apis(), 'RtAudio', a.version, 'ASIO drivers', a.devices('asio'))"
           CAL_NATIVE_TEST=1 npx vitest run tests/native.test.ts
+      # Code signing happens only when its secrets are set (see docs/signing.md); without them the builds are
+      # unsigned, as before.
       - name: Build desktop app
-        run: npx vite build && npx vite build -c vite.native.config.ts && npx electron-builder ${{ matrix.target }} --publish never
+        shell: bash
+        run: |
+          npx vite build && npx vite build -c vite.native.config.ts
+          ARGS=()
+          if [[ "$RUNNER_OS" == "macOS" && -n "$CSC_LINK" ]]; then
+            echo "Signing for macOS${APPLE_ID:+ and notarizing}"
+            ARGS+=(-c.mac.hardenedRuntime=true -c.mac.gatekeeperAssess=false -c.mac.entitlements=build/entitlements.mac.plist -c.mac.entitlementsInherit=build/entitlements.mac.plist)
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+          fi
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            if [[ -n "$WIN_CSC_LINK" ]]; then
+              echo "Signing for Windows with the certificate file"
+            elif [[ -n "$AZURE_CLIENT_ID" && -n "$AZURE_SIGN_ENDPOINT" ]]; then
+              echo "Signing for Windows with Azure Trusted Signing"
+              ARGS+=(-c.win.azureSignOptions.endpoint="$AZURE_SIGN_ENDPOINT" -c.win.azureSignOptions.codeSigningAccountName="$AZURE_SIGN_ACCOUNT" -c.win.azureSignOptions.certificateProfileName="$AZURE_SIGN_PROFILE" -c.win.azureSignOptions.publisherName="$AZURE_SIGN_PUBLISHER")
+            else
+              export CSC_IDENTITY_AUTO_DISCOVERY=false
+            fi
+          fi
+          npx electron-builder ${{ matrix.target }} --publish never "${ARGS[@]}"
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false
+          # macOS: Developer ID Application certificate (.p12, base64) and notarization
+          CSC_LINK: ${{ runner.os == 'macOS' && secrets.MAC_CERT_P12_BASE64 || '' }}
+          CSC_KEY_PASSWORD: ${{ runner.os == 'macOS' && secrets.MAC_CERT_PASSWORD || '' }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Windows: a code-signing certificate file (.pfx, base64) …
+          WIN_CSC_LINK: ${{ secrets.WIN_CERT_PFX_BASE64 }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
+          # … or Azure Trusted Signing
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGN_ENDPOINT: ${{ vars.AZURE_SIGN_ENDPOINT }}
+          AZURE_SIGN_ACCOUNT: ${{ vars.AZURE_SIGN_ACCOUNT }}
+          AZURE_SIGN_PROFILE: ${{ vars.AZURE_SIGN_PROFILE }}
+          AZURE_SIGN_PUBLISHER: ${{ vars.AZURE_SIGN_PUBLISHER }}
       - uses: actions/upload-artifact@v4
         with:
           name: CAL-Audio-Analyzer-${{ matrix.name }}
