@@ -233,6 +233,27 @@ if (want('defaults')) {
   check(found && Math.abs(ms - 12.54) < 0.2, `the delay is found automatically when it was never set (${ms.toFixed(2)} ms)`);
 }
 
+// --- 8. The status bar shows meters only for the inputs in use (and the generator while it plays)
+if (want('meters')) {
+  const labels = () => page.$$eval('.statusbar .meter span', (els) => els.map((e) => e.textContent));
+  check((await labels()).join() === 'In1,In2,Gen', `demo: mic, loopback reference and generator (${(await labels()).join()})`);
+  await page.evaluate(() => {
+    const a = window.calApp;
+    a.settings.measurements[0].ref = -1;
+    a.settings.generator = { ...a.settings.generator, type: 'off' };
+  });
+  await page.waitForTimeout(300);
+  check((await labels()).join() === 'In1,Gen', `internal reference: the mic and the generator it compares with (${(await labels()).join()})`);
+  await page.evaluate(() => { window.calApp.settings.measurements[0].ref = 1; });
+  await page.waitForTimeout(300);
+  check((await labels()).join() === 'In1,In2', `loopback reference, generator off: no generator meter (${(await labels()).join()})`);
+  await page.evaluate(() => {
+    const a = window.calApp;
+    a.settings.measurements[0].ref = 1;
+    a.settings.generator = { ...a.settings.generator, type: 'pink' };
+  });
+}
+
 check(errors.length === 0, `no console errors ${errors.join(' | ')}`);
 await browser.close();
 await new Promise((r) => server.httpServer.close(r));

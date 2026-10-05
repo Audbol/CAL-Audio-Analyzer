@@ -1639,7 +1639,25 @@ export class App {
     this.scheduleFrame();
   };
 
-  private statusRefs: { bar: HTMLElement; mark: HTMLElement; val: HTMLElement; el: HTMLElement; last: string[] }[] = [];
+  private statusRefs: { bar: HTMLElement; mark: HTMLElement; val: HTMLElement; el: HTMLElement; last: string[]; idx: number }[] = [];
+  private metersKey = '';
+
+  /**
+   * Channels the app uses, in input order with the generator (GEN_CHANNEL) last: the enabled measurements' mics
+   * and references, the SPL meter's input and the spectrogram's. The generator counts when it plays.
+   */
+  channelsInUse(): number[] {
+    const e = this.engine;
+    const set = new Set<number>();
+    for (const m of this.settings.measurements) if (m.enabled) set.add(m.mic), set.add(m.ref);
+    set.add(this.settings.splChannel);
+    const sg = this.views.find((v) => v.id === 'spectrogram') as unknown as { channel?: number } | undefined;
+    if (typeof sg?.channel === 'number') set.add(sg.channel);
+    if (this.settings.generator.type !== 'off') set.add(GEN_CHANNEL);
+    const inputs = [...set].filter((c) => c >= 0 && c < e.levels.length).sort((a, b) => a - b);
+    if (!inputs.length && e.levels.length) inputs.push(0);
+    return set.has(GEN_CHANNEL) ? [...inputs, GEN_CHANNEL] : inputs;
+  }
   private statusTextAt = 0;
   private lastSplMini = '';
   private lastStatus = '';
@@ -1659,22 +1677,33 @@ export class App {
         this.splMini.innerHTML = mini;
       }
     }
-    // Input meters
-    if (this.metersEl.childElementCount !== e.levels.length + 1) {
+    // Input meters: only the inputs the app uses (measurement mics and references, the SPL meter, the
+    // spectrogram), and the generator when it plays or serves as a reference
+    const used = this.channelsInUse();
+    const meterKey = used.join(',');
+    if (meterKey !== this.metersKey) {
+      this.metersKey = meterKey;
       clear(this.metersEl);
-      e.levels.forEach((_, i) =>
+      for (const ch of used) {
+        const gen = ch === GEN_CHANNEL;
+        const idx = gen ? e.levels.length : ch;
         this.metersEl.append(
-          h('div', { class: 'meter', title: `Input ${i + 1} — click to reset clip`, onclick: () => { e.levels[i].clipped = false; this.meterBallistics.resetHold(i); } }, h('span', {}, `In${i + 1}`), h('div', { class: 'bar' }, h('i', {}), h('b', {})), h('em', {}, '')),
-        ),
-      );
-      this.metersEl.append(h('div', { class: 'meter gen', title: 'Generator output' }, h('span', {}, 'Gen'), h('div', { class: 'bar' }, h('i', {}), h('b', {})), h('em', {}, '')));
-      this.statusRefs = Array.from(this.metersEl.children, (el) => ({ el: el as HTMLElement, bar: el.querySelector('i')!, mark: el.querySelector('b')!, val: el.querySelector('em')!, last: [] }));
+          h(
+            'div',
+            { class: `meter${gen ? ' gen' : ''}`, title: gen ? 'Generator output' : `Input ${ch + 1} — click to reset clip`, dataset: { channel: String(ch) }, onclick: () => { const l = gen ? e.genLevel : e.levels[ch]; if (l) l.clipped = false; this.meterBallistics.resetHold(idx); } },
+            h('span', {}, gen ? 'Gen' : `In${ch + 1}`),
+            h('div', { class: 'bar' }, h('i', {}), h('b', {})),
+            h('em', {}, ''),
+          ),
+        );
+      }
+      this.statusRefs = Array.from(this.metersEl.children, (el, k) => ({ el: el as HTMLElement, bar: el.querySelector('i')!, mark: el.querySelector('b')!, val: el.querySelector('em')!, last: [], idx: used[k] === GEN_CHANNEL ? e.levels.length : used[k] }));
     }
     const all = [...e.levels, e.genLevel];
     const pct = (db: number) => `${Math.max(0, Math.min(100, ((db + 72) / 72) * 100)).toFixed(1)}%`;
-    this.statusRefs.forEach((ref, i) => {
-      const l = all[i];
-      const m = this.meterReadings[i];
+    this.statusRefs.forEach((ref) => {
+      const l = all[ref.idx];
+      const m = this.meterReadings[ref.idx];
       if (!l || !m) return;
       const pkDb = m.peak;
       const rmsDb = m.rms;
