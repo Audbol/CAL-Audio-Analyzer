@@ -1,4 +1,5 @@
 import type { Workspace } from './workspaces';
+import type { CustomTheme } from './ui/themes';
 import type { PlaylistPrefs } from './audio/playlist';
 import type { LfResolution } from './dsp/decimate';
 import type { Smoothing } from './dsp/freq';
@@ -148,6 +149,9 @@ export interface Settings {
   rtaMotion: 'smooth' | 'stepped';
   /** New spectra per second (more = smoother and quicker, about twice the processing at 50). */
   rtaUpdates: 25 | 50;
+  /** Colour theme: '' = the built-in Night or Day (see `theme`), else a preset (`preset:…`) or a custom theme. */
+  themeId: string;
+  customThemes: CustomTheme[];
   /** Where the live analysis runs: a background thread (smoother drawing) or the main thread. */
   analysisThread: 'worker' | 'main';
   /** Saved sweep traces on the Spectrum too, levelled to the live curve (a sweep measures shape, not level). */
@@ -233,6 +237,8 @@ export function defaultSettings(): Settings {
     rtaPeakMarks: true,
     rtaMotion: 'smooth',
     rtaUpdates: 25,
+    themeId: '',
+    customThemes: [],
     analysisThread: 'worker',
     rtaShowSweeps: true,
     avgCurveShow: true,

@@ -254,6 +254,42 @@ if (want('meters')) {
   });
 }
 
+// --- 9. Themes: presets, a custom theme from the editor (live preview, saved, kept after a reload), T back to Night/Day
+if (want('themes')) {
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.evaluate(() => window.calApp.setView('tools'));
+  await page.locator('[data-section="display"]').click();
+  await page.locator('[data-theme="preset:stage-red"]').click();
+  await page.waitForTimeout(300);
+  const red = await page.evaluate(() => ({ bg: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(), id: window.calApp.settings.themeId }));
+  check(red.id === 'preset:stage-red' && red.bg === '#ff3b30', `a preset theme applies (${JSON.stringify(red)})`);
+  await page.screenshot({ path: `${out}/feat6-05-theme-stage-red.png` });
+  await page.locator('[data-theme="preset:colour-blind"]').click();
+  await page.evaluate(() => window.calApp.setView('transfer'));
+  await page.waitForTimeout(800);
+  const trace = await page.evaluate(() => window.calApp.views.find((v) => v.id === 'transfer').mag.series.find((x) => x.id === 'm1')?.color);
+  check(trace === '#4d9fff', 'measurement colours are stored unchanged');
+  await page.evaluate(() => window.calApp.setView('tools'));
+  await page.getByRole('button', { name: 'New theme…' }).click();
+  await page.locator('.theme-modal input[aria-label="Theme name"]').fill('Test theme');
+  await page.locator('.theme-modal input[data-theme-color="bg"]').evaluate((el) => { el.value = '#102030'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.waitForTimeout(200);
+  check((await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bg').trim())) === '#102030', 'the editor previews changes live');
+  await page.getByRole('button', { name: 'Save theme' }).click();
+  const saved = await page.evaluate(() => ({ n: window.calApp.settings.customThemes.length, name: window.calApp.settings.customThemes[0]?.name, id: window.calApp.settings.themeId }));
+  check(saved.n === 1 && saved.name === 'Test theme' && saved.id.startsWith('custom:'), `the theme is saved and in use (${JSON.stringify(saved)})`);
+  await page.reload();
+  await page.waitForTimeout(1500);
+  check((await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bg').trim())) === '#102030', 'the theme is kept after a reload');
+  await page.locator('.modal-overlay .btn.icon-btn, .modal [title="Close"]').first().click().catch(() => undefined);
+  await page.evaluate(() => document.querySelectorAll('.modal-overlay').forEach((m) => m.remove()));
+  await page.evaluate(() => window.calApp.toggleTheme());
+  await page.waitForTimeout(300);
+  const back = await page.evaluate(() => ({ id: window.calApp.settings.themeId, theme: window.calApp.settings.theme, bg: document.documentElement.style.getPropertyValue('--bg') }));
+  check(back.id === '' && back.bg === '', `T goes back to the built-in Night / Day (${JSON.stringify(back)})`);
+  await page.evaluate(() => { window.calApp.settings.theme = 'night'; window.calApp.setTheme(''); });
+}
+
 check(errors.length === 0, `no console errors ${errors.join(' | ')}`);
 await browser.close();
 await new Promise((r) => server.httpServer.close(r));

@@ -51,6 +51,19 @@ export function applyChartTheme(theme: ThemeName): void {
   cache.clear();
 }
 
+/** Trace palette of a custom theme (null: the standard colours). */
+let palette: string[] | null = null;
+
+export function setSeriesPalette(p: string[] | null): void {
+  palette = p && p.length ? p.map((c) => c.toLowerCase()) : null;
+  cache.clear();
+}
+
+/** A measurement or trace colour as the current theme shows it (for swatches outside the graphs). */
+export function displayColor(c: string): string {
+  return seriesColor(c);
+}
+
 export function chartTheme(): ThemeName {
   return current;
 }
@@ -60,11 +73,24 @@ export function chartTheme(): ThemeName {
  * mode they are darkened and saturated so they keep strong contrast on white (hex colours, with optional alpha).
  */
 export function seriesColor(c: string): string {
-  if (current === 'night') return c;
+  if (current === 'night' && !palette) return c;
   const hit = cache.get(c);
   if (hit) return hit;
   const m = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(c);
   if (!m) return c;
+  // A theme's own palette replaces the standard measurement colours (alpha suffix kept)
+  const i = palette ? PALETTE.indexOf(`#${m[1].toLowerCase()}`) : -1;
+  if (i >= 0 && palette![i]) {
+    m[1] = palette![i].slice(1);
+    if (current === 'night') {
+      const out = `#${m[1]}${m[2] ?? ''}`;
+      cache.set(c, out);
+      return out;
+    }
+  } else if (current === 'night') {
+    cache.set(c, c);
+    return c;
+  }
   const n = parseInt(m[1], 16);
   const [hh, ss, ll] = rgbToHsl((n >> 16) & 255, (n >> 8) & 255, n & 255);
   const [r, g, b] = hslToRgb(hh, Math.max(ss, 0.7), Math.min(ll, 0.38));

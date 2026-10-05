@@ -18,6 +18,8 @@ const KEEP = [
   'compare',
   'graphNotes',
   'analysisThread',
+  'themeId',
+  'customThemes',
   'remoteServer',
   'splOffset',
   'splCalibrated',

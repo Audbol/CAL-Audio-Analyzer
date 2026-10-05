@@ -3636,3 +3636,110 @@ html.compact .cmp-arrow {
 .perf-card > .row select {
   max-width: 100%;
 }
+
+/* Themes (Tools → Display & performance) */
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 8px;
+  margin: 8px 0 10px;
+}
+.theme-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.theme-tile:hover {
+  border-color: var(--border-3);
+}
+.theme-tile.on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  color: var(--text);
+}
+.theme-preview {
+  position: relative;
+  display: block;
+  height: 44px;
+  border-radius: 6px;
+  border: 1px solid;
+  overflow: hidden;
+}
+.theme-preview i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 26%;
+}
+.theme-preview b {
+  position: absolute;
+  left: 32%;
+  top: 7px;
+  width: 22%;
+  height: 6px;
+  border-radius: 3px;
+}
+.theme-preview em {
+  position: absolute;
+  left: 32%;
+  right: 8px;
+  height: 2px;
+  border-radius: 1px;
+}
+.theme-preview em:nth-of-type(1) {
+  top: 20px;
+}
+.theme-preview em:nth-of-type(2) {
+  top: 28px;
+}
+.theme-preview em:nth-of-type(3) {
+  top: 36px;
+}
+.modal.theme-modal {
+  width: min(560px, 100%);
+}
+.theme-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.theme-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 8px;
+}
+.theme-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.theme-field input[type='color'],
+.theme-palette input[type='color'] {
+  width: 34px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}
+.theme-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.theme-palette input:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

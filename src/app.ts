@@ -19,7 +19,6 @@ import { AlignView } from './views/align';
 import { SplView } from './views/spl';
 import { ToolsView, type ToolsSection } from './views/tools';
 import { showWizard, showHelp, showRemoteConnect } from './ui/dialogs';
-import { applyChartTheme } from './ui/theme';
 import { Dock } from './ui/dock';
 import { Plot } from './ui/plot';
 import { Playlist, RemotePlaylist, type PlaylistApi } from './audio/playlist';
@@ -27,6 +26,8 @@ import { MusicControls, showPlaylist } from './ui/music';
 import { showTraceNotes } from './ui/trace-notes';
 import { showCompare } from './views/compare';
 import { MeterBallistics, type MeterReading } from './audio/meter-ballistics';
+import { THEME_PRESETS, applyTheme as applyThemeTo, type CustomTheme } from './ui/themes';
+import { displayColor } from './ui/theme';
 import { AnalysisWorkerClient } from './analysis/client';
 import { SplLogger } from './logger';
 import { NativeAudio } from './native/client';
@@ -952,15 +953,37 @@ export class App {
   // Theme
 
   /** Apply the saved colour scheme to the document, canvases and the toggle button. */
+  /** The custom or preset theme in use (null: the built-in Night or Day). */
+  currentTheme(): CustomTheme | null {
+    const id = this.settings.themeId;
+    if (!id) return null;
+    return THEME_PRESETS.find((t) => t.id === id) ?? this.settings.customThemes.find((t) => t.id === id) ?? null;
+  }
+
+  /** Use a theme (null or '' = the built-in Night / Day). */
+  setTheme(id: string): void {
+    this.settings.themeId = id;
+    const t = this.currentTheme();
+    if (t) this.settings.theme = t.base;
+    this.save();
+    this.applyTheme();
+  }
+
   applyTheme(): void {
+    const theme = this.currentTheme();
+    if (theme) this.settings.theme = theme.base;
     const day = this.settings.theme === 'day';
-    document.documentElement.dataset.theme = this.settings.theme;
-    applyChartTheme(this.settings.theme);
+    applyThemeTo(document, this.settings.theme, theme);
     Plot.invalidateAll();
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', day ? '#ffffff' : '#000000');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme ? theme.colors.bg : day ? '#ffffff' : '#000000');
     this.themeBtn.replaceChildren(icon(day ? 'moon' : 'sun', 18));
     this.themeBtn.title = day ? 'Switch to night mode (OLED black) — T' : 'Switch to day mode (high contrast for sunlight) — T';
     for (const v of this.views) v.invalidate?.();
+    // Swatches in the sidebar show the theme's trace colours (after the first build)
+    if (this.metersEl) {
+      this.renderMeasurements();
+      this.renderTraces();
+    }
   }
 
   /** Whole-app fullscreen toggle (hidden where the browser can't do it, e.g. iPhone Safari). */
@@ -995,6 +1018,8 @@ export class App {
   toggleFullscreen: () => void = () => undefined;
 
   toggleTheme(): void {
+    // T / the sun-moon button: between the built-in Night and Day (leaving a custom theme)
+    this.settings.themeId = '';
     this.settings.theme = this.settings.theme === 'day' ? 'night' : 'day';
     this.save();
     this.applyTheme();
@@ -1409,7 +1434,7 @@ export class App {
         cfg.name = name.value || cfg.name;
         this.save();
       });
-      const color = h('input', { type: 'color', value: cfg.color, class: 'swatch', title: 'Colour' });
+      const color = h('input', { type: 'color', value: displayColor(cfg.color).slice(0, 7), class: 'swatch', title: 'Colour' });
       color.addEventListener('input', () => {
         cfg.color = color.value;
         this.save();
@@ -1430,7 +1455,7 @@ export class App {
       const dist = (delayMs / 1000) * speedOfSound(this.settings.tempC);
       const card = h(
         'div',
-        { class: `meas-card${cfg.enabled ? '' : ' disabled'}`, style: `--c:${cfg.color}` },
+        { class: `meas-card${cfg.enabled ? '' : ' disabled'}`, style: `--c:${displayColor(cfg.color)}` },
         h('div', { class: 'row' }, enable, color, name, h('button', { class: 'btn tiny ghost', title: 'Remove', onclick: () => this.removeMeasurement(cfg.id) }, icon('x', 13))),
         h(
           'div',
@@ -1478,7 +1503,7 @@ export class App {
       sel.addEventListener('change', () => (sel.checked ? this.selectedTraces.add(t.id) : this.selectedTraces.delete(t.id)));
       const name = h('input', { class: 'name', value: t.name });
       name.addEventListener('change', () => this.traces.update(t.id, { name: name.value }));
-      const color = h('input', { type: 'color', value: t.color, class: 'swatch' });
+      const color = h('input', { type: 'color', value: displayColor(t.color).slice(0, 7), class: 'swatch' });
       color.addEventListener('input', () => this.traces.update(t.id, { color: color.value }));
       const off = h('input', { type: 'number', class: 'num tiny-num', value: String(t.offset), step: '0.5', title: 'Display offset (dB)' });
       off.addEventListener('change', () => this.traces.update(t.id, { offset: +off.value || 0 }));

@@ -242,10 +242,14 @@ export class Dock {
       const t = document.documentElement.dataset.theme;
       if (t) doc.documentElement.dataset.theme = t;
       else delete doc.documentElement.dataset.theme;
+      // Custom themes set their colours as properties on the root element
+      const style = document.documentElement.getAttribute('style');
+      if (style) doc.documentElement.setAttribute('style', style);
+      else doc.documentElement.removeAttribute('style');
     };
     syncTheme();
     const themeObserver = new MutationObserver(syncTheme);
-    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'style'] });
     win.addEventListener('pagehide', () => themeObserver.disconnect());
     frame.classList.remove('floating');
     frame.classList.add('popped');

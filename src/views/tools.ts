@@ -7,6 +7,7 @@ import { RemoteCard } from './remote-card';
 import { NativeCard } from './native-card';
 import { MicsCard } from './mics-card';
 import { RoomModesCard } from './modes';
+import { ThemeCard } from './theme-card';
 import { modal } from '../ui/dialogs';
 import { applySession, buildSession, downloadText, parseSession, sessionFileName, type SessionFile } from '../session';
 import { replaceSettings } from '../state';
@@ -18,7 +19,7 @@ const SECTIONS: { id: ToolsSection; label: string; icon: Parameters<typeof icon>
   { id: 'setup', label: 'Setup', icon: 'mic', hint: 'Reference signal, microphones and calibration, audio interface' },
   { id: 'session', label: 'Session & report', icon: 'layers', hint: 'Save or open a job, create a report' },
   { id: 'remote', label: 'Remote access', icon: 'wifi', hint: 'Phones, tablets and other computers' },
-  { id: 'display', label: 'Display & performance', icon: 'sliders', hint: 'Graph quality, battery saver, bass resolution' },
+  { id: 'display', label: 'Display & performance', icon: 'sliders', hint: 'Theme, graph quality, battery saver, bass resolution' },
   { id: 'calc', label: 'Calculators', icon: 'clock', hint: 'Room modes; delay, distance and wavelength; weighting table' },
   { id: 'data', label: 'Data & reset', icon: 'trash', hint: 'Delete traces, reset settings' },
 ];
@@ -34,6 +35,7 @@ export class ToolsView implements View {
   private cards = new Map<ToolsSection, HTMLElement[]>();
   readonly micsCard: MicsCard;
   private modesCard: RoomModesCard;
+  private themeCard: ThemeCard;
   private delayOut = h('div', { class: 'calc-out' });
   private dirty = true;
   private remoteCard: RemoteCard;
@@ -45,6 +47,7 @@ export class ToolsView implements View {
     this.nativeCard = new NativeCard(app);
     this.micsCard = new MicsCard(app);
     this.modesCard = new RoomModesCard(app);
+    this.themeCard = new ThemeCard(app);
     this.build();
   }
 
@@ -292,7 +295,7 @@ export class ToolsView implements View {
     this.cards.set('setup', [this.referenceCard(), this.micsCard.el, this.nativeCard.el]);
     this.cards.set('session', [this.sessionCard()]);
     this.cards.set('remote', [this.remoteCard.el]);
-    this.cards.set('display', [perfCard]);
+    this.cards.set('display', [this.themeCard.el, perfCard]);
     this.cards.set('calc', [this.modesCard.el, delayCard, wCard]);
     this.cards.set('data', [dataCard]);
     this.el.append(this.nav, this.body);
