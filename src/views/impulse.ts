@@ -4,6 +4,7 @@ import { Plot } from '../ui/plot';
 import { h, icon, select } from '../ui/dom';
 import { energyTimeCurve } from '../dsp/acoustics';
 import { speedOfSound } from '../dsp/delay';
+import type { Measurement } from '../measurement';
 
 /**
  * Live impulse response derived from the averaged transfer function: shows arrival time, reflections and
@@ -57,40 +58,65 @@ export class ImpulseView implements View {
 
   tick(): void {
     const m = this.app.measurements[this.measIdx];
-    // IR computation is relatively costly; update ~8×/s
-    if (m && m.tf.ready && this.counter++ % 8 === 0) {
-      const pre = Math.round(0.02 * m.fs);
+    const pre = m ? Math.round(0.02 * m.fs) : 0;
+    const bg = this.app.analysisWorker;
+    if (m && bg.active) {
+      // Computed in the background thread (three long FFTs ~8 times a second): here it is only drawn
+      bg.wantImpulse(m.cfg.id, pre);
+      const r = bg.impulse;
+      if (r && r.id === m.cfg.id && bg.impulseAt !== this.shownAt) {
+        this.shownAt = bg.impulseAt;
+        this.showResponse(m, r.ir, r.etc, r.fs, r.pre);
+      } else if (!r || r.id !== m.cfg.id) this.info.textContent = 'Waiting for transfer function data — start audio and turn on the generator.';
+    } else if (m && m.tf.windowReady(1) && this.counter++ % 8 === 0) {
+      // IR computation is relatively costly; update ~8×/s
       const { ir, fs } = m.tf.impulseResponse(1, pre);
-      const n = ir.length;
-      const t = new Float64Array(n);
-      let pk = 0;
-      let pkIdx = pre;
-      for (let i = 0; i < n; i++) {
-        t[i] = ((i - pre) / fs) * 1000;
-        if (Math.abs(ir[i]) > pk) {
-          pk = Math.abs(ir[i]);
-          pkIdx = i;
-        }
-      }
-      const sign = m.cfg.invert ? -1 : 1;
-      const norm = Float64Array.from(ir, (v) => (sign * v) / (pk || 1));
-      const etc = energyTimeCurve(ir);
-      this.lastPeakMs = t[pkIdx];
-      this.irVersion++;
-      this.lin.series = [{ id: 'ir', label: m.cfg.name, x: t, y: norm, color: m.cfg.color, width: 1.3 }];
-      this.etc.series = [{ id: 'etc', label: m.cfg.name, x: t, y: etc, color: m.cfg.color, width: 1.3, fill: true }];
-      this.lin.markers = [{ x: this.lastPeakMs, color: CHART.marker, label: `peak ${this.lastPeakMs.toFixed(2)} ms` }];
-      this.etc.markers = this.lin.markers;
-      const total = (m.cfg.delay / m.fs) * 1000 + this.lastPeakMs;
-      const dist = (total / 1000) * speedOfSound(this.app.settings.tempC);
-      const polarity = norm[pkIdx] < 0 ? '<b class="warn-text">inverted</b>' : 'normal';
-      this.info.innerHTML = `Peak at <b>${this.lastPeakMs.toFixed(2)} ms</b> relative to the current delay · total arrival <b>${total.toFixed(2)} ms</b> (${dist.toFixed(2)} m @ ${this.app.settings.tempC} °C) · polarity ${polarity}`;
-    } else if (!m || !m.tf.ready) {
+      this.showResponse(m, ir, energyTimeCurve(ir), fs, pre);
+    } else if (!m || !m.tf.windowReady(1)) {
       this.info.textContent = 'Waiting for transfer function data — start audio and turn on the generator.';
     }
     // The response is recomputed ~8 times a second: redraw only then (hover and zoom redraw by themselves)
     this.lin.drawIf(`${this.irVersion}`);
     this.etc.drawIf(`${this.irVersion}`);
+  }
+
+  /** When the shown background response arrived (a new one is drawn once). */
+  private shownAt = 0;
+  /** The time axis (ms) for the current length, sample rate and pre-delay: the same array every update. */
+  private axis: { key: string; t: Float64Array } | null = null;
+
+  private showResponse(m: Measurement, ir: ArrayLike<number>, etc: ArrayLike<number>, fs: number, pre: number): void {
+    const n = ir.length;
+    const key = `${n}|${fs}|${pre}`;
+    if (this.axis?.key !== key) {
+      const t = Float64Array.from({ length: n }, (_, i) => ((i - pre) / fs) * 1000);
+      Plot.markStable(t);
+      this.axis = { key, t };
+    }
+    const t = this.axis.t;
+    let pk = 0;
+    let pkIdx = pre;
+    for (let i = 0; i < n; i++) {
+      const a = Math.abs(ir[i]);
+      if (a > pk) {
+        pk = a;
+        pkIdx = i;
+      }
+    }
+    const sign = m.cfg.invert ? -1 : 1;
+    // A new array each update (the plot keeps the one it draws), the size of the response
+    const norm = new Float64Array(n);
+    for (let i = 0; i < n; i++) norm[i] = (sign * ir[i]) / (pk || 1);
+    this.lastPeakMs = t[pkIdx];
+    this.irVersion++;
+    this.lin.series = [{ id: 'ir', label: m.cfg.name, x: t, y: norm, color: m.cfg.color, width: 1.3 }];
+    this.etc.series = [{ id: 'etc', label: m.cfg.name, x: t, y: etc, color: m.cfg.color, width: 1.3, fill: true }];
+    this.lin.markers = [{ x: this.lastPeakMs, color: CHART.marker, label: `peak ${this.lastPeakMs.toFixed(2)} ms` }];
+    this.etc.markers = this.lin.markers;
+    const total = (m.cfg.delay / m.fs) * 1000 + this.lastPeakMs;
+    const dist = (total / 1000) * speedOfSound(this.app.settings.tempC);
+    const polarity = norm[pkIdx] < 0 ? '<b class="warn-text">inverted</b>' : 'normal';
+    this.info.innerHTML = `Peak at <b>${this.lastPeakMs.toFixed(2)} ms</b> relative to the current delay · total arrival <b>${total.toFixed(2)} ms</b> (${dist.toFixed(2)} m @ ${this.app.settings.tempC} °C) · polarity ${polarity}`;
   }
   private irVersion = 0;
 }

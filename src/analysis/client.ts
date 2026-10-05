@@ -1,5 +1,5 @@
 import type { App } from '../app';
-import type { FromWorker, ToWorker, WorkerConfig } from './protocol';
+import type { FromWorker, ToWorker, WorkerConfig, WorkerImpulse } from './protocol';
 import AnalysisWorker from './worker.ts?worker';
 
 /**
@@ -15,6 +15,20 @@ export class AnalysisWorkerClient {
   private cfgKey = '';
   private channels: number[] = [];
   private unsub: (() => void) | null = null;
+  /** Latest impulse response for the Impulse tab, when it arrived, and which measurement it is asked for. */
+  impulse: WorkerImpulse | null = null;
+  impulseAt = 0;
+  private impulseKey = '';
+
+  /** The Impulse tab shows measurement `id` (null: it is not shown). */
+  wantImpulse(id: string | null, pre: number): void {
+    const key = id ? `${id}|${pre}|${this.epoch}` : '';
+    if (key === this.impulseKey) return;
+    this.impulseKey = key;
+    if (!id) this.impulse = null;
+    this.post({ t: 'impulse', id, pre });
+  }
+
   /** Frames received and the worker's recent processing time per audio block (ms), for the status line. */
   frames = 0;
   busyMs = 0;
@@ -30,6 +44,8 @@ export class AnalysisWorkerClient {
   restart(): void {
     this.epoch++;
     this.cfgKey = '';
+    this.impulseKey = '';
+    this.impulse = null;
     this.unsub?.();
     this.unsub = null;
     if (!this.wanted()) return this.stop();
@@ -111,6 +127,14 @@ export class AnalysisWorkerClient {
 
   private receive(msg: FromWorker): void {
     if (msg.t === 'error') return this.fail(msg.message);
+    if (msg.t === 'impulse') {
+      const m = this.app.measurements.find((x) => x.cfg.id === msg.impulse.id);
+      if (m && msg.impulse.epoch === this.epoch && msg.impulse.resets === m.resets) {
+        this.impulse = msg.impulse;
+        this.impulseAt = performance.now();
+      }
+      return;
+    }
     const now = performance.now();
     for (const f of msg.frames) {
       const m = this.app.measurements.find((x) => x.cfg.id === f.id);

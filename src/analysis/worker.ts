@@ -7,6 +7,7 @@
 import { MultiSpectrum } from '../dsp/spectrum';
 import { TransferFunction } from '../dsp/transfer';
 import { RingBuffer } from '../dsp/ring';
+import { energyTimeCurve } from '../dsp/acoustics';
 import type { FromWorker, ToWorker, WorkerConfig, WorkerFrame, WorkerMeasurement } from './protocol';
 
 /** The worker's global scope (the project's TypeScript setup has the DOM types, not the worker ones). */
@@ -28,6 +29,18 @@ interface Analyzer {
 let cfg: WorkerConfig | null = null;
 const rings = new Map<number, RingBuffer>();
 const analyzers = new Map<string, Analyzer>();
+/** The measurement whose impulse response the Impulse tab shows, and when it was last sent. */
+let impulseFor: { id: string; pre: number } | null = null;
+let impulseAt = 0;
+
+/** The impulse response from the averaged transfer function (the same window the main thread would use). */
+function sendImpulse(a: Analyzer): void {
+  if (!cfg || !a.tf.ready) return;
+  const { ir, fs, t0 } = a.tf.impulseResponse(1, impulseFor!.pre);
+  const etc = energyTimeCurve(ir);
+  const out = { id: a.m.id, resets: a.m.resets, epoch: cfg.epoch, fs, pre: t0, ir: Float32Array.from(ir), etc: Float32Array.from(etc) };
+  scope.postMessage({ t: 'impulse', impulse: out }, [out.ir.buffer, out.etc.buffer]);
+}
 
 function configure(next: WorkerConfig): void {
   const prev = cfg;
@@ -92,14 +105,15 @@ function audio(channels: number[], blocks: Float32Array[]): void {
     }
     const [rb, rf, pb, pf, mag, phase, coh] = a.bufs;
     const rtaReady = a.rta.main.hasData;
-    if (rtaReady) {
+    // Only what changed is computed again (the rest of the frame repeats the last values)
+    if (rtaReady && newRta) {
       a.rta.render(48, 'avg', rb);
       a.rta.render(0, 'avg', rf);
       a.rta.render(48, 'peak', pb);
       a.rta.render(0, 'peak', pf);
     }
     const tfReady = a.tf.ready;
-    if (tfReady) a.tf.result(48, { freqs: cfg.grid, mag, phase, coh });
+    if (tfReady && newTf) a.tf.result(48, { freqs: cfg.grid, mag, phase, coh });
     frames.push({
       id: a.m.id,
       resets: a.m.resets,
@@ -111,6 +125,14 @@ function audio(channels: number[], blocks: Float32Array[]): void {
       tfVersion: a.tf.version,
       busyMs: 0,
     });
+  }
+  // Impulse response for the Impulse tab, about 8 times a second (three long FFTs: kept off the main thread)
+  if (impulseFor && now - impulseAt >= 120) {
+    const a = analyzers.get(impulseFor.id);
+    if (a?.m.enabled) {
+      impulseAt = now;
+      sendImpulse(a);
+    }
   }
   if (!frames.length) return;
   const busy = performance.now() - t0;
@@ -124,6 +146,7 @@ scope.onmessage = (e: MessageEvent<ToWorker>) => {
     const msg = e.data;
     if (msg.t === 'config') configure(msg.config);
     else if (msg.t === 'audio') audio(msg.channels, msg.blocks);
+    else if (msg.t === 'impulse') impulseFor = msg.id ? { id: msg.id, pre: msg.pre } : null;
   } catch (err) {
     const out: FromWorker = { t: 'error', message: err instanceof Error ? err.message : String(err) };
     scope.postMessage(out);

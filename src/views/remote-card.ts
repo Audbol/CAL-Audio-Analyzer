@@ -1,4 +1,3 @@
-import QRCode from 'qrcode';
 import type { App } from '../app';
 import { h, icon, clear } from '../ui/dom';
 import { randomPin } from '../state';
@@ -221,6 +220,8 @@ export class RemoteCard {
     const hit = this.qrCache.get(text);
     if (hit) return hit;
     // Always black on white: phone cameras scan dark-on-light codes most reliably
+    // Loaded on first use: most sessions never show a QR code
+    const { default: QRCode } = await import('qrcode');
     const url = await QRCode.toDataURL(text, { margin: 1, width: 376, errorCorrectionLevel: 'M', color: { dark: '#000000', light: '#ffffff' } });
     this.qrCache.set(text, url);
     return url;

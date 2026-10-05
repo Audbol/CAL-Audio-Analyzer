@@ -86,6 +86,27 @@ export class Plot {
   static maxDpr = 2;
   private static instances = new Set<Plot>();
 
+  /** Frequency arrays that never change (the analysis grid): their pixel positions are cached per plot. */
+  private static stable = new WeakSet<object>();
+  static markStable(x: ArrayLike<number>): void {
+    Plot.stable.add(x as object);
+  }
+  private pxCache = new WeakMap<object, { key: string; px: Float64Array }>();
+
+  /** Pixel x of every point of a stable array (null for other arrays), recomputed when the view changes. */
+  private pxOf(x: ArrayLike<number>): Float64Array | null {
+    if (!Plot.stable.has(x as object)) return null;
+    const key = `${this.cfg.xMin}|${this.cfg.xMax}|${this.w}|${this.pad.l}|${this.pad.r}`;
+    let c = this.pxCache.get(x as object);
+    if (!c || c.key !== key) {
+      const px = new Float64Array(x.length);
+      for (let i = 0; i < x.length; i++) px[i] = this.xToPx(x[i]);
+      c = { key, px };
+      this.pxCache.set(x as object, c);
+    }
+    return c.px;
+  }
+
   /** Change the pixel-ratio limit of every plot (adaptive quality on slow devices). */
   /** Redraw every plot on its next `drawIf` (e.g. after a colour-scheme change). */
   static invalidateAll(): void {
@@ -114,7 +135,14 @@ export class Plot {
   }
   readonly el: HTMLDivElement;
   readonly canvas: HTMLCanvasElement;
-  private readonly ctx: CanvasRenderingContext2D;
+  private ctx: CanvasRenderingContext2D;
+  /** Background, grid and axis labels: drawn once into this layer and copied each frame (they change only
+   * with the size, range or theme), instead of ~40 text draws per frame. */
+  private gridLayer: HTMLCanvasElement | null = null;
+  private gridKey = '';
+  /** Changes when web fonts finish loading (layers drawn with a fallback font are drawn again). */
+  private static fontEpoch = 0;
+  private static fontsWatched = false;
   private readonly tip: HTMLDivElement;
   series: Series[] = [];
   markers: Marker[] = [];
@@ -500,9 +528,7 @@ export class Plot {
     if (!w || !H) return;
     this.maybeAutoFit();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    ctx.fillStyle = COLORS.bg;
-    ctx.fillRect(0, 0, w, H);
-    this.drawGrid();
+    this.drawBackground();
     ctx.save();
     ctx.beginPath();
     ctx.rect(pad.l, pad.t, w - pad.l - pad.r, H - pad.t - pad.b);
@@ -584,6 +610,46 @@ export class Plot {
       ctx.fillText(p.label, lx + 5, ly + 0.5);
     }
     ctx.textBaseline = 'alphabetic';
+  }
+
+  /** Background, grid and axis labels, from the cached layer when nothing they depend on changed. */
+  private drawBackground(): void {
+    const ctx = this.ctx;
+    const { w, hgt: H } = this;
+    // Plots with time labels (formatX) change their labels as time passes: drawn directly
+    if (this.cfg.formatX) {
+      ctx.fillStyle = COLORS.bg;
+      ctx.fillRect(0, 0, w, H);
+      this.drawGrid();
+      return;
+    }
+    if (!Plot.fontsWatched && typeof document !== 'undefined' && document.fonts) {
+      Plot.fontsWatched = true;
+      document.fonts.addEventListener('loadingdone', () => Plot.fontEpoch++);
+    }
+    const c = this.cfg;
+    const key = `${w}|${H}|${this.dpr}|${c.xMin}|${c.xMax}|${c.yMin}|${c.yMax}|${c.yUnit}|${c.xUnit}|${c.yStep}|${c.secondaryLabel}|${c.secondaryBand}|${this.pad.l}|${this.pad.r}|${COLORS.bg}|${COLORS.grid}|${COLORS.text}|${Plot.fontEpoch}`;
+    if (key !== this.gridKey || !this.gridLayer) {
+      const layer = (this.gridLayer ??= this.canvas.ownerDocument.createElement('canvas'));
+      layer.width = Math.max(1, Math.round(w * this.dpr));
+      layer.height = Math.max(1, Math.round(H * this.dpr));
+      const g = layer.getContext('2d')!;
+      g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      g.fillStyle = COLORS.bg;
+      g.fillRect(0, 0, w, H);
+      const own = this.ctx;
+      this.ctx = g;
+      try {
+        this.drawGrid();
+      } finally {
+        this.ctx = own;
+      }
+      this.gridKey = key;
+    }
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(this.gridLayer, 0, 0);
+    ctx.restore();
   }
 
   private drawGrid(): void {
@@ -734,6 +800,7 @@ export class Plot {
       // instead of one per segment keeps this fast on phones and older devices
       const LEVELS = 8;
       const paths: Path2D[] = [];
+      const pxs = this.pxOf(s.x);
       for (let i = 1; i < n; i++) {
         const x0 = s.x[i - 1];
         const x1 = s.x[i];
@@ -746,8 +813,8 @@ export class Plot {
         if (a < 0.03) continue;
         const lvl = Math.min(LEVELS - 1, Math.round(a * (LEVELS - 1)));
         const p = (paths[lvl] ??= new Path2D());
-        p.moveTo(this.xToPx(x0), this.yToPx(y0, s.secondary));
-        p.lineTo(this.xToPx(x1), this.yToPx(y1, s.secondary));
+        p.moveTo(pxs ? pxs[i - 1] : this.xToPx(x0), this.yToPx(y0, s.secondary));
+        p.lineTo(pxs ? pxs[i] : this.xToPx(x1), this.yToPx(y1, s.secondary));
       }
       paths.forEach((p, lvl) => {
         if (!p) return;
@@ -769,6 +836,7 @@ export class Plot {
     // Dense series (e.g. a 16k-point impulse response on a 1000-pixel plot): draw each pixel column as the
     // line through its first, lowest, highest and last point. Looks identical, draws a fraction of the segments.
     const dense = !s.wrap && i1 - i0 > 3 * (this.w - this.pad.l - this.pad.r);
+    const pxs = this.pxOf(s.x);
     let col = NaN;
     let yF = 0;
     let yLo = 0;
@@ -795,7 +863,7 @@ export class Plot {
         pen = false;
         continue;
       }
-      const px = this.xToPx(x);
+      const px = pxs ? pxs[i] : this.xToPx(x);
       const py = this.yToPx(y, s.secondary);
       if (dense) {
         const c = Math.round(px);

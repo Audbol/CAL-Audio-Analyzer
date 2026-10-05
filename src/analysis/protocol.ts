@@ -32,7 +32,21 @@ export interface WorkerConfig {
 export type ToWorker =
   | { t: 'config'; config: WorkerConfig }
   /** One audio block per channel the measurements use (channel numbers as in the engine, −1 = generator). */
-  | { t: 'audio'; channels: number[]; blocks: Float32Array[] };
+  | { t: 'audio'; channels: number[]; blocks: Float32Array[] }
+  /** The Impulse tab shows this measurement (null: none): send its impulse response ~8 times a second. */
+  | { t: 'impulse'; id: string | null; pre: number };
+
+/** A measurement's impulse response (linear, peak-normalised later) and its energy-time curve (dB). */
+export interface WorkerImpulse {
+  id: string;
+  resets: number;
+  epoch: number;
+  fs: number;
+  /** Samples before time zero. */
+  pre: number;
+  ir: Float32Array;
+  etc: Float32Array;
+}
 
 /** The analysis of one measurement, in the format remote devices get from the host (see AnalysisFrame). */
 export interface WorkerFrame {
@@ -50,4 +64,4 @@ export interface WorkerFrame {
   busyMs: number;
 }
 
-export type FromWorker = { t: 'frames'; frames: WorkerFrame[] } | { t: 'error'; message: string };
+export type FromWorker = { t: 'frames'; frames: WorkerFrame[] } | { t: 'impulse'; impulse: WorkerImpulse } | { t: 'error'; message: string };

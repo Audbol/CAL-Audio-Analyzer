@@ -195,6 +195,8 @@ export class App {
     }
     if (this.settings.graphQuality === 'fast') Plot.maxDpr = 1;
     this.watchBattery();
+    // The analysis grid never changes: plots cache where its points are drawn
+    Plot.markStable(this.grid);
     this.applyTheme();
     this.updateCal();
     this.build();
@@ -543,7 +545,8 @@ export class App {
     // background analysis, the main thread only keeps a transfer function for the views that need its raw
     // data (the impulse response).
     if (!this.remote && !this.analysisWorker.active) return { rta: true, tf: true, tfLocal: true };
-    if (!this.remote) return { rta: false, tf: false, tfLocal: this.views.some((v) => (v === this.active || v.hasDetached?.()) && !!v.needs?.tfLocal) };
+    // (The impulse response is computed in the background thread too.)
+    if (!this.remote) return { rta: false, tf: false, tfLocal: false };
     const n = { rta: false, tf: false, tfLocal: false };
     for (const v of this.views) {
       if (v !== this.active && !v.hasDetached?.()) continue;
@@ -1596,17 +1599,19 @@ export class App {
     if (draw) this.lastDrawAt = t0;
     if (this.engine.running) {
       this.analysisWorker.sync();
+      if (this.active?.id !== 'impulse') this.analysisWorker.wantImpulse(null, 0);
       const needs = this.analysisNeeds();
       const now = performance.now();
       const elsewhere = this.hostProcessing || this.analysisWorker.active;
+      const showTf = this.views.some((v) => (v === this.active || v.hasDetached?.()) && !!(v.needs?.tf || v.needs?.tfLocal));
       for (const m of this.measurements) {
         // Host processing or the background thread: use their analysis while it arrives, fall back to
         // processing here otherwise
         const fromHost = elsewhere && !!m.hostFrame && now - m.hostFrameAt < 1500;
-        if (!this.busy) m.process(this.engine, fromHost ? { rta: false, tf: needs.tfLocal } : this.remote ? { rta: needs.rta, tf: needs.tf || needs.tfLocal } : { rta: true, tf: true });
+        if (!this.busy) m.process(this.engine, fromHost ? { rta: false, tf: needs.tfLocal, tfWindow: 1 } : this.remote ? { rta: needs.rta, tf: needs.tf || needs.tfLocal } : { rta: true, tf: true });
         if (draw) {
           const cal = this.calFor(m.cfg.mic);
-          if (fromHost) m.renderHost(this.settings, cal);
+          if (fromHost) m.renderHost(this.settings, cal, showTf);
           else m.render(this.settings, cal);
         }
       }

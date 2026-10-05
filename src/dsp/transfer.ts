@@ -21,6 +21,8 @@ export interface TransferResult {
 
 interface WindowState {
   size: number;
+  /** The analysis window (looked up once: the lookup builds a string key). */
+  win: Float64Array;
   /** Sample rate of the data this window analyses (lower for the decimated bass windows). */
   fs: number;
   hop: number;
@@ -111,8 +113,13 @@ export class TransferFunction {
    * Consume all new data available in the ring buffers.
    * `maxFramesPerWindow` bounds the work done per call (keeps the UI responsive).
    */
-  process(ref: RingBuffer, mic: RingBuffer, maxFramesPerWindow = 8): void {
+  process(ref: RingBuffer, mic: RingBuffer, maxFramesPerWindow = 8, onlyWindow?: number): void {
     const head = Math.min(ref.written, mic.written);
+    // One window only (e.g. for the impulse response while the full analysis runs elsewhere)
+    if (onlyWindow !== undefined) {
+      const w = this.windows[Math.min(onlyWindow, this.windows.length - 1)];
+      return this.run(w, ref, mic, head, this.delay, maxFramesPerWindow);
+    }
     for (const w of this.windows) this.run(w, ref, mic, head, this.delay, maxFramesPerWindow);
     if (!this.lowWindows.length || !this.decRef || !this.decMic) return;
     // Bass windows: the reference delay is applied before decimation, so it stays sample-exact
@@ -145,7 +152,7 @@ export class TransferFunction {
 
   private frame(w: WindowState, ref: RingBuffer, mic: RingBuffer, end: number, delay: number): void {
     const n = w.size;
-    const win = getWindow('hann', n);
+    const win = w.win;
     const { xr, xi, yr } = w;
     ref.read(end - n - delay, n, xr);
     mic.read(end - n, n, yr);
@@ -187,6 +194,11 @@ export class TransferFunction {
   /** True once every window has at least one averaged frame. */
   get ready(): boolean {
     return this.windows.every((w) => w.frames > 0);
+  }
+
+  /** One window has data (see `process(…, onlyWindow)`). */
+  windowReady(index: number): boolean {
+    return (this.windows[Math.min(index, this.windows.length - 1)]?.frames ?? 0) > 0;
   }
 
   /** Produce smoothed magnitude / phase / coherence on the display grid. */
@@ -304,6 +316,7 @@ function newWindow(size: number, fs: number, fLo: number, fHi: number, hop = siz
     fHi,
     nextEnd: -1,
     frames: 0,
+    win: getWindow('hann', size),
     maps: new Map(),
     pxx: new Float64Array(bins + 1),
     pyy: new Float64Array(bins + 1),

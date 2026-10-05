@@ -10,6 +10,8 @@ import type { AnalysisFrame } from './remote/protocol';
 export interface AnalysisNeeds {
   rta: boolean;
   tf: boolean;
+  /** Only this transfer-function window (the impulse response's), when the full analysis runs elsewhere. */
+  tfWindow?: number;
 }
 
 /** Runtime state for one measurement (mic + reference pair): live transfer function and RTA. */
@@ -123,7 +125,7 @@ export class Measurement {
       if (this.paused.tf) this.tf.reset();
       this.paused.tf = false;
       this.tf.delay = Math.max(0, Math.round(this.cfg.delay));
-      this.tf.process(ref, mic);
+      this.tf.process(ref, mic, 8, needs.tfWindow);
     }
   }
 
@@ -267,7 +269,13 @@ export class Measurement {
   }
 
   /** Remote devices: build the display arrays from the host's analysis frame, at this device's smoothing. */
-  renderHost(s: Settings, cal: Float64Array | null): void {
+  private hostTfAt = 0;
+
+  /**
+   * `showTf`: a visible view shows the transfer function. When none does, it is still kept current twice a
+   * second (the assistant and the automatic delay finder read its coherence).
+   */
+  renderHost(s: Settings, cal: Float64Array | null, showTf = true): void {
     const f = this.hostFrame;
     if (!this.cfg.enabled || !f || this.frozen) return;
     const ppo = gridPpo(this.grid);
@@ -296,7 +304,9 @@ export class Measurement {
       this.updateAverage(s, cal, to);
     }
     this.tfReady = f.tfReady;
-    if (f.tfReady) {
+    const now = performance.now();
+    if (f.tfReady && (showTf || now - this.hostTfAt > 500)) {
+      this.hostTfAt = now;
       smoothTransfer(f.mag, f.phase, f.coh, ppo, s.tfSmoothing || 48, this.result.mag, this.result.phase, this.result.coh);
       this.renderDisplay(s, cal);
       this.tfShown++;

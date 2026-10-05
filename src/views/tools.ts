@@ -9,7 +9,6 @@ import { MicsCard } from './mics-card';
 import { RoomModesCard } from './modes';
 import { modal } from '../ui/dialogs';
 import { applySession, buildSession, downloadText, parseSession, sessionFileName, type SessionFile } from '../session';
-import { openReport } from '../report';
 import { replaceSettings } from '../state';
 import { DEFAULT_PROFILES, resetToProfile } from '../defaults';
 
@@ -94,7 +93,14 @@ export class ToolsView implements View {
         { class: 'row gap8 wrap' },
         h('button', { class: 'btn small', onclick: () => this.saveSession() }, icon('download', 14), 'Save session'),
         h('button', { class: 'btn small', onclick: () => (app.remote ? app.toast('Open sessions on the measurement host.', 'warn') : file.click()) }, icon('upload', 14), 'Open session…'),
-        h('button', { class: 'btn small accent', onclick: () => openReport(app) }, icon('list', 14), 'Create report'),
+        h('button', { class: 'btn small accent', onclick: () => {
+          // The window opens at once (pop-up blockers allow it only here); the report code loads on first use
+          const win = window.open('', '_blank');
+          void import('../report').then((r) => r.openReport(app, win)).catch((e) => {
+            win?.close();
+            app.toast(`Could not create the report: ${(e as Error).message}`, 'warn');
+          });
+        } }, icon('list', 14), 'Create report'),
       ),
       file,
     );

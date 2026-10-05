@@ -383,16 +383,17 @@ ${sections.length <= 1 ? '<p class="dim">No measurements yet: start audio, captu
 }
 
 /** Build the report and open it in a new window (or download it when pop-ups are blocked). */
-export function openReport(app: App): void {
+/** Create the report in `win` (opened by the caller in its click handler, so pop-up blockers allow it). */
+export function openReport(app: App, win: Window | null = window.open('', '_blank')): void {
   let html: string;
   try {
     html = buildReport(app);
   } catch (e) {
+    win?.close();
     app.toast(`Could not create the report: ${(e as Error).message}`, 'warn');
     return;
   }
   const name = sessionFileName(app.settings.session, 'report.html');
-  const win = window.open('', '_blank');
   if (!win) {
     downloadText(name, html, 'text/html');
     app.toast('Report downloaded (allow pop-ups to open it directly)', 'ok');
