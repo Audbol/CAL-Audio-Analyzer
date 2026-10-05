@@ -69,6 +69,10 @@ jobs:
         shell: bash
         run: |
           npx vite build && npx vite build -c vite.native.config.ts
+          # Secrets that aren't set arrive as empty variables, which electron-builder would read as paths
+          for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID WIN_CSC_LINK WIN_CSC_KEY_PASSWORD AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET; do
+            [[ -z "${!v}" ]] && unset "$v"
+          done
           ARGS=()
           if [[ "$RUNNER_OS" == "macOS" && -n "$CSC_LINK" ]]; then
             echo "Signing for macOS${APPLE_ID:+ and notarizing}"
