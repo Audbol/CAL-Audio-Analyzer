@@ -153,6 +153,8 @@ export interface Settings {
   themeId: string;
   /** The guided tour was taken or skipped (the Assistant stops offering it). */
   tourDone: boolean;
+  /** The version that last ran (What's new is shown after an update to a new major version). */
+  lastSeenVersion: string;
   customThemes: CustomTheme[];
   /** Where the live analysis runs: a background thread (smoother drawing) or the main thread. */
   analysisThread: 'worker' | 'main';
@@ -241,6 +243,7 @@ export function defaultSettings(): Settings {
     rtaUpdates: 25,
     themeId: '',
     tourDone: false,
+    lastSeenVersion: '',
     customThemes: [],
     analysisThread: 'worker',
     rtaShowSweeps: true,

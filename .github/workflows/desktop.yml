@@ -108,10 +108,14 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: CAL-Audio-Analyzer-${{ matrix.name }}
+          # The update files (latest*.yml, block maps, the macOS zip) let installed copies update themselves
           path: |
             release/*.exe
             release/*.dmg
             release/*.AppImage
+            release/*.zip
+            release/latest*.yml
+            release/*.blockmap
           if-no-files-found: error
 
   release:

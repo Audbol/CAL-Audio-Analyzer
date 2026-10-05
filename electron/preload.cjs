@@ -21,6 +21,14 @@ contextBridge.exposeInMainWorld('calDesktop', {
     /** Keep a detached panel window (by its window name) on top of other windows. */
     pin: (name, on) => ipcRenderer.invoke('window:pin', name, on),
   },
+  updates: {
+    /** { status: 'unsupported' | 'idle' | 'checking' | 'current' | 'downloading' | 'ready' | 'error', version, error, percent } */
+    state: () => ipcRenderer.invoke('update:state'),
+    check: () => ipcRenderer.invoke('update:check'),
+    /** Restart into the downloaded version. */
+    install: () => ipcRenderer.invoke('update:install'),
+    onChange: (fn) => ipcRenderer.on('update:state', (_e, s) => fn(s)),
+  },
 });
 
 // MessagePorts cannot cross the context bridge: hand them to the page with window.postMessage

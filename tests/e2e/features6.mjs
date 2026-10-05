@@ -313,6 +313,23 @@ if (want('tour')) {
   check(!(await page.locator('.assistant .hint button', { hasText: 'Take the tour' }).isVisible()), 'the Assistant no longer offers it');
 }
 
+// --- 11. What's new after an update to a new major version (once), About & updates in Tools
+if (want('whatsnew')) {
+  await page.evaluate(() => { const a = window.calApp; a.settings.lastSeenVersion = '1.10.1'; a.settings.wizardDone = true; a.save(); });
+  await page.waitForTimeout(600);
+  await page.reload();
+  const shown = await page.waitForSelector('.modal .whats-new', { timeout: 5000 }).then(() => true).catch(() => false);
+  check(shown, 'after an update from 1.x, What’s new is shown');
+  await page.getByRole('button', { name: 'Got it' }).click().catch(() => undefined);
+  await page.reload();
+  await page.waitForTimeout(1500);
+  check((await page.locator('.modal .whats-new').count()) === 0, 'it is shown only once');
+  await page.evaluate(() => window.calApp.setView('tools'));
+  await page.locator('[data-section="data"]').click();
+  const about = await page.locator('.about-card').textContent();
+  check(/CAL Audio Analyzer \d+\.\d+/.test(about) && /browser version/.test(about), `About shows the version and how updates work (${about.slice(0, 80)}…)`);
+}
+
 check(errors.length === 0, `no console errors ${errors.join(' | ')}`);
 await browser.close();
 await new Promise((r) => server.httpServer.close(r));

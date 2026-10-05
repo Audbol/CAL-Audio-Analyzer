@@ -20,6 +20,7 @@ const KEEP = [
   'analysisThread',
   'themeId',
   'tourDone',
+  'lastSeenVersion',
   'customThemes',
   'remoteServer',
   'splOffset',

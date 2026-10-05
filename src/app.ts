@@ -29,6 +29,8 @@ import { MeterBallistics, type MeterReading } from './audio/meter-ballistics';
 import { THEME_PRESETS, applyTheme as applyThemeTo, type CustomTheme } from './ui/themes';
 import { displayColor } from './ui/theme';
 import { startTour } from './ui/tour';
+import { maybeShowWhatsNew } from './ui/whats-new';
+import type { UpdateState } from './views/about-card';
 import { AnalysisWorkerClient } from './analysis/client';
 import { SplLogger } from './logger';
 import { NativeAudio } from './native/client';
@@ -121,6 +123,14 @@ export class App {
   private frameTimes: number[] = [];
   private starting = false;
   private themeBtn = h('button', { class: 'btn icon-btn theme-btn', onclick: () => this.toggleTheme() });
+  /** Shown in the top bar when a downloaded update is ready to install (desktop app). */
+  private updateBtn = h('button', { class: 'btn small accent update-btn', style: 'display:none', title: 'A new version is downloaded: restart to use it', onclick: () => void desktopBridge()?.updates?.install() });
+
+  /** The updater's state (desktop app): the top-bar button appears when an update is ready. */
+  setUpdateState(st: UpdateState): void {
+    this.updateBtn.style.display = st.status === 'ready' ? '' : 'none';
+    if (st.status === 'ready') this.updateBtn.textContent = `Restart to update to ${st.version}`;
+  }
   private lastMode: boolean | null = null;
   /** Set while a sweep measurement owns the generator; live analysis pauses so averages stay clean. */
   busy = false;
@@ -223,6 +233,12 @@ export class App {
     if (this.remote) this.initRemoteClient();
     else {
       if (!this.settings.wizardDone) setTimeout(() => showWizard(this), 200);
+      // After an update to a new major version: what's new (the first start only records the version)
+      else setTimeout(() => maybeShowWhatsNew(this), 600);
+      if (!this.settings.lastSeenVersion) {
+        this.settings.lastSeenVersion = __APP_VERSION__;
+        this.save();
+      }
       this.initRemoteHost();
     }
   }
@@ -1064,6 +1080,7 @@ export class App {
     this.extraGroup = h(
       'div',
       { class: 'group extra-group' },
+      this.updateBtn,
       this.fullscreenBtn(),
       this.themeBtn,
       h('button', { class: 'btn icon-btn', title: 'Help & shortcuts (?)', onclick: () => showHelp(this) }, icon('help', 18)),

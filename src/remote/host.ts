@@ -1,3 +1,4 @@
+import type { UpdateState } from '../views/about-card';
 import type { App } from '../app';
 import { decodeUpload, UPLOAD_MARKER, encodeAudio, encodeSweep, encodeAnalysis, sharedOf, type HostStatus, type HubInfo, type HubMessage, type SweepMeta } from './protocol';
 
@@ -12,6 +13,8 @@ export interface DesktopBridge {
   window?: { pin(name: string, on: boolean): Promise<boolean> };
   /** Native audio (ASIO), desktop app on Windows. */
   nativeAudio?: { available(): Promise<boolean>; connect(): void };
+  /** Automatic updates (desktop app). */
+  updates?: { state(): Promise<UpdateState>; check(): Promise<UpdateState>; install(): Promise<boolean>; onChange(fn: (s: UpdateState) => void): void };
 }
 
 /** Injected into index.html by the hub when the page is served by it. */

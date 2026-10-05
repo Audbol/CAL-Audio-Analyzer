@@ -3783,3 +3783,23 @@ html.compact .cmp-arrow {
     transition: none;
   }
 }
+
+/* What's new */
+.whats-new ul {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.whats-new li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 12px;
+  border-left: 2px solid var(--accent);
+}
+.whats-new li span {
+  color: var(--text-2);
+}

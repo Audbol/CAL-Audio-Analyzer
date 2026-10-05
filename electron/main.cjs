@@ -2,6 +2,7 @@
 'use strict';
 
 const { app, BrowserWindow, Menu, protocol, session, shell, net, ipcMain, utilityProcess, MessageChannelMain } = require('electron');
+const { setupUpdater } = require('./updater.cjs');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -244,6 +245,7 @@ app.whenReady().then(() => {
   serveDist();
   registerServerIpc();
   registerNativeAudioIpc();
+  setupUpdater(() => win);
   buildMenu();
   createWindow();
 

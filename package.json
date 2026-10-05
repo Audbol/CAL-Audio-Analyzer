@@ -58,7 +58,8 @@
       "build/icon.png",
       "package.json",
       "dist-electron/**/*",
-      "native/build/Release/cal_audio.node"
+      "native/build/Release/cal_audio.node",
+      "electron/updater.cjs"
     ],
     "asar": true,
     "win": {
@@ -97,6 +98,13 @@
             "x64",
             "arm64"
           ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "category": "public.app-category.music",
@@ -121,11 +129,19 @@
     "asarUnpack": [
       "native/build/Release/*.node",
       "dist-electron/**/*"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Audbol",
+        "repo": "CAL-Audio-Analyzer"
+      }
     ]
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
+    "electron-updater": "^6.8.9",
     "ws": "^8.22.0"
   }
 }

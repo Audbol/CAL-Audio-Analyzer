@@ -8,6 +8,7 @@ import { NativeCard } from './native-card';
 import { MicsCard } from './mics-card';
 import { RoomModesCard } from './modes';
 import { ThemeCard } from './theme-card';
+import { AboutCard } from './about-card';
 import { modal } from '../ui/dialogs';
 import { applySession, buildSession, downloadText, parseSession, sessionFileName, type SessionFile } from '../session';
 import { replaceSettings } from '../state';
@@ -21,7 +22,7 @@ const SECTIONS: { id: ToolsSection; label: string; icon: Parameters<typeof icon>
   { id: 'remote', label: 'Remote access', icon: 'wifi', hint: 'Phones, tablets and other computers' },
   { id: 'display', label: 'Display & performance', icon: 'sliders', hint: 'Theme, graph quality, battery saver, bass resolution' },
   { id: 'calc', label: 'Calculators', icon: 'clock', hint: 'Room modes; delay, distance and wavelength; weighting table' },
-  { id: 'data', label: 'Data & reset', icon: 'trash', hint: 'Delete traces, reset settings' },
+  { id: 'data', label: 'About & data', icon: 'info', hint: 'Version and updates, what’s new, delete traces, reset settings' },
 ];
 
 /** Setup, sessions, remote access, display settings, calculators and data, in sections. */
@@ -297,7 +298,7 @@ export class ToolsView implements View {
     this.cards.set('remote', [this.remoteCard.el]);
     this.cards.set('display', [this.themeCard.el, perfCard]);
     this.cards.set('calc', [this.modesCard.el, delayCard, wCard]);
-    this.cards.set('data', [dataCard]);
+    this.cards.set('data', [new AboutCard(app).el, dataCard]);
     this.el.append(this.nav, this.body);
     this.open((SECTIONS.find((x) => x.id === s.toolsSection)?.id ?? 'setup') as ToolsSection);
     this.renderStatus();
