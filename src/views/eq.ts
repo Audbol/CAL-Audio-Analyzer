@@ -32,7 +32,11 @@ export class EqView implements View {
   title = 'EQ';
   icon = 'sliders' as const;
   el = h('div', { class: 'eq' });
+  /** Top: the response against the target, as measured and as predicted with the EQ. */
   private plot: Plot;
+  /** Below: the EQ itself, with its numbered filters. */
+  private eqPlot: Plot;
+  private legend = h('div', { class: 'eq-legend', 'aria-hidden': 'true' });
   private source = 'live:0';
   private target = TARGETS[0].id;
   private opt = { fMin: 40, fMax: 12000, maxFilters: 8, maxBoost: 3, maxCut: 12, minCoherence: 0.6 };
@@ -48,8 +52,10 @@ export class EqView implements View {
   constructor(private app: App) {
     // Start from the target chosen for the Spectrum / Transfer views, when it is a built-in one
     if (TARGETS.some((t) => t.id === app.settings.targetCurve)) this.target = app.settings.targetCurve;
-    this.plot = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: -18, yMax: 18, yUnit: 'dB', yStep: 3, title: 'Deviation from target, EQ and predicted result', showNote: true, yLimits: [-60, 60] });
+    this.plot = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: -18, yMax: 12, yUnit: 'dB', yStep: 3, title: 'Response against the target (0 dB = on target)', showNote: true, yLimits: [-60, 60] });
     this.plot.placeholder = 'Choose a source and a target, then press Calculate EQ';
+    this.eqPlot = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: -12, yMax: 6, yUnit: 'dB', yStep: 3, title: 'EQ filters (numbered as in the list)', yLimits: [-40, 30] });
+    this.eqPlot.placeholder = 'The EQ curve appears here';
     const numIn = (key: keyof typeof this.opt, step: string, label?: string) => {
       const i = h('input', { type: 'number', class: 'num', value: String(this.opt[key]), step, dataset: { eqOpt: key }, 'aria-label': label });
       i.addEventListener('change', () => ((this.opt[key] as number) = +i.value));
@@ -76,7 +82,10 @@ export class EqView implements View {
         h('button', { class: 'btn accent', onclick: () => this.run() }, icon('sparkle', 15), 'Calculate EQ'),
       ),
       this.summary,
-      h('div', { class: 'eq-split' }, h('div', { class: 'pane fill' }, this.plot.el), h('div', { class: 'peq-side' }, h('h4', {}, 'Parametric EQ'), this.list, h('div', { class: 'row gap4 wrap' }, ...this.copyBtns))),
+      h(
+        'div',
+        { class: 'eq-split' },
+        h('div', { class: 'eq-plots' }, this.legend, h('div', { class: 'pane eq-main' }, this.plot.el), h('div', { class: 'pane eq-curve' }, this.eqPlot.el)), h('div', { class: 'peq-side' }, h('h4', {}, 'Parametric EQ'), this.list, h('div', { class: 'row gap4 wrap' }, ...this.copyBtns))),
     );
     this.renderList();
     this.summary.textContent = 'Choose a source measurement and press Calculate EQ. Use a spatially averaged trace for best results.';
@@ -210,6 +219,8 @@ export class EqView implements View {
       this.filters = [];
       this.plot.series = [];
       this.plot.markers = [];
+      this.eqPlot.series = [];
+      this.eqPlot.pins = [];
       this.summary.textContent = 'Choose a source measurement and press Calculate EQ. Use a spatially averaged trace for best results.';
     } else {
       if (TARGETS.some((t) => t.id === snap.target)) this.target = snap.target;
@@ -225,31 +236,94 @@ export class EqView implements View {
     this.dirty = true;
   }
 
+  /** The EQ graph's range: the filters' extremes with some room, at least −12…+6 dB. */
+  private fitEqPlot(eq: ArrayLike<number>): void {
+    let lo = 0;
+    let hi = 0;
+    for (let i = 0; i < eq.length; i++) {
+      lo = Math.min(lo, eq[i]);
+      hi = Math.max(hi, eq[i]);
+    }
+    const yMin = Math.min(-12, Math.floor((lo - 3) / 3) * 3);
+    const yMax = Math.max(6, Math.ceil((hi + 3) / 3) * 3);
+    if (this.eqPlot.cfg.yMin !== yMin || this.eqPlot.cfg.yMax !== yMax) this.eqPlot.setDefaults({ yMin, yMax });
+  }
+
+  /** The EQ curve, filled towards 0 dB (cuts below, boosts above), with each filter numbered where it acts. */
+  private drawEq(x: ArrayLike<number>): void {
+    const eq = eqResponse(this.filters, x);
+    this.fitEqPlot(eq);
+    const zero = new Float64Array(x.length);
+    this.eqPlot.series = [
+      { id: 'eq-fill', label: '', x, y: eq, band: zero, color: CHART.warn, quiet: true },
+      { id: 'eq', label: 'EQ', x, y: eq, color: CHART.warn, width: 2 },
+    ];
+    // A numbered point on the curve at each filter, instead of a line across the whole graph
+    this.eqPlot.pins = this.filters.map((f, i) => ({ x: f.f, y: eqResponse(this.filters, [f.f])[0], label: `${i + 1}`, color: CHART.warn }));
+    this.eqPlot.shades = this.result
+      ? [
+          { x0: 20, x1: this.opt.fMin, color: CHART.shade },
+          { x0: this.opt.fMax, x1: 20000, color: CHART.shade },
+        ]
+      : [];
+    this.eqPlot.draw();
+  }
+
+  /** Legend above the graphs: a line sample per curve, or a shaded swatch for the tolerance band. */
+  private renderLegend(items: { label: string; color?: string; dash?: boolean; width?: number; band?: boolean }[]): void {
+    this.legend.replaceChildren(
+      ...items.map((it) =>
+        h(
+          'span',
+          { class: `eq-legend-item${it.band ? ' tol' : ''}` },
+          h('i', { style: it.band ? '' : `border-top: ${it.width ?? 2}px ${it.dash ? 'dashed' : 'solid'} ${it.color}` }),
+          it.label,
+        ),
+      ),
+    );
+  }
+
   tick(): void {
     if (!this.dirty) return;
     this.dirty = false;
     const r = this.result;
+    const day = CHART.bg === '#ffffff';
     if (r) {
       const x = this.freqs;
       const eq = eqResponse(this.filters, x);
       const after = Float64Array.from(r.before, (v, i) => v + eq[i]);
       const band = (arr: ArrayLike<number>) => Float64Array.from(arr, (v, i) => (x[i] < this.opt.fMin || x[i] > this.opt.fMax ? NaN : v));
+      const ok = Float64Array.from(x, () => 3);
       this.plot.series = [
-        { id: 'before', label: 'Measured − target', x, y: r.before, color: CHART.neutral, width: 1.4 },
-        { id: 'eq', label: 'EQ curve', x, y: eq, color: CHART.warn, width: 2 },
-        { id: 'after', label: 'Predicted result', x, y: band(after), color: CHART.accent, width: 2 },
+        // ±3 dB around the target: where the result should end up
+        { id: 'tol', label: '', x, y: ok, band: ok.map((v) => -v), color: CHART.accent, quiet: true },
+        { id: 'before', label: 'As measured', x, y: r.before, color: CHART.neutral, width: 1.3, dash: [5, 3] },
+        { id: 'after', label: 'With EQ (predicted)', x, y: band(after), color: CHART.accent, width: 2.4, halo: day ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.75)' },
       ];
-      this.plot.markers = this.filters.map((f, i) => ({ x: f.f, color: CHART.warnSoft, label: `${i + 1}` }));
+      this.plot.markers = [];
       this.plot.shades = [
         { x0: 20, x1: this.opt.fMin, color: CHART.shade },
         { x0: this.opt.fMax, x1: 20000, color: CHART.shade },
       ];
+      this.drawEq(x);
+      this.renderLegend([
+        { label: 'As measured', color: CHART.neutral, dash: true, width: 2 },
+        { label: 'With EQ (predicted)', color: CHART.accent, width: 3 },
+        { label: '±3 dB of the target', band: true },
+        { label: 'EQ (below)', color: CHART.warn, width: 2 },
+      ]);
     } else if (this.filters.length) {
       // Filters without a calculated EQ (e.g. notches from the feedback finder): their curve alone
-      const x = this.app.grid;
-      this.plot.series = [{ id: 'eq', label: 'EQ curve', x, y: eqResponse(this.filters, x), color: CHART.warn, width: 2 }];
-      this.plot.markers = this.filters.map((f, i) => ({ x: f.f, color: CHART.warnSoft, label: `${i + 1}` }));
+      this.plot.series = [];
+      this.drawEq(this.app.grid);
+      this.renderLegend([{ label: 'EQ (below)', color: CHART.warn, width: 2 }]);
+    } else {
+      this.eqPlot.series = [];
+      this.eqPlot.pins = [];
+      this.eqPlot.draw();
+      this.legend.replaceChildren();
     }
     this.plot.draw();
   }
+
 }

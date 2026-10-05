@@ -268,13 +268,15 @@ A target is the response you want. The app draws it as a dashed line with a tole
 
 ### Let the app suggest EQ
 
-![The EQ tab. The graph shows the measurement, the suggested EQ and the predicted result. The list on the right shows eight filters with frequency, gain and Q.](guide/eq.png)
+![The EQ tab. The upper graph shows the response against the target as measured (dashed) and as predicted with the EQ, inside a ±3 dB band. The lower graph shows the EQ curve with its eight filters numbered. The list on the right shows each filter's frequency, gain and Q.](guide/eq.png)
 
 1. Measure at several positions and make a spatial average (see [Traces](#9-save-and-compare-traces)).
 2. Open the **EQ** tab (press 6).
 3. Choose the averaged trace as the **Source**, and choose a **Target**.
 4. Select **Calculate EQ**.
 5. The list on the right shows the suggested filters: frequency (Fc), gain and Q. You can edit each value.
+   - The **upper graph** shows the response against the target: dashed as measured, solid as predicted with the EQ. The shaded band is ±3 dB around the target.
+   - The **lower graph** shows the EQ itself. Each filter is numbered where it acts, as in the list; cuts are shaded below 0 dB and boosts above.
 6. Copy the filters with **Copy filter text** or **Copy CSV**, then enter them in your processor.
 7. Measure again to check the result.
 

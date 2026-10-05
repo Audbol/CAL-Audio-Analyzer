@@ -1388,8 +1388,46 @@ html.compact .plot-zoom button {
   display: flex;
   min-height: 320px;
 }
-.eq-split .pane {
+.eq-plots {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.eq-plots .pane {
+  min-height: 0;
+}
+.eq-plots .eq-main {
+  flex: 3;
+}
+.eq-plots .eq-curve {
+  flex: 2;
+  border-top: 1px solid var(--border);
+}
+.eq-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 6px 12px;
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+.eq-legend:empty {
+  display: none;
+}
+.eq-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.eq-legend-item i {
+  display: inline-block;
+  width: 22px;
+}
+.eq-legend-item.tol i {
+  height: 10px;
+  border-radius: 2px;
+  background: rgba(var(--accent-rgb), 0.18);
 }
 .peq-side {
   width: 300px;
