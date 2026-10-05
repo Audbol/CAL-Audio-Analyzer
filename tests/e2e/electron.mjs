@@ -45,11 +45,14 @@ const upd = await page.evaluate(() => window.calDesktop?.updates?.state());
 check(upd && upd.status === 'unsupported', `the updater is off in a development build (${JSON.stringify(upd)})`);
 const upd2 = await page.evaluate(async () => {
   const u = window.calDesktop.updates;
+  const view = window.calApp.settings.view;
   window.calApp.openTools('data');
   const a = await u.setAuto(true);
   const b = await u.setAuto(false);
   const d = await u.download();
-  return { a: a.auto, b: b.auto, d: d.status, setting: window.calApp.settings.autoUpdateCheck, ui: !!document.querySelector('[data-update="auto"]') };
+  const ui = !!document.querySelector('[data-update="auto"]');
+  window.calApp.setView(view);
+  return { a: a.auto, b: b.auto, d: d.status, setting: window.calApp.settings.autoUpdateCheck, ui };
 });
 check(upd2.a === true && upd2.b === false && upd2.d === 'unsupported' && upd2.setting === false && upd2.ui, `automatic checks are off by default and switchable; nothing downloads by itself (${JSON.stringify(upd2)})`);
 const perm = await page.evaluate(async () => {
