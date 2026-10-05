@@ -4,7 +4,8 @@ name: Desktop app
 # and Linux (x64 + ARM64). Every push produces downloadable artifacts. A GitHub Release is published when a
 # tag like v1.1.0 is pushed, or when the workflow is run manually with "release" enabled (the tag v<version>
 # from package.json is then created on the built commit). With "prerelease" it is published as a beta: marked as a
-# pre-release, not the latest download, with the notes from docs/beta-notes.md.
+# pre-release, not the latest download, with the notes from docs/beta-notes.md. With "draft" it stays a draft that
+# only people with write access to the repository can see, until it is published on the Releases page.
 on:
   push:
     branches: ['**']
@@ -17,6 +18,10 @@ on:
         default: true
       prerelease:
         description: Publish it as a beta (pre-release, not the latest download; notes from docs/beta-notes.md)
+        type: boolean
+        default: false
+      draft:
+        description: Keep it as a draft (visible only to people with write access to the repository; publish it later on the Releases page)
         type: boolean
         default: false
 
@@ -95,6 +100,7 @@ jobs:
           target_commitish: ${{ github.sha }}
           name: CAL Audio Analyzer ${{ steps.tag.outputs.tag }}
           prerelease: ${{ inputs.prerelease == true }}
+          draft: ${{ inputs.draft == true }}
           make_latest: ${{ inputs.prerelease == true && 'false' || 'true' }}
           body_path: ${{ inputs.prerelease == true && 'docs/beta-notes.md' || 'docs/release-notes.md' }}
           files: dist-release/*
