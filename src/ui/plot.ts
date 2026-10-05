@@ -1,5 +1,6 @@
 import { CHART, seriesColor } from './theme';
 import { formatFreq, noteName } from '../dsp/freq';
+import { drawWatermark, onWatermarkChange, watermarkEpoch } from './watermark';
 
 export interface Series {
   id: string;
@@ -143,6 +144,7 @@ export class Plot {
   /** Changes when web fonts finish loading (layers drawn with a fallback font are drawn again). */
   private static fontEpoch = 0;
   private static fontsWatched = false;
+  private static watermarkWatched = false;
   private readonly tip: HTMLDivElement;
   series: Series[] = [];
   markers: Marker[] = [];
@@ -194,6 +196,13 @@ export class Plot {
     this.el.append(this.zoomBar());
     this.ctx = this.canvas.getContext('2d')!;
     Plot.instances.add(this);
+    if (!Plot.watermarkWatched) {
+      Plot.watermarkWatched = true;
+      // A new or changed watermark: every plot redraws its background now
+      onWatermarkChange(() => {
+        for (const p of Plot.instances) p.draw();
+      });
+    }
     this.observer = new ResizeObserver(() => this.resize());
     this.observer.observe(this.el);
     this.bindEvents();
@@ -620,6 +629,7 @@ export class Plot {
     if (this.cfg.formatX) {
       ctx.fillStyle = COLORS.bg;
       ctx.fillRect(0, 0, w, H);
+      drawWatermark(ctx, this.pad.l, this.pad.t, w - this.pad.l - this.pad.r, H - this.pad.t - this.pad.b);
       this.drawGrid();
       return;
     }
@@ -628,7 +638,7 @@ export class Plot {
       document.fonts.addEventListener('loadingdone', () => Plot.fontEpoch++);
     }
     const c = this.cfg;
-    const key = `${w}|${H}|${this.dpr}|${c.xMin}|${c.xMax}|${c.yMin}|${c.yMax}|${c.yUnit}|${c.xUnit}|${c.yStep}|${c.secondaryLabel}|${c.secondaryBand}|${this.pad.l}|${this.pad.r}|${COLORS.bg}|${COLORS.grid}|${COLORS.text}|${Plot.fontEpoch}`;
+    const key = `${w}|${H}|${this.dpr}|${c.xMin}|${c.xMax}|${c.yMin}|${c.yMax}|${c.yUnit}|${c.xUnit}|${c.yStep}|${c.secondaryLabel}|${c.secondaryBand}|${this.pad.l}|${this.pad.r}|${COLORS.bg}|${COLORS.grid}|${COLORS.text}|${Plot.fontEpoch}|${watermarkEpoch}|${this.pad.t}|${this.pad.b}`;
     if (key !== this.gridKey || !this.gridLayer) {
       const layer = (this.gridLayer ??= this.canvas.ownerDocument.createElement('canvas'));
       layer.width = Math.max(1, Math.round(w * this.dpr));
@@ -637,6 +647,7 @@ export class Plot {
       g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
       g.fillStyle = COLORS.bg;
       g.fillRect(0, 0, w, H);
+      drawWatermark(g, this.pad.l, this.pad.t, w - this.pad.l - this.pad.r, H - this.pad.t - this.pad.b);
       const own = this.ctx;
       this.ctx = g;
       try {

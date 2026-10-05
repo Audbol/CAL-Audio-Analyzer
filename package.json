@@ -1,6 +1,6 @@
 {
   "name": "cal-audio-analyzer",
-  "version": "2.0.0-rc.2",
+  "version": "2.0.0-rc.3",
   "private": true,
   "description": "CAL Audio Analyzer: professional real-time sound system and room acoustics analyzer in the browser",
   "type": "module",
@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:e2e": "vite build && node tests/e2e/smoke.mjs && node tests/e2e/dock.mjs && node tests/e2e/remote.mjs && node tests/e2e/mobile.mjs && node tests/e2e/music.mjs && node tests/e2e/features.mjs && node tests/e2e/features2.mjs && node tests/e2e/features3.mjs && node tests/e2e/features4.mjs && node tests/e2e/features5.mjs && node tests/e2e/features6.mjs && node tests/e2e/a11y.mjs && node tests/e2e/hub-security.mjs",
+    "test:e2e": "vite build && node tests/e2e/smoke.mjs && node tests/e2e/dock.mjs && node tests/e2e/remote.mjs && node tests/e2e/mobile.mjs && node tests/e2e/music.mjs && node tests/e2e/features.mjs && node tests/e2e/features2.mjs && node tests/e2e/features3.mjs && node tests/e2e/features4.mjs && node tests/e2e/features5.mjs && node tests/e2e/features6.mjs && node tests/e2e/features7.mjs && node tests/e2e/a11y.mjs && node tests/e2e/hub-security.mjs",
     "check": "tsc --noEmit && vitest run",
     "app": "vite build && vite build -c vite.native.config.ts && electron .",
     "app:dev": "node electron/dev.mjs",

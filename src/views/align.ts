@@ -4,6 +4,8 @@ import { h, icon, select } from '../ui/dom';
 import { alignFullRange, alignSubMain, type AlignInput, type AlignResult } from '../dsp/align';
 import { speedOfSound } from '../dsp/delay';
 import { optionsMenu, optRow, optHead } from '../ui/popover';
+import { XOVER_SHAPES, applyXover, idealSum, xoverLabel, type CrossoverDesign, type XoverShape } from '../dsp/crossover';
+import { logGrid } from '../dsp/freq';
 
 const MAIN_COLOR = '#4da3ff';
 const PART_COLOR = '#ff6b6b';
@@ -171,6 +173,10 @@ export class AlignView implements View {
   private cards = h('div', { class: 'cards' });
   private tracesVersion = -1;
   private dirty = true;
+  /** The crossover designer's panel (shown with the Crossover button). */
+  private xoverPanel = h('div', { class: 'xover-panel' });
+  private xoverBtn: HTMLButtonElement;
+  private xoverTimer = 0;
 
   constructor(private app: App) {
     this.mag = new Plot({ xType: 'log', xMin: 20, xMax: 1000, yMin: -30, yMax: 12, yUnit: 'dB', yStep: 6, title: 'Magnitude: mains, part and their predicted sum', showNote: true, yLimits: [-120, 120] });
@@ -226,6 +232,7 @@ export class AlignView implements View {
           ],
           { title: 'Alignment options: sub crossover region, search ranges', id: 'align' },
         ),
+        (this.xoverBtn = h('button', { class: 'btn small', dataset: { xover: 'toggle' }, title: 'Crossover designer: try filter types, frequencies and slopes on the measured sub and mains, and see their sum', onclick: () => this.toggleXover() }, icon('sliders', 14), 'Crossover')),
         h('div', { class: 'spacer' }),
         h('button', { class: 'btn small', title: 'Store the predicted aligned sum of the selected part as a trace', onclick: () => this.saveSum() }, icon('download', 14), 'Save sum'),
         h('button', { class: 'btn accent', onclick: () => this.run() }, icon('sparkle', 15), 'Calculate alignment'),
@@ -234,10 +241,110 @@ export class AlignView implements View {
         'div',
         { class: 'align-body' },
         h('aside', { class: 'align-side' }, h('div', { class: 'align-side-head' }, 'System'), this.list),
-        h('div', { class: 'align-main' }, this.summary, this.cards, h('div', { class: 'panes align-panes' }, h('div', { class: 'pane big' }, this.mag.el), h('div', { class: 'pane' }, this.phase.el))),
+        h('div', { class: 'align-main' }, this.xoverPanel, this.summary, this.cards, h('div', { class: 'panes align-panes' }, h('div', { class: 'pane big' }, this.mag.el), h('div', { class: 'pane' }, this.phase.el))),
       ),
     );
     this.add('sub', false);
+    this.renderXover();
+  }
+
+  // Crossover designer ----------------------------------------------------------------------------------------
+
+  private toggleXover(): void {
+    const x = this.app.settings.crossover;
+    x.on = !x.on;
+    this.app.save();
+    this.renderXover();
+    this.xoverChanged(true);
+  }
+
+  /** The crossover controls: the sub's low-pass, the mains' high-pass, the sub's level and polarity. */
+  private renderXover(): void {
+    const x = this.app.settings.crossover;
+    this.xoverBtn.classList.toggle('on', x.on);
+    this.xoverBtn.setAttribute('aria-pressed', String(x.on));
+    this.xoverPanel.style.display = x.on ? '' : 'none';
+    if (!x.on) return this.xoverPanel.replaceChildren();
+    const linked = x.low.fc === x.high.fc;
+    const num = (value: number, step: string, attrs: Record<string, string>, set: (v: number) => void) => {
+      const i = h('input', { type: 'number', class: 'num', value: String(value), step, ...attrs }) as HTMLInputElement;
+      i.addEventListener('change', () => {
+        const v = +i.value;
+        if (!Number.isFinite(v)) return;
+        set(v);
+        this.app.save();
+        // Show the stored (clamped, linked) values without rebuilding the panel under the cursor
+        lowFc.value = String(x.low.fc);
+        highFc.value = String(x.high.fc);
+        this.xoverChanged();
+      });
+      return i;
+    };
+    const shape = (value: XoverShape, label: string, set: (v: XoverShape) => void) =>
+      select(XOVER_SHAPES.map((o) => ({ value: o.id, label: o.label })), value, (v) => {
+        set(v);
+        this.app.save();
+        this.xoverChanged();
+      }, { 'aria-label': label, dataset: { xoverShape: label.startsWith('Sub') ? 'low' : 'high' } });
+    const clampF = (v: number) => Math.min(2000, Math.max(10, v));
+    const link = h('input', { type: 'checkbox', checked: linked }) as HTMLInputElement;
+    link.addEventListener('change', () => {
+      if (link.checked) x.high.fc = x.low.fc;
+      highFc.value = String(x.high.fc);
+      this.app.save();
+      this.xoverChanged();
+    });
+    const lowFc: HTMLInputElement = num(x.low.fc, '1', { 'aria-label': 'Sub low-pass frequency (Hz)', 'data-xover-fc': 'low' }, (v) => {
+      x.low.fc = clampF(v);
+      if (link.checked) x.high.fc = x.low.fc;
+    });
+    const highFc: HTMLInputElement = num(x.high.fc, '1', { 'aria-label': 'Mains high-pass frequency (Hz)', 'data-xover-fc': 'high' }, (v) => {
+      x.high.fc = clampF(v);
+      if (link.checked) x.low.fc = x.high.fc;
+    });
+    const invert = h('input', { type: 'checkbox', checked: x.subInvert, dataset: { xover: 'invert' } }) as HTMLInputElement;
+    invert.addEventListener('change', () => {
+      x.subInvert = invert.checked;
+      this.app.save();
+      this.xoverChanged();
+    });
+    this.xoverPanel.replaceChildren(
+      h(
+        'div',
+        { class: 'xover-row' },
+        h('b', { class: 'xover-title' }, 'Crossover'),
+        h('label', { class: 'xover-field' }, h('span', {}, 'Sub low-pass'), shape(x.low.shape, 'Sub low-pass', (v) => (x.low.shape = v)), lowFc, h('span', { class: 'unit' }, 'Hz')),
+        h('label', { class: 'xover-field' }, h('span', {}, 'Mains high-pass'), shape(x.high.shape, 'Mains high-pass', (v) => (x.high.shape = v)), highFc, h('span', { class: 'unit' }, 'Hz')),
+        h('label', { class: 'cmp-check', title: 'Both filters at the same frequency' }, link, 'Same frequency'),
+        h('label', { class: 'xover-field' }, h('span', {}, 'Sub level'), num(x.subGain, '0.5', { 'aria-label': 'Sub level (dB)' }, (v) => (x.subGain = Math.max(-24, Math.min(24, v)))), h('span', { class: 'unit' }, 'dB')),
+        h('label', { class: 'cmp-check' }, invert, 'Invert sub'),
+      ),
+      h('p', { class: 'dim small' }, 'Applied to the sub and mains measurements as if set in the processor (measure them without their crossover filters, or with the ones to replace). With no measurements, the graphs show the filters alone. Calculate alignment finds the delay for this crossover.'),
+    );
+  }
+
+  /** After a crossover change: re-run the alignment of subs that have a result, redraw otherwise. */
+  private xoverChanged(now = false): void {
+    clearTimeout(this.xoverTimer);
+    const go = () => {
+      if (this.elements.some((e) => e.kind === 'sub' && e.result)) this.run();
+      else this.renderSelected();
+      this.dirty = true;
+    };
+    if (now) go();
+    else this.xoverTimer = window.setTimeout(go, 120);
+  }
+
+  /** The mains and part as aligned: for subs with the crossover designer on, through its filters. */
+  private inputsFor(el: AlignElement): { main: (AlignInput & { name: string }) | null; part: (AlignInput & { name: string }) | null } {
+    let main = this.input(el.ref || this.reference);
+    let part = this.input(el.source);
+    const x = this.app.settings.crossover;
+    if (x.on && el.kind === 'sub') {
+      if (main) main = { ...applyXover(main, x.high, 'hp'), name: main.name };
+      if (part) part = { ...applyXover(part, x.low, 'lp', x.subGain, x.subInvert), name: part.name };
+    }
+    return { main, part };
   }
 
   // Parts --------------------------------------------------------------------------------------------------
@@ -443,13 +550,12 @@ export class AlignView implements View {
     let done = 0;
     for (const el of this.elements) {
       el.error = undefined;
-      const main = this.input(el.ref || this.reference);
+      const { main, part } = this.inputsFor(el);
       if (!main) {
         el.result = null;
         el.error = 'Choose or capture the mains measured at this position';
         continue;
       }
-      const part = this.input(el.source);
       if (!part) {
         el.result = null;
         el.error = 'Choose or capture its measurement';
@@ -489,10 +595,14 @@ export class AlignView implements View {
     this.dirty = true;
     const card = (label: string, value: string, sub: string, hint: string, cls = '') => h('div', { class: `card ${cls}`, title: hint }, h('span', {}, label), h('b', {}, value), h('em', {}, sub));
     const r = el?.result;
+    const xo = this.app.settings.crossover;
+    const xoverNote = xo.on && el?.kind === 'sub' ? h('span', { class: 'xover-note' }, `Crossover: sub ${xoverLabel(xo.low)}, mains ${xoverLabel(xo.high)}${xo.subGain ? `, sub ${xo.subGain > 0 ? '+' : ''}${xo.subGain} dB` : ''}${xo.subInvert ? ', sub inverted' : ''}. `) : null;
     if (!el || !r) {
       this.cards.replaceChildren();
       this.summary.innerHTML = '';
+      if (xoverNote) this.summary.append(xoverNote);
       if (el?.error) this.summary.append(h('span', { class: 'warn-text' }, `${el.name}: ${el.error}`));
+      else if (xoverNote && !this.inputsFor(el!).main && !this.inputsFor(el!).part) this.summary.append(xoverIdealNote(xo));
       else this.summary.append(el ? `${KIND_INFO[el.kind].hint} Then press Calculate alignment.` : 'Add the parts of the system (Add part), capture each one alone, then press Calculate alignment.');
       return;
     }
@@ -514,6 +624,7 @@ export class AlignView implements View {
     if (sub && r.cancellations.length) notes.push(`The aligned sum still dips ≥ 3 dB near ${fmtFreqs(r.cancellations)}.`);
     if (!sub && Math.abs(r.levelDb) > 6) notes.push(`The ${el.name.toLowerCase()} is ${Math.abs(r.levelDb).toFixed(1)} dB ${r.levelDb > 0 ? 'louder' : 'quieter'} than the mains here: for a smooth handoff they should be about equal at this position.`);
     this.summary.innerHTML = '';
+    if (xoverNote) this.summary.append(xoverNote);
     this.summary.append(h('b', {}, `${rec.action}, ${rec.polarity.toLowerCase()} polarity.`), ` Mains: ${el.names?.main ?? ''} · ${el.name}: ${el.names?.sub ?? ''}. `, notes.length ? h('span', { class: 'warn-text' }, notes.join(' ')) : sub ? 'Phase tracks through the crossover.' : 'They line up across the overlap band.');
   }
 
@@ -585,19 +696,35 @@ export class AlignView implements View {
         { id: 'sub', label: `${partName} (aligned)`, x: f, y: r.subPhase, color: PART_COLOR, width: 1.6, dash: [6, 4], wrap: 180 },
       );
     } else {
-      const parts: [string, string, string][] = [[refSrc, 'main', MAIN_COLOR], [el?.source ?? '', 'sub', PART_COLOR]];
-      for (const [source, id, c] of parts) {
-        const src = source ? this.input(source) : null;
+      const inputs = el ? this.inputsFor(el) : { main: this.input(refSrc), part: null };
+      const parts: [AlignInput & { name: string } | null, string, string][] = [[inputs.main, 'main', MAIN_COLOR], [inputs.part, 'sub', PART_COLOR]];
+      for (const [src, id, c] of parts) {
         if (!src) continue;
         mag.push({ id, label: src.name, x: src.freqs, y: src.mag, color: c, width: 1.6 });
         ph.push({ id, label: src.name, x: src.freqs, y: src.phase, color: c, width: 1.4, wrap: 180 });
+      }
+      // Nothing measured yet: the crossover designer shows its filters alone and their ideal sum
+      const x = this.app.settings.crossover;
+      if (!mag.length && x.on && sub) {
+        const f = XOVER_GRID;
+        const c = idealSum(x, f);
+        mag.push(
+          { id: 'main', label: `Mains high-pass (${xoverLabel(x.high)})`, x: f, y: c.high, color: MAIN_COLOR, width: 1.6 },
+          { id: 'sub', label: `Sub low-pass (${xoverLabel(x.low)})`, x: f, y: c.low, color: PART_COLOR, width: 1.6 },
+          { id: 'after', label: 'Sum (both in phase as measured)', x: f, y: c.sum, color: AFTER_COLOR, width: 2.4 },
+        );
+        ph.push(
+          { id: 'main', label: 'Mains high-pass', x: f, y: c.highDeg, color: MAIN_COLOR, width: 1.6, wrap: 180 },
+          { id: 'sub', label: 'Sub low-pass', x: f, y: c.lowDeg, color: PART_COLOR, width: 1.6, dash: [6, 4], wrap: 180 },
+        );
       }
     }
     this.mag.series = mag;
     this.phase.series = ph;
     // Optimised region shaded, crossover marked
     const shades = r ? [{ x0: r.region[0], x1: r.region[1], color: 'rgba(61,220,132,0.07)' }] : [];
-    const markers = r && sub ? [{ x: r.crossover, label: `${Math.round(r.crossover)} Hz`, color: AFTER_COLOR }] : [];
+    const xo = this.app.settings.crossover;
+    const markers = r && sub ? [{ x: r.crossover, label: `${Math.round(r.crossover)} Hz`, color: AFTER_COLOR }] : xo.on && sub ? [...new Set([xo.low.fc, xo.high.fc])].map((f) => ({ x: f, label: `${Math.round(f)} Hz`, color: AFTER_COLOR })) : [];
     for (const p of [this.mag, this.phase]) {
       p.shades = shades;
       p.markers = markers;
@@ -606,6 +733,27 @@ export class AlignView implements View {
     this.phase.draw();
   }
 }
+
+/** What the crossover alone does: how flat its sum is around the crossover. */
+function xoverIdealNote(x: CrossoverDesign): string {
+  const f = XOVER_GRID;
+  const c = idealSum(x, f);
+  const lo = Math.min(x.low.fc, x.high.fc) / 4;
+  const hi = Math.max(x.low.fc, x.high.fc) * 4;
+  let min = Infinity;
+  let max = -Infinity;
+  for (let i = 0; i < f.length; i++) {
+    if (f[i] < lo || f[i] > hi) continue;
+    min = Math.min(min, c.sum[i]);
+    max = Math.max(max, c.sum[i]);
+  }
+  const ripple = max - min;
+  if (min < -10) return `The filters alone cancel near the crossover (sum down to ${min.toFixed(0)} dB): try inverting the sub.`;
+  return ripple < 0.5 ? 'The filters alone sum flat. Capture the mains and sub to see them on the real system.' : `The filters alone sum within ${min.toFixed(1)} to +${max.toFixed(1)} dB around the crossover. Capture the mains and sub to see them on the real system.`;
+}
+
+/** Frequencies for the crossover drawn on its own. */
+const XOVER_GRID = logGrid(20, 20000, 48);
 
 function fmtFreqs(fs: number[]): string {
   // Group neighbouring frequencies into ranges

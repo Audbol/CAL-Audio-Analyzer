@@ -278,6 +278,16 @@ A target is the response you want. The app draws it as a dashed line with a tole
 6. Copy the filters with **Copy filter text** or **Copy CSV**, then enter them in your processor.
 7. Measure again to check the result.
 
+**Export the EQ as an FIR filter:** some processors, convolution players and plug-ins load an impulse response instead of parametric filters. Select **Export FIR…** under the filter list, then choose:
+
+- **Sample rate:** the processor's own rate.
+- **Length:** longer filters reach lower frequencies. The dialog says from which frequency up the FIR matches the EQ within 1 dB, and draws the two curves.
+- **Phase:** *Minimum phase* sounds like the parametric filters and adds no latency. *Linear phase* changes only the level, but delays the sound by half the length (the dialog shows how much), so other speakers need the same delay.
+- **File:** WAV (32-bit float or 24-bit) or a text file with one coefficient per line.
+- **Lower the level so boosts cannot clip** (on by default) turns the whole filter down by the largest boost.
+
+Select **Save FIR**.
+
 The assistant prefers cuts to boosts and ignores frequencies where coherence is low. Deep dips are usually caused by reflections or placement, and EQ can't fix them.
 
 ## 11. Align subs, fills and delay speakers
@@ -303,6 +313,15 @@ The result shows, for each part:
 
 For fills and delay speakers, an optional **precedence** delay makes the sound appear to come from the stage. Apply the values in your processor and measure again.
 
+### Design the sub crossover
+
+**Crossover** on the Align toolbar opens the crossover designer. It tries crossover filters on the measured sub and mains before you set anything in the processor:
+
+- **Sub low-pass** and **Mains high-pass:** the filter type and slope (Linkwitz-Riley 12–48 dB/oct, Butterworth 6–48 dB/oct, or none) and the frequency. **Same frequency** keeps both at one frequency.
+- **Sub level** and **Invert sub:** as you would set them in the processor.
+
+The filters are applied to the measurements, and **Calculate alignment** finds the delay and polarity for this crossover. After that, every change re-aligns at once, so you can compare slopes and frequencies by the summed response. Measure the sub and mains without their crossover filters (or with the ones you want to replace). With nothing measured yet, the graphs show the two filters on their own and their ideal sum.
+
 ## 12. Measure a room with a sweep
 
 A sweep is a tone that glides from low to high frequencies. It measures the room's frequency response, distortion and reverberation precisely.
@@ -317,7 +336,7 @@ A sweep is a tone that glides from low to high frequencies. It measures the room
    - **Frequency response** with distortion (H2, H3, THD),
    - **Impulse / ETC**,
    - **Reverberation (RT60)**: reverberation time, clarity and definition per octave or third-octave band,
-   - **Waterfall**: how long each frequency keeps ringing.
+   - **Waterfall**: how long each frequency keeps ringing, in 3-D. Drag it to turn it (or use the arrow keys), and use the mouse wheel to zoom. **Front**, **Side** and **Above** show it from fixed angles; **3-D** or a double-click returns to the standard view.
 
 **Show a target on the sweep result:** choose a **Target** next to the result tabs. This target is separate from the one on the Spectrum and Transfer tabs.
 
@@ -429,7 +448,14 @@ The app uses the music itself as the reference, so the transfer function works w
 - **Analysis:** *Background thread* (the default) computes the spectrum and transfer function beside the drawing, so the display stays smooth. *Main thread* works as in earlier versions.
 - **Bass resolution:** *High* or *Maximum* shows more detail in the bass, but the bass reacts more slowly.
 
-**About & updates** (in Tools, under **About & data**): the version, and in the desktop app the update status. The desktop app checks for new versions shortly after it starts and every six hours, downloads them in the background, and shows **Restart to update** in the top bar when one is ready. The portable Windows version does not update itself. On macOS, updates need a signed build. **What's new** lists the highlights of this version; it also opens once by itself after an update to a new major version.
+**Watermark** (in Tools, under **Display & performance**): **Choose image…** puts a logo or show name faintly on every graph, so screenshots, copied graphs and reports carry it. Set its opacity, size and position; **Show on graphs** turns it off without removing it.
+
+**About & updates** (in Tools, under **About & data**): the version, and in the desktop app the update status. Nothing changes without you, so an update can never surprise you during a show:
+
+- The app only looks for a new version when you select **Check for updates**. If you want, turn on **Check for updates automatically**: it then looks shortly after start and every six hours, and only tells you.
+- When a version is available, the top bar shows it. **Download** fetches it, and **Restart to update** installs it. Neither happens by itself, and a downloaded update is not installed when you close the app.
+
+The portable Windows version does not update itself. On macOS, updates need a signed build. **What's new** lists the highlights of this version; it also opens once by itself after an update to a new major version.
 
 **Reset settings** (in Tools, under **About & data**):
 

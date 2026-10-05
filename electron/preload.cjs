@@ -22,9 +22,13 @@ contextBridge.exposeInMainWorld('calDesktop', {
     pin: (name, on) => ipcRenderer.invoke('window:pin', name, on),
   },
   updates: {
-    /** { status: 'unsupported' | 'idle' | 'checking' | 'current' | 'downloading' | 'ready' | 'error', version, error, percent } */
+    /** { status: 'unsupported' | 'idle' | 'checking' | 'current' | 'available' | 'downloading' | 'ready' | 'error', version, error, percent, auto } */
     state: () => ipcRenderer.invoke('update:state'),
     check: () => ipcRenderer.invoke('update:check'),
+    /** Download the version found by a check (never automatic). */
+    download: () => ipcRenderer.invoke('update:download'),
+    /** Automatic checks (notify only) on or off. */
+    setAuto: (on) => ipcRenderer.invoke('update:auto', !!on),
     /** Restart into the downloaded version. */
     install: () => ipcRenderer.invoke('update:install'),
     onChange: (fn) => ipcRenderer.on('update:state', (_e, s) => fn(s)),

@@ -5,6 +5,7 @@ import { h, icon, select, clear } from '../ui/dom';
 import { autoEq, eqResponse, TARGETS, type AutoEqResult, type PeqFilter } from '../dsp/eq';
 import { smoothCurve } from '../dsp/freq';
 import { optionsMenu, optRow, optHead } from '../ui/popover';
+import { showFirExport } from './fir-export';
 
 export interface EqSnapshot {
   source: string;
@@ -75,7 +76,7 @@ export class EqView implements View {
         h('button', { class: 'btn accent', onclick: () => this.run() }, icon('sparkle', 15), 'Calculate EQ'),
       ),
       this.summary,
-      h('div', { class: 'eq-split' }, h('div', { class: 'pane fill' }, this.plot.el), h('div', { class: 'peq-side' }, h('h4', {}, 'Parametric EQ'), this.list, h('div', { class: 'row gap4' }, this.copyBtns[0], this.copyBtns[1]))),
+      h('div', { class: 'eq-split' }, h('div', { class: 'pane fill' }, this.plot.el), h('div', { class: 'peq-side' }, h('h4', {}, 'Parametric EQ'), this.list, h('div', { class: 'row gap4 wrap' }, ...this.copyBtns))),
     );
     this.renderList();
     this.summary.textContent = 'Choose a source measurement and press Calculate EQ. Use a spatially averaged trace for best results.';
@@ -124,8 +125,12 @@ export class EqView implements View {
     this.dirty = true;
   }
 
-  /** Copy buttons: only useful once there are filters. */
-  private copyBtns = [h('button', { class: 'btn small', onclick: () => this.copy('text') }, 'Copy filter text'), h('button', { class: 'btn small', onclick: () => this.copy('csv') }, 'Copy CSV')];
+  /** Copy and export buttons: only useful once there are filters. */
+  private copyBtns = [
+    h('button', { class: 'btn small', onclick: () => this.copy('text') }, 'Copy filter text'),
+    h('button', { class: 'btn small', onclick: () => this.copy('csv') }, 'Copy CSV'),
+    h('button', { class: 'btn small', dataset: { firExport: '' }, title: 'The EQ as an impulse response (WAV) for convolution in a DSP or player', onclick: () => showFirExport(this.app, this.filters, this.sourceName) }, icon('download', 13), 'Export FIR…'),
+  ];
 
   private renderList(): void {
     clear(this.list);

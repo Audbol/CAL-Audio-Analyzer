@@ -29,9 +29,12 @@ On first launch, choose **Explore with the demo room** to try every feature with
 - **Feedback finder:** *Feedback* on the Spectrum toolbar listens for narrow peaks that grow or ring, warns with the frequency, and suggests a notch filter (frequency, Q, depth) that one click puts on the EQ tab.
 - **Room diagnosis:** after a sweep, *Diagnosis* separates room modes, speaker-boundary interference, reflections and modal nulls, says how sure it is and what to do, and marks them on the graphs.
 - **Sweeps on the Spectrum:** saved sweeps also show on the Spectrum, levelled to the live curve.
+- **3-D waterfall:** drag the waterfall to turn it, zoom with the wheel, or jump to the front, side or a view from above.
 - **Reference switch:** *Tools → Setup → Reference signal* switches every measurement between the generator and a loopback input.
 
 ### Tune and document
+- **Crossover designer:** *Align → Crossover* tries Linkwitz-Riley and Butterworth filters (6–48 dB/oct) on the measured sub and mains, with the sub's level and polarity, and aligns them through it. Each change re-aligns at once, so slopes and frequencies can be compared by their sum.
+- **FIR export:** *EQ → Export FIR…* saves the EQ as an impulse response (WAV, 32-bit float or 24-bit, or a coefficient list) for convolution, minimum or linear phase, at the processor's sample rate. It shows how closely the filter follows the EQ at the chosen length.
 - **Compare before / after:** *Compare* above the Traces list puts two traces on one graph with the change between them and a score against the target, such as "±4.1 dB → ±1.8 dB RMS from 40 Hz to 8 kHz (56 % closer to the target)". It can be a page of the report.
 - **Notes on graphs:** drop labelled flags on the Spectrum, Transfer and sweep graphs. They are saved with the session, shared with remote devices, and drawn on and listed in the report.
 - **Spectrum peaks:** the highest real peak in the low, mid and high ranges is labelled.
@@ -46,13 +49,14 @@ On first launch, choose **Explore with the demo room** to try every feature with
 ### Look and layout
 - **Themes:** besides Night and Day, ready-made *High contrast*, *Stage red*, *Colour-blind safe*, *Midnight blue* and *Paper* themes, and your own from a theme editor (background, panels, text, accent, graph and grid colours, and trace colours), with a live preview. Themes can be exported and shared.
 - **Guided tour:** a one-minute walk through the essentials, offered by the Assistant at the first start and always in Help.
-- **Automatic updates (desktop app):** new versions download in the background; *Restart to update* appears in the top bar when one is ready. *What's new* shows the highlights after an update to a new major version. The version and update status are under *Tools → About & data*.
+- **Updates you control (desktop app):** *Tools → About & data → Check for updates* finds a new version, *Download* fetches it and *Restart to update* installs it. Nothing happens on its own, so an update can never interrupt a show; automatic checks can be turned on and only notify. *What's new* shows the highlights after an update to a new major version.
+- **Watermark:** *Tools → Display & performance → Watermark* puts your logo faintly on every graph, and so on screenshots and reports.
 - **Level meters for what's in use:** the status bar shows meters only for the inputs the app uses, and the generator while it plays or serves as the reference.
 - **Colours:** choose the Spectrum's trace and fill colours and the fill opacity.
 - **SPL tab:** the level readout, history and noise log are panels you can float or detach (for example the big readout on a second screen), and the numbers scale with their panel.
 - **Tools:** split into sections (Setup, Session & report, Remote access, Display & performance, Calculators, About & data); the room-mode calculator is under *Calculators*.
 - **Tidier menus:** the Spectrum options are grouped into Analysis, Display, Average curve and Overlays; empty graphs say what to do; the Assistant can be hidden.
-- **Fixes:** level meters showed warning colours at low levels; several toolbar, axis and dialog details.
+- **Fixes:** level meters showed warning colours at low levels; trace buttons could run past the sidebar on narrow screens; several toolbar, axis and dialog details.
 
 ## What's new in 1.10.1
 

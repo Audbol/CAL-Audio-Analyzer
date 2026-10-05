@@ -14,7 +14,7 @@ export interface DesktopBridge {
   /** Native audio (ASIO), desktop app on Windows. */
   nativeAudio?: { available(): Promise<boolean>; connect(): void };
   /** Automatic updates (desktop app). */
-  updates?: { state(): Promise<UpdateState>; check(): Promise<UpdateState>; install(): Promise<boolean>; onChange(fn: (s: UpdateState) => void): void };
+  updates?: { state(): Promise<UpdateState>; check(): Promise<UpdateState>; download(): Promise<UpdateState>; setAuto(on: boolean): Promise<UpdateState>; install(): Promise<boolean>; onChange(fn: (s: UpdateState) => void): void };
 }
 
 /** Injected into index.html by the hub when the page is served by it. */

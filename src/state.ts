@@ -1,5 +1,8 @@
 import type { Workspace } from './workspaces';
 import type { CustomTheme } from './ui/themes';
+import type { WaterfallView } from './ui/waterfall-plot';
+import { DEFAULT_CROSSOVER, type CrossoverDesign } from './dsp/crossover';
+import { DEFAULT_WATERMARK, type WatermarkSettings } from './ui/watermark';
 import type { PlaylistPrefs } from './audio/playlist';
 import type { LfResolution } from './dsp/decimate';
 import type { Smoothing } from './dsp/freq';
@@ -155,6 +158,14 @@ export interface Settings {
   tourDone: boolean;
   /** The version that last ran (What's new is shown after an update to a new major version). */
   lastSeenVersion: string;
+  /** Desktop app: look for new versions by itself (off: only when asked). Never downloads or installs on its own. */
+  autoUpdateCheck: boolean;
+  /** The Room waterfall's 3-D angle and zoom. */
+  waterfallView: WaterfallView;
+  /** Align: the virtual crossover applied to subs and mains to preview their sum. */
+  crossover: CrossoverDesign;
+  /** An image (logo) drawn faintly on the graphs. */
+  watermark: WatermarkSettings;
   customThemes: CustomTheme[];
   /** Where the live analysis runs: a background thread (smoother drawing) or the main thread. */
   analysisThread: 'worker' | 'main';
@@ -246,6 +257,10 @@ export function defaultSettings(): Settings {
     themeId: '',
     tourDone: false,
     lastSeenVersion: '',
+    autoUpdateCheck: false,
+    waterfallView: { yaw: 32, pitch: 24, zoom: 1 },
+    watermark: { ...DEFAULT_WATERMARK },
+    crossover: JSON.parse(JSON.stringify(DEFAULT_CROSSOVER)),
     customThemes: [],
     analysisThread: 'worker',
     rtaShowSweeps: true,
@@ -295,7 +310,7 @@ export function loadSettings(): Settings {
     if (!Array.isArray(s.mics)) {
       s.mics = s.splCalibrated || s.micCal ? [{ id: 'mic1', name: 'Mic 1', channel: s.splChannel ?? 0, micCal: s.micCal ?? null, splOffset: s.splOffset ?? 0, splCalibrated: !!s.splCalibrated }] : [];
     }
-    return { ...d, ...s, generator: { ...d.generator, ...(s.generator ?? {}) }, remoteServer: { ...d.remoteServer, ...(s.remoteServer ?? {}) }, playlist: { ...d.playlist, ...(s.playlist ?? {}) }, session: { ...d.session, ...(s.session ?? {}) }, room: { ...d.room, ...(s.room ?? {}) }, nativeAudio: { ...d.nativeAudio, ...(s.nativeAudio ?? {}) } } as Settings;
+    return { ...d, ...s, generator: { ...d.generator, ...(s.generator ?? {}) }, remoteServer: { ...d.remoteServer, ...(s.remoteServer ?? {}) }, playlist: { ...d.playlist, ...(s.playlist ?? {}) }, session: { ...d.session, ...(s.session ?? {}) }, room: { ...d.room, ...(s.room ?? {}) }, nativeAudio: { ...d.nativeAudio, ...(s.nativeAudio ?? {}) }, watermark: { ...d.watermark, ...(s.watermark ?? {}) }, waterfallView: { ...d.waterfallView, ...(s.waterfallView ?? {}) }, crossover: { ...d.crossover, ...(s.crossover ?? {}) } } as Settings;
   } catch {
     return d;
   }

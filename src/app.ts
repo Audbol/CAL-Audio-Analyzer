@@ -30,6 +30,7 @@ import { THEME_PRESETS, applyTheme as applyThemeTo, type CustomTheme } from './u
 import { displayColor } from './ui/theme';
 import { startTour } from './ui/tour';
 import { maybeShowWhatsNew } from './ui/whats-new';
+import { setWatermark } from './ui/watermark';
 import type { UpdateState } from './views/about-card';
 import { AnalysisWorkerClient } from './analysis/client';
 import { SplLogger } from './logger';
@@ -124,12 +125,22 @@ export class App {
   private starting = false;
   private themeBtn = h('button', { class: 'btn icon-btn theme-btn', onclick: () => this.toggleTheme() });
   /** Shown in the top bar when a downloaded update is ready to install (desktop app). */
-  private updateBtn = h('button', { class: 'btn small accent update-btn', style: 'display:none', title: 'A new version is downloaded: restart to use it', onclick: () => void desktopBridge()?.updates?.install() });
+  private updateBtn = h('button', { class: 'btn small accent update-btn', style: 'display:none', onclick: () => this.openTools('data') });
 
-  /** The updater's state (desktop app): the top-bar button appears when an update is ready. */
+  /**
+   * The updater's state (desktop app): a top-bar button appears when a new version was found or is downloaded.
+   * It only opens Tools → About & data: downloading and installing are always the user's own decision there.
+   */
   setUpdateState(st: UpdateState): void {
-    this.updateBtn.style.display = st.status === 'ready' ? '' : 'none';
-    if (st.status === 'ready') this.updateBtn.textContent = `Restart to update to ${st.version}`;
+    const show = st.status === 'ready' || st.status === 'available';
+    this.updateBtn.style.display = show ? '' : 'none';
+    if (st.status === 'ready') {
+      this.updateBtn.textContent = `Update ${st.version} ready`;
+      this.updateBtn.title = 'Downloaded: restart to use it (Tools → About & data)';
+    } else if (st.status === 'available') {
+      this.updateBtn.textContent = `Update ${st.version} available`;
+      this.updateBtn.title = 'A new version can be downloaded (Tools → About & data)';
+    }
   }
   private lastMode: boolean | null = null;
   /** Set while a sweep measurement owns the generator; live analysis pauses so averages stay clean. */
@@ -209,6 +220,7 @@ export class App {
     this.watchBattery();
     // The analysis grid never changes: plots cache where its points are drawn
     Plot.markStable(this.grid);
+    setWatermark(this.settings.watermark);
     this.applyTheme();
     this.updateCal();
     this.build();
@@ -1541,11 +1553,14 @@ export class App {
               h('span', { class: `kind ${t.kind}` }, t.kind.toUpperCase()),
               off,
               h('span', { class: 'unit' }, 'dB'),
-              h('div', { class: 'spacer' }),
+              h(
+                'span',
+                { class: 'trace-actions' },
               h('button', { class: `btn tiny ghost${t.note || t.photo ? ' on' : ''}`, title: t.note ? `Note: ${t.note}${t.photo ? ' (with photo)' : ''}` : t.photo ? 'Photo of the position (click to edit)' : 'Add a note or photo of the mic position', onclick: () => showTraceNotes(this, t.id), dataset: { traceNote: t.id } }, icon(t.photo ? 'image' : 'note', 13)),
               h('button', { class: 'btn tiny ghost', title: t.visible ? 'Hide' : 'Show', onclick: () => this.traces.update(t.id, { visible: !t.visible }) }, icon(t.visible ? 'eye' : 'eyeOff', 13)),
               h('button', { class: 'btn tiny ghost', title: 'Export CSV', onclick: () => download(`${t.name.replace(/[^\w.-]+/g, '_')}.csv`, traceToCsv(t)) }, icon('download', 13)),
               h('button', { class: 'btn tiny ghost', title: 'Delete', onclick: () => this.traces.remove(t.id) }, icon('trash', 13)),
+              ),
             ),
           ),
         ),

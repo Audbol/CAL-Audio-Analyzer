@@ -8,7 +8,7 @@ import { LogSmoother, type Smoothing } from '../dsp/freq';
 import { nextPow2 } from '../dsp/fft';
 import type { SweepMeta } from '../remote/protocol';
 import { waterfall, WATERFALL_PRESETS, type WaterfallResult } from '../dsp/waterfall';
-import { WaterfallPlot } from '../ui/waterfall-plot';
+import { WaterfallPlot, DEFAULT_WATERFALL_VIEW, type WaterfallView } from '../ui/waterfall-plot';
 import { optionsMenu, optRow, optHead } from '../ui/popover';
 import { TargetOverlay } from './target-overlay';
 import { diagnose, type Diagnosis, type FindingKind } from '../dsp/diagnose';
@@ -46,6 +46,14 @@ interface SweepResult {
  * Log-sweep measurement: impulse response, frequency response, harmonic distortion and ISO 3382 room acoustic
  * parameters (EDT, T20, T30, C50, C80, D50, Ts) per octave or third-octave band.
  */
+/** Quick angles for the waterfall. */
+const WATERFALL_ANGLES: { id: string; label: string; hint: string; view: Partial<WaterfallView> }[] = [
+  { id: 'standard', label: '3-D', hint: 'The standard 3-D view (also: double-click the graph)', view: DEFAULT_WATERFALL_VIEW },
+  { id: 'front', label: 'Front', hint: 'Straight from the front: the slices stacked as level over frequency', view: { yaw: 0, pitch: 0, zoom: 1 } },
+  { id: 'side', label: 'Side', hint: 'From the side: how each frequency decays over time', view: { yaw: 72, pitch: 10, zoom: 1 } },
+  { id: 'top', label: 'Above', hint: 'From high above: where the ridges run back in time', view: { yaw: 8, pitch: 62, zoom: 1 } },
+];
+
 export class RoomView implements View {
   id = 'room' as const;
   title = 'Sweep & Room';
@@ -71,6 +79,12 @@ export class RoomView implements View {
   private wf = new WaterfallPlot('Waterfall: cumulative spectral decay');
   private wfOpts: { preset: 'bass' | 'full'; range: number } = { preset: 'bass', range: 45 };
   private wfFor: { result: unknown; preset: string } | null = null;
+
+  /** Remember the waterfall's angle (turned with the mouse or the view buttons). */
+  private saveWfView(): void {
+    this.app.settings.waterfallView = { ...this.wf.view };
+    this.app.save();
+  }
   private tabHost = h('div', { class: 'subtabs' });
   private content = h('div', { class: 'room-content' });
   private selHost = h('span', {});
@@ -82,6 +96,9 @@ export class RoomView implements View {
 
   constructor(private app: App) {
     this.target = new TargetOverlay(app, 'roomTargetCurve', false);
+    this.wf.view = { ...app.settings.waterfallView };
+    this.wf.enableRotation();
+    this.wf.onViewChange = () => this.saveWfView();
     this.fr = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: -50, yMax: 10, yUnit: 'dB', yStep: 6, title: 'Frequency response & harmonic distortion', showNote: true, yLimits: [-200, 100] });
     this.irPlot = new Plot({ xType: 'lin', xMin: -5, xMax: 300, yMin: -90, yMax: 3, yUnit: 'dB', xUnit: 'ms', yStep: 10, title: 'Energy-time curve', yLimits: [-200, 20] });
     this.notes = new GraphNotes(app, 'room', this.fr);
@@ -202,6 +219,12 @@ export class RoomView implements View {
             o.range = v;
             this.dirty = true;
           }),
+        ),
+        h(
+          'div',
+          { class: 'tb-group', role: 'group', 'aria-label': 'View angle' },
+          h('span', { class: 'tb-label' }, 'View'),
+          ...WATERFALL_ANGLES.map((a) => h('button', { class: 'btn small ghost', dataset: { wfView: a.id }, title: a.hint, onclick: () => { this.wf.setView(a.view); this.saveWfView(); } }, a.label)),
         ),
         h('span', { class: 'dim small' }, 'Ridges that reach far back are resonances that keep ringing: room modes in the bass, or cabinet and horn resonances higher up.'),
       );

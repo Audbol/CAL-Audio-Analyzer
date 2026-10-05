@@ -11,9 +11,9 @@ const HIGHLIGHTS: { version: string; items: [string, string][] }[] = [
     items: [
       ['Ready for transfer-function work', 'Coherence in its own band, the delay found by itself, cleaner default layouts.'],
       ['Smoother and faster', 'Analysis in a background thread, meters at the screen’s rate, a gliding spectrum.'],
-      ['Measure more', 'Group delay, guided multi-position sweeps, room diagnosis, a feedback finder.'],
-      ['Tune and document', 'Before / after compare with a score, notes on graphs, both in the report.'],
-      ['Make it yours', 'Themes (Tools → Display & performance), a guided tour (Help), automatic updates.'],
+      ['Measure more', 'Group delay, guided multi-position sweeps, room diagnosis, a feedback finder, a waterfall you can turn in 3-D.'],
+      ['Tune and document', 'A crossover designer (Align), FIR export of the EQ, before / after compare with a score, notes on graphs.'],
+      ['Make it yours', 'Themes and a watermark (Tools → Display & performance), a guided tour (Help), updates only when you choose.'],
     ],
   },
 ];

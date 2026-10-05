@@ -3123,6 +3123,20 @@ input[type='text']:hover {
   padding: 2px 3px;
   opacity: 0.75;
 }
+/* The actions keep together at the right; on a narrow sidebar (or with large text) they move under the level
+   offset instead of running past the panel's edge */
+.trace-meta {
+  flex-wrap: wrap;
+  min-width: 0;
+  row-gap: 2px;
+}
+.trace-actions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
 .trace:hover .trace-meta .btn.tiny,
 .trace-meta .btn.tiny.on {
   opacity: 1;
@@ -3831,4 +3845,95 @@ html.compact .cmp-arrow {
 }
 .fb-item b {
   color: var(--danger);
+}
+
+/* EQ → Export FIR */
+.fir-modal {
+  width: min(760px, calc(100vw - 32px));
+}
+.fir-export {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.fir-plot {
+  position: relative;
+  height: 240px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.fir-plot .plot {
+  position: absolute;
+  inset: 0;
+}
+.fir-info {
+  min-height: 2.6em;
+}
+
+/* Align → Crossover designer */
+.xover-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+.xover-panel p {
+  margin: 0;
+}
+.xover-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+}
+.xover-title {
+  font-size: 12px;
+}
+.xover-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.xover-field input.num {
+  width: 64px;
+}
+.xover-note {
+  color: var(--text);
+}
+
+/* Tools → Display → Watermark */
+.wm-row {
+  display: grid;
+  grid-template-columns: 70px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.wm-row select {
+  grid-column: 2 / 4;
+}
+.wm-val {
+  min-width: 9em;
+  text-align: right;
+}
+.wm-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 72px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--plot-bg, var(--bg));
+  padding: 6px;
+}
+.wm-preview img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
 }

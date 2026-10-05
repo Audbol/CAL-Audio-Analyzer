@@ -21,6 +21,8 @@ const KEEP = [
   'themeId',
   'tourDone',
   'lastSeenVersion',
+  'autoUpdateCheck',
+  'watermark',
   'customThemes',
   'remoteServer',
   'splOffset',
