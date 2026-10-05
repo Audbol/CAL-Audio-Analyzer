@@ -162,7 +162,12 @@ export function showHelp(app: App): void {
     ),
     h('p', { class: 'dim small' }, `CAL Audio Analyzer ${__APP_VERSION__} · your audio stays on your own devices${app.engine.running ? ` · running at ${app.fs / 1000} kHz` : ''}.`),
   );
-  modal('Help', body);
+  const tour = h('button', { class: 'btn accent' }, 'Take the tour');
+  const { close } = modal('Help', body, [tour]);
+  tour.addEventListener('click', () => {
+    close();
+    void import('./tour').then((t) => t.startTour(app));
+  });
 }
 
 /** Remote client: enter the host's access PIN. */

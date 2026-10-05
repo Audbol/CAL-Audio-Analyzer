@@ -290,6 +290,29 @@ if (want('themes')) {
   await page.evaluate(() => { window.calApp.settings.theme = 'night'; window.calApp.setTheme(''); });
 }
 
+// --- 10. The guided tour: offered by the Assistant, every step points at something, then it is not offered again
+if (want('tour')) {
+  await page.evaluate(() => { document.activeElement?.blur(); window.calApp.setView('transfer'); });
+  await page.waitForTimeout(900);
+  const offer = page.locator('.assistant .hint button', { hasText: 'Take the tour' });
+  check(await offer.isVisible(), 'the Assistant offers the tour');
+  await offer.click();
+  await page.waitForSelector('.tour-layer', { timeout: 5000 }).catch(async () => console.log('no tour layer; errors:', errors.join(' | ')));
+  const seen = [];
+  for (let k = 0; k < 12; k++) {
+    await page.waitForTimeout(450);
+    const st = await page.evaluate(() => ({ title: document.querySelector('.tour-card h3')?.textContent, spot: !!document.querySelector('.tour-spot') && getComputedStyle(document.querySelector('.tour-spot')).display !== 'none', count: document.querySelector('.tour-card .dim')?.textContent }));
+    if (!st.title) break;
+    seen.push(st);
+    if (k === 1) await page.screenshot({ path: `${out}/feat6-06-tour.png` });
+    await page.locator('.tour-card .btn.accent').click();
+  }
+  check(seen.length === 9 && seen.every((x) => x.spot), `every tour step highlights its part of the screen (${seen.map((x) => `${x.title}${x.spot ? '' : ' (none)'}`).join(' · ')})`);
+  check(await page.evaluate(() => window.calApp.settings.tourDone && !document.querySelector('.tour-layer')), 'the tour ends and is marked as taken');
+  await page.waitForTimeout(900);
+  check(!(await page.locator('.assistant .hint button', { hasText: 'Take the tour' }).isVisible()), 'the Assistant no longer offers it');
+}
+
 check(errors.length === 0, `no console errors ${errors.join(' | ')}`);
 await browser.close();
 await new Promise((r) => server.httpServer.close(r));

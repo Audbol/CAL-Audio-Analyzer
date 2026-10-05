@@ -19,6 +19,7 @@ const KEEP = [
   'graphNotes',
   'analysisThread',
   'themeId',
+  'tourDone',
   'customThemes',
   'remoteServer',
   'splOffset',

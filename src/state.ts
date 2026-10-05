@@ -151,6 +151,8 @@ export interface Settings {
   rtaUpdates: 25 | 50;
   /** Colour theme: '' = the built-in Night or Day (see `theme`), else a preset (`preset:…`) or a custom theme. */
   themeId: string;
+  /** The guided tour was taken or skipped (the Assistant stops offering it). */
+  tourDone: boolean;
   customThemes: CustomTheme[];
   /** Where the live analysis runs: a background thread (smoother drawing) or the main thread. */
   analysisThread: 'worker' | 'main';
@@ -238,6 +240,7 @@ export function defaultSettings(): Settings {
     rtaMotion: 'smooth',
     rtaUpdates: 25,
     themeId: '',
+    tourDone: false,
     customThemes: [],
     analysisThread: 'worker',
     rtaShowSweeps: true,

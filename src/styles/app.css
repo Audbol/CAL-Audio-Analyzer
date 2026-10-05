@@ -3743,3 +3743,43 @@ html.compact .cmp-arrow {
   opacity: 0.4;
   cursor: default;
 }
+
+/* Guided tour */
+.tour-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  pointer-events: none;
+}
+.tour-spot {
+  position: fixed;
+  border-radius: 10px;
+  box-shadow: 0 0 0 9999px rgba(var(--shadow-rgb), 0.62);
+  outline: 2px solid var(--accent);
+  transition: left 0.25s ease, top 0.25s ease, width 0.25s ease, height 0.25s ease;
+}
+.tour-card {
+  position: fixed;
+  pointer-events: auto;
+  padding: 14px 16px 12px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  box-shadow: 0 18px 50px rgba(var(--shadow-rgb), 0.6);
+  transition: left 0.25s ease, top 0.25s ease;
+}
+.tour-card h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+.tour-card p {
+  margin: 0 0 12px;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-spot,
+  .tour-card {
+    transition: none;
+  }
+}

@@ -28,6 +28,7 @@ import { showCompare } from './views/compare';
 import { MeterBallistics, type MeterReading } from './audio/meter-ballistics';
 import { THEME_PRESETS, applyTheme as applyThemeTo, type CustomTheme } from './ui/themes';
 import { displayColor } from './ui/theme';
+import { startTour } from './ui/tour';
 import { AnalysisWorkerClient } from './analysis/client';
 import { SplLogger } from './logger';
 import { NativeAudio } from './native/client';
@@ -1814,6 +1815,7 @@ export class App {
       }
     }
     if (this.hostLink?.connected && this.hostLink.clients.length) out.push({ level: 'ok', text: `${this.hostLink.clients.length} remote client${this.hostLink.clients.length > 1 ? 's are' : ' is'} connected and receiving live audio.` });
+    if (!this.settings.tourDone && !this.remote && e.running) out.unshift({ level: 'info', text: 'New here? A one-minute tour shows the essentials.', action: { label: 'Take the tour', run: () => startTour(this) } });
     if (e.simulate) out.push({ level: 'info', text: 'Demo mode: a virtual loudspeaker in a reverberant room with modes at 47, 94 and 142 Hz. Nothing is played through your speakers.' });
     if (!this.settings.splCalibrated && this.settings.view === 'spl') out.push({ level: 'info', text: 'SPL readings are in dBFS until you calibrate with a 94 dB or 114 dB calibrator (Tools → Setup → Microphones & calibration).' });
     return out;
