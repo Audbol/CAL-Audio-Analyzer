@@ -6,10 +6,10 @@ A professional, real-time **sound system and room acoustics analyzer** that runs
 
 New to the app? The **[user guide](docs/user-guide.md)** walks you through installing, connecting your equipment, calibrating microphones, tuning, alignment, room measurements, noise logging and remote access, in plain language with screenshots.
 
-![Transfer function: magnitude with coherence, phase, and level meters](docs/screenshot-live.png)
+![Transfer function: magnitude with coherence in a band across the top, and phase below](docs/screenshot-live.png)
 
 <table><tr>
-<td width="62%"><img src="docs/screenshot-bars.png" alt="Spectrum as third-octave bars with SPL and level meters"></td>
+<td width="62%"><img src="docs/screenshot-bars.png" alt="Spectrum as third-octave bars with the average curve, a house-curve target and the SPL meter"></td>
 <td width="38%"><img src="docs/screenshot-phone.png" alt="A phone connected as a remote display"></td>
 </tr><tr>
 <td>Real-time spectrum as a line or as octave bars, calibrated in dB SPL</td>
@@ -20,8 +20,8 @@ New to the app? The **[user guide](docs/user-guide.md)** walks you through insta
 
 | Area | What you get |
 | --- | --- |
-| **Dual-channel transfer function** | Multi-time-window FFT (32k → 1k, constant ~1/48-octave resolution; with *Bass resolution* High/Maximum, 64k/128k-equivalent windows below 90 Hz), magnitude, phase and coherence. Coherence blanking fades unreliable data. Averaging from none to 64 frames, or cumulative. Smoothing from 1/48 to 1/1 octave. |
-| **Delay finder** | GCC-PHAT cross-correlation with sub-sample refinement, confidence estimate and polarity detection. Converts to distance using the air temperature. |
+| **Dual-channel transfer function** | Multi-time-window FFT (32k → 1k, constant ~1/48-octave resolution; with *Bass resolution* High/Maximum, 64k/128k-equivalent windows below 90 Hz), magnitude, phase and coherence. Coherence (in its own band across the top of the magnitude graph) and coherence blanking, which fades unreliable data. **Group delay** panel (energy- and coherence-weighted). Averaging from none to 64 frames, or cumulative. Smoothing from 1/48 to 1/1 octave. |
+| **Delay finder** | GCC-PHAT cross-correlation with sub-sample refinement, confidence estimate and polarity detection. Converts to distance using the air temperature. Runs by itself the first time a transfer function shows low coherence with no delay set. |
 | **Internal or loopback reference** | Use the generator's own signal as the reference (works with any interface), or a hardware loopback for program-material measurements. |
 | **RTA / spectrum** | True fractional-octave band power (pink noise reads flat) or narrowband FFT with peak picking. FFT sizes 4k–64k, plus longer bass windows below 160 Hz (0.7 Hz or 0.4 Hz detail) that keep the mids and highs fast. Peak hold, dBFS or calibrated dB SPL. Draw it as a line or as 1/1–1/24-octave **bars** (**B**). An **average curve** (1 s to 30 s, or everything since restart, smoothed 1/12 to 1/1 octave with a natural bell-shaped window) shows the long-term tonal balance over the live RTA for tuning; hide it or set its colour and thickness. |
 | **Spectrogram** | Scrolling log-frequency spectrogram of any channel (frequency up the side, or across with the newest data at the top), with an adjustable or automatic colour range. |
@@ -31,6 +31,11 @@ New to the app? The **[user guide](docs/user-guide.md)** walks you through insta
 | **Target curves** | Draw a target (Flat, House, Tilt, X-curve, or any stored trace) over the Spectrum, the transfer function and the swept frequency response (Sweep & Room, with its own target choice), with a ±1/2/3/6 dB tolerance band. It levels itself to the measurement (coherence-weighted over 250 Hz–4 kHz), so you only tune the shape. |
 | **System alignment** | The **Align** tab aligns every part of the system to the mains: subs (best summation through the crossover: which side to delay, polarity, gain at the crossover, remaining cancellations), front and out fills and delay speakers (arrival across their overlap band, even 100+ ms away, plus an optional precedence so the sound stays on stage). Measure the mains and each part alone at the position where they meet; the result is a plan with the delay, polarity and level for every part, the predicted sum and phase tracking, and it goes into sessions and reports. |
 | **Several mics at once** | Show the live power average of all measurement mics on the Spectrum and Transfer tabs, with the spread between them as a shaded band (lowest to highest), or the average alone. The transfer-function average is coherence-weighted. |
+| **Room diagnosis** | After a sweep: room modes (with the room dimension that would cause them), speaker-boundary interference, reflections and modal nulls, each with a confidence and what to do, marked on the graphs. |
+| **Guided spatial average** | One sweep per mic position (3–8), with a prompt between positions; the power average is saved as a trace for the EQ tab. |
+| **Before / after compare** | Two traces on one graph with their difference and a score against the target (RMS deviation, share within tolerance, worst point); optionally a page of the report. |
+| **Notes on graphs** | Labelled flags on the Spectrum, Transfer and sweep graphs, saved with the session, shared with remote devices and listed in the report. |
+| **Smooth, fast metering** | Spectrum, transfer function and impulse response computed in a background thread; level meters with proper ballistics at the screen's rate; the spectrum glides between updates (25 or 50 spectra per second). |
 | **Waterfall** | Cumulative spectral decay from the sweep in 3-D: room modes (15–500 Hz over 400 ms) or full range (100 Hz–20 kHz over 20 ms). Ridges that reach far back are resonances that keep ringing. |
 | **Noise log** | Log Leq and Lmax per interval (1 s to 15 min, exact to the sample) with the third-octave spectrum from IEC 61260-style band filters, for hours. The weighting and input are locked while logging. Set a limit on the rolling Leq (e.g. 100 dB LAeq over 15 minutes): the level readout turns amber near it and red above it, with a warning. Export as CSV; the log is kept in sessions and reports. |
 | **Trace notes & photos** | Add a note and a photo of the mic position to any trace (a phone or tablet opens its camera). They are kept in sessions and shown in reports. |

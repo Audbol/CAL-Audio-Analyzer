@@ -19,6 +19,36 @@ The builds are not code-signed yet:
 
 On first launch, choose **Explore with the demo room** to try every feature without hardware.
 
+## What's new in 2.0
+
+**A faster start for transfer-function work.** The app now opens on the transfer function at 1/12 octave, with coherence drawn in its own band across the top of the magnitude graph and phase below. The delay is found by itself the first time the coherence is low, the level meters live in the status bar, and the Spectrum shows a 1/6-octave line with a 10-second average curve and its real peaks labelled.
+
+### Measure
+- **Group delay:** *Transfer → Options → Panels → Group delay* shows how late each frequency arrives, in milliseconds (a sub behind the mains, a crossover's delay), weighted by energy and coherence so dips and noise don't hide the real delay.
+- **Measure at several positions:** *Sweep & Room → Positions* runs one sweep per mic position, tells you where to move the mic in between, and saves the spatial average as a trace for the EQ tab. It works from a phone or tablet too.
+- **Room diagnosis:** after a sweep, *Diagnosis* separates room modes, speaker-boundary interference, reflections and modal nulls, says how sure it is and what to do, and marks them on the graphs.
+- **Sweeps on the Spectrum:** saved sweeps also show on the Spectrum, levelled to the live curve.
+- **Reference switch:** *Tools → Setup → Reference signal* switches every measurement between the generator and a loopback input.
+
+### Tune and document
+- **Compare before / after:** *Compare* above the Traces list puts two traces on one graph with the change between them and a score against the target, such as "±4.1 dB → ±1.8 dB RMS from 40 Hz to 8 kHz (56 % closer to the target)". It can be a page of the report.
+- **Notes on graphs:** drop labelled flags on the Spectrum, Transfer and sweep graphs. They are saved with the session, shared with remote devices, and drawn on and listed in the report.
+- **Spectrum peaks:** the highest real peak in the low, mid and high ranges is labelled.
+- **Several mics:** each mic's average curve has its own colour and dash pattern.
+
+### Smoother and faster
+- **Background analysis:** the spectrum, transfer function and impulse response are computed in a separate thread, so drawing never waits for the maths. The main thread's work per frame is less than half of what it was.
+- **Meters at the screen's rate:** the level meters move on every frame with proper ballistics (instant rise, 20 dB/s fall, 1.5 s peak hold) and colours at fixed levels.
+- **Gliding spectrum:** the curve glides from one spectrum to the next (*Options → Motion*), with an optional 50 spectra per second (*Options → Updates*). *Averaging: None* is truly instant, and the panel shows how long each averaging setting takes.
+- **Lighter start:** the report and the QR code load when first used; graphs cache their grid and labels.
+
+### Look and layout
+- **Colours:** choose the Spectrum's trace and fill colours and the fill opacity.
+- **SPL tab:** the level readout, history and noise log are panels you can float or detach (for example the big readout on a second screen), and the numbers scale with their panel.
+- **Tools:** split into sections (Setup, Session & report, Remote access, Display & performance, Calculators, Data & reset); the room-mode calculator is under *Calculators*.
+- **Tidier menus:** the Spectrum options are grouped into Analysis, Display, Average curve and Overlays; empty graphs say what to do; the Assistant can be hidden.
+- **Fixes:** level meters showed warning colours at low levels; several toolbar, axis and dialog details.
+
 ## What's new in 1.10.1
 
 - **User guide:** a complete, plain-language [user guide](https://github.com/Audbol/CAL-Audio-Analyzer/blob/HEAD/docs/user-guide.md) with screenshots, from installing to reports, with an accessibility section, keyboard shortcuts, troubleshooting and a glossary.

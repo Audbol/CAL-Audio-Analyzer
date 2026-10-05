@@ -160,7 +160,7 @@ export function showHelp(app: App): void {
       ),
       h('div', {}, h('h4', {}, 'Keyboard'), h('table', { class: 'keys' }, ...keys.map(([k, d]) => h('tr', {}, h('td', {}, h('kbd', {}, k)), h('td', {}, d))))),
     ),
-    h('p', { class: 'dim small' }, `CAL Audio Analyzer runs entirely in your browser. Audio never leaves this device. ${app.engine.running ? `Running at ${app.fs} Hz.` : ''}`),
+    h('p', { class: 'dim small' }, `CAL Audio Analyzer ${__APP_VERSION__} · your audio stays on your own devices${app.engine.running ? ` · running at ${app.fs / 1000} kHz` : ''}.`),
   );
   modal('Help', body);
 }

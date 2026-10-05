@@ -3627,3 +3627,12 @@ html.compact .cmp-arrow {
 .ref-card-body > * + * {
   margin-top: 10px;
 }
+/* Display & performance: labels and controls in two aligned columns */
+.perf-card > .row {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  justify-items: start;
+}
+.perf-card > .row select {
+  max-width: 100%;
+}

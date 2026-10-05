@@ -60,6 +60,7 @@ await page.evaluate(() => {
   const a = window.calApp;
   a.settings.targetCurve = 'house';
   a.settings.rtaAverageCurve = 10;
+  a.settings.rtaSmoothing = 3;
   a.syncSettingControls();
   a.views.find((v) => v.id === 'spectrum').setStyle('bars');
 });

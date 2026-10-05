@@ -13,7 +13,7 @@ import { rangePeaks, type RangePeak } from '../dsp/peaks';
 
 /** Colours offered for the average curve ('auto': white at night, black by day). */
 export const AVG_COLORS = [
-  { value: 'auto', label: 'Auto (white, or each mic’s colour)' },
+  { value: 'auto', label: 'Auto' },
   { value: '#ffd60a', label: 'Yellow' },
   { value: '#ff9f1c', label: 'Orange' },
   { value: '#ff4d6d', label: 'Red' },
@@ -136,18 +136,7 @@ export class SpectrumView extends DockedView implements View {
         h('div', { class: 'opt-ctl' }, this.panelChip('rta', 'Spectrum', 'spectrum'), this.panelChip('spl', 'SPL meter', 'SPL meter'), this.panelChip('levels', 'Input levels', 'input level')),
         optHead('Analysis'),
         optRow('FFT size', select([4096, 8192, 16384, 32768, 65536].map((n) => ({ value: n, label: `${n / 1024}k` })), s.rtaFft, (v) => { s.rtaFft = v; app.applyAnalysisSettings(); }, { dataset: { setting: 'rtaFft' }, title: 'Longer FFTs resolve lower frequencies but react more slowly' })),
-        optRow(
-          'Motion',
-          select(
-            [
-              { value: 'smooth' as const, label: 'Smooth (glide)' },
-              { value: 'stepped' as const, label: 'Stepped' },
-            ],
-            s.rtaMotion,
-            (v) => { s.rtaMotion = v; app.save(); },
-            { dataset: { setting: 'rtaMotion' }, title: 'Smooth: the curve glides from one spectrum to the next (≈ 40 ms behind). Stepped: it jumps to each new spectrum.' },
-          ),
-        ),
+        optRow('Averaging', select(AVG_OPTIONS, s.rtaAveraging, (v) => { s.rtaAveraging = v; app.applyAnalysisSettings(); }, { dataset: { setting: 'rtaAveraging' }, title: 'More averaging steadies the curve but makes it slower to follow changes' }), this.avgHint),
         optRow(
           'Updates',
           select(
@@ -160,8 +149,19 @@ export class SpectrumView extends DockedView implements View {
             { dataset: { setting: 'rtaUpdates' }, title: 'New spectra per second: 50 follows changes faster and moves more smoothly, with about twice the processing. The averaging time stays the same.' },
           ),
         ),
-        optRow('Averaging', select(AVG_OPTIONS, s.rtaAveraging, (v) => { s.rtaAveraging = v; app.applyAnalysisSettings(); }, { dataset: { setting: 'rtaAveraging' }, title: 'More averaging steadies the curve but makes it slower to follow changes' }), this.avgHint),
-        optHead('Colours'),
+        optHead('Display'),
+        optRow(
+          'Motion',
+          select(
+            [
+              { value: 'smooth' as const, label: 'Smooth (glide)' },
+              { value: 'stepped' as const, label: 'Stepped' },
+            ],
+            s.rtaMotion,
+            (v) => { s.rtaMotion = v; app.save(); },
+            { dataset: { setting: 'rtaMotion' }, title: 'Smooth: the curve glides from one spectrum to the next (≈ 40 ms behind). Stepped: it jumps to each new spectrum.' },
+          ),
+        ),
         optRow('Trace', colourChoice(s.rtaTraceColor, (v) => { s.rtaTraceColor = v; app.save(); }, { auto: 'Measurement colour', label: 'Spectrum trace colour' })),
         optRow('Fill', colourChoice(s.rtaFillColor, (v) => { s.rtaFillColor = v; app.save(); }, { auto: 'Same as the trace', none: true, label: 'Spectrum fill colour' })),
         optRow(
@@ -195,7 +195,6 @@ export class SpectrumView extends DockedView implements View {
             { title: 'Smoothing of the average curve', dataset: { setting: 'rtaAverageSmoothing' } },
           ),
         ),
-        optRow('Show', this.settingChip('avgCurveShow', 'Visible', 'Show or hide the average curve (it keeps averaging while hidden)')),
         optRow(
           'Colour',
           select(
@@ -205,7 +204,7 @@ export class SpectrumView extends DockedView implements View {
               s.avgCurveColor = v;
               app.save();
             },
-            { title: 'Colour of the average curve', dataset: { setting: 'avgCurveColor' } },
+            { title: 'Colour of the average curve (Auto: white, or with several mics each mic’s own colour, lightened)', dataset: { setting: 'avgCurveColor' } },
           ),
         ),
         optRow(
@@ -220,15 +219,15 @@ export class SpectrumView extends DockedView implements View {
             { title: 'Line width of the average curve', dataset: { setting: 'avgCurveWidth' } },
           ),
         ),
-        optRow('', h('button', { class: 'btn small', title: 'Start only the average curve again', onclick: () => app.measurements.forEach((m) => m.resetAverage()) }, icon('reset', 14), 'Restart average curve')),
-        optHead('Target & mics'),
+        optRow('', this.settingChip('avgCurveShow', 'Visible', 'Show or hide the average curve (it keeps averaging while hidden)'), h('button', { class: 'btn small', title: 'Start only the average curve again', onclick: () => app.measurements.forEach((m) => m.resetAverage()) }, icon('reset', 14), 'Restart average curve')),
+        optHead('Overlays'),
         optRow('Target tolerance', this.target.toleranceControl()),
         optRow('Several mics', micAverageControl(app)),
-        optRow('Sweeps', this.settingChip('rtaShowSweeps', 'Show saved sweeps', 'Show saved sweep traces here too, levelled to the live spectrum: a sweep measures the shape of the response, not its level')),
+        optRow('Saved sweeps', this.settingChip('rtaShowSweeps', 'Show', 'Show saved sweep traces here too, levelled to the live spectrum: a sweep measures the shape of the response, not its level')),
         optHead('Layout'),
         h('div', { class: 'opt-ctl' }, this.resetLayoutButton()),
       ],
-      { title: 'Spectrum options: panels, FFT, averaging, curve smoothing, tolerance, several mics', id: 'spectrum' },
+      { title: 'Spectrum options: panels, analysis, display, average curve, overlays', id: 'spectrum' },
     );
     return h(
       'div',
