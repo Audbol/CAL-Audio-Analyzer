@@ -160,6 +160,8 @@ export interface Settings {
   analysisThread: 'worker' | 'main';
   /** Saved sweep traces on the Spectrum too, levelled to the live curve (a sweep measures shape, not level). */
   rtaShowSweeps: boolean;
+  /** Feedback finder on the Spectrum: narrow, growing or ringing peaks with a suggested notch. */
+  feedbackFinder: boolean;
   /** How the average curve is drawn: shown or hidden (still measured), colour ('auto' = white / black by theme), line width (px). */
   avgCurveShow: boolean;
   avgCurveColor: string;
@@ -247,6 +249,7 @@ export function defaultSettings(): Settings {
     customThemes: [],
     analysisThread: 'worker',
     rtaShowSweeps: true,
+    feedbackFinder: false,
     avgCurveShow: true,
     avgCurveColor: 'auto',
     avgCurveWidth: 2,

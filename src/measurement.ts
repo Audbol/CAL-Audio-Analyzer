@@ -314,6 +314,26 @@ export class Measurement {
     this.stepGlide();
   }
 
+  private narrowBuf: Float64Array | null = null;
+  private narrowFor = -1;
+
+  /**
+   * The narrowband (FFT) spectrum in dBFS on the grid, uncalibrated, and a number that changes with every new
+   * spectrum; null before there is one. From the background analysis when it runs, else from this thread.
+   */
+  narrowSpectrum(): { data: ArrayLike<number>; version: number } | null {
+    const f = this.hostFrame;
+    if (f && performance.now() - this.hostFrameAt < 1500) return f.rtaReady ? { data: f.rtaFft, version: this.hostFrameAt } : null;
+    if (!this.rta.main.hasData) return null;
+    const v = this.rta.version;
+    const buf = (this.narrowBuf ??= new Float64Array(this.grid.length));
+    if (v !== this.narrowFor) {
+      this.narrowFor = v;
+      this.rta.render(0, 'avg', buf);
+    }
+    return { data: buf, version: v };
+  }
+
   /** Host: uncalibrated fine-resolution arrays for remote devices (see encodeAnalysis). */
   hostArrays(bufs: Float64Array[]): { tfReady: boolean; rtaReady: boolean; arrays: Float64Array[] } {
     // Analysed in the background thread: pass its frame on

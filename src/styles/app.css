@@ -3803,3 +3803,32 @@ html.compact .cmp-arrow {
 .whats-new li span {
   color: var(--text-2);
 }
+
+/* Feedback finder (Spectrum) */
+.fb-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-2);
+  font-size: 12px;
+  flex: none;
+}
+.fb-strip[hidden] {
+  display: none;
+}
+.fb-title {
+  color: var(--danger);
+  font-weight: 600;
+}
+.fb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+}
+.fb-item b {
+  color: var(--danger);
+}

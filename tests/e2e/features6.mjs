@@ -330,6 +330,25 @@ if (want('whatsnew')) {
   check(/CAL Audio Analyzer \d+\.\d+/.test(about) && /browser version/.test(about), `About shows the version and how updates work (${about.slice(0, 80)}…)`);
 }
 
+// --- 12. Feedback finder: quiet on pink noise, finds a steady tone, its notch goes to the EQ tab
+if (want('feedback')) {
+  await page.evaluate(() => { document.activeElement?.blur(); window.calApp.setView('spectrum'); });
+  await page.waitForTimeout(500);
+  await page.locator('.toolbar button[data-chip="feedbackFinder"]').first().click();
+  await page.waitForTimeout(5000);
+  const quiet = await page.evaluate(() => window.calApp.views.find((v) => v.id === 'spectrum').fb.map((c) => Math.round(c.f)));
+  check(quiet.length === 0, `no false alarms on pink noise in the demo room (${quiet.join(', ') || 'none'})`);
+  await page.evaluate(() => { const a = window.calApp; a.settings.generator = { ...a.settings.generator, type: 'sine', freq: 2500 }; a.engine.setGenerator(a.settings.generator); });
+  await page.waitForFunction(() => window.calApp.views.find((v) => v.id === 'spectrum').fb.some((c) => Math.abs(Math.log2(c.f / 2500)) < 1 / 24), null, { timeout: 10000 })
+    .then(() => check(true, 'a steady tone at 2.5 kHz is found'))
+    .catch(() => check(false, 'a steady tone at 2.5 kHz is found'));
+  await page.screenshot({ path: `${out}/feat6-07-feedback.png` });
+  await page.locator('.fb-strip button', { hasText: 'Add notch to EQ' }).first().click();
+  const eq = await page.evaluate(() => window.calApp.views.find((v) => v.id === 'eq').filters.map((f) => ({ f: f.f, q: f.q, g: f.gain })));
+  check(eq.length >= 1 && Math.abs(Math.log2(eq[0].f / 2500)) < 1 / 24 && eq[0].g < 0 && eq[0].q >= 6, `its notch is added to the EQ tab (${JSON.stringify(eq[0])})`);
+  await page.evaluate(() => { const a = window.calApp; a.settings.generator = { ...a.settings.generator, type: 'pink' }; a.engine.setGenerator(a.settings.generator); a.settings.feedbackFinder = false; });
+}
+
 check(errors.length === 0, `no console errors ${errors.join(' | ')}`);
 await browser.close();
 await new Promise((r) => server.httpServer.close(r));

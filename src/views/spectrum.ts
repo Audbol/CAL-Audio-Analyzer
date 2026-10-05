@@ -9,6 +9,8 @@ import { optionsMenu, optRow, optHead, colourChoice } from '../ui/popover';
 import { TargetOverlay } from './target-overlay';
 import { micAverageControl, micAverageSeries } from './mic-average-overlay';
 import { GraphNotes } from './graph-notes';
+import { FeedbackDetector, type FeedbackCandidate } from '../dsp/feedback';
+import type { EqView } from './eq';
 import { rangePeaks, type RangePeak } from '../dsp/peaks';
 
 /** Colours offered for the average curve ('auto': white at night, black by day). */
@@ -33,6 +35,9 @@ function tint(c: string, toward: string, amount: number): string {
   if (a.some(Number.isNaN) || b.some(Number.isNaN)) return c;
   return `#${a.map((v, i) => Math.round(v + (b[i] - v) * amount).toString(16).padStart(2, '0')).join('')}`;
 }
+
+/** 2.51 kHz, 95 Hz */
+const fmtF = (f: number) => (f >= 1000 ? `${+(f / 1000).toFixed(f >= 10000 ? 1 : 2)} kHz` : `${Math.round(f)} Hz`);
 
 export function defaultSpectrumLayout(): DockLayout {
   return {
@@ -79,9 +84,87 @@ export class SpectrumView extends DockedView implements View {
     };
     this.notes = new GraphNotes(app, 'spectrum', this.rta);
     this.mountDock([this.plotPanel('rta', 'Spectrum (RTA)', this.rta), ...this.meterPanels()], this.toolbar());
+    this.el.insertBefore(this.fbStrip, this.dock.el);
   }
 
   private resHost = h('span', { class: 'tb-res' });
+
+  // Feedback finder ----------------------------------------------------------------------------------------
+  private detector = new FeedbackDetector();
+  private fb: FeedbackCandidate[] = [];
+  private fbVersion = -1;
+  private fbKey = '';
+  private fbStrip = h('div', { class: 'fb-strip', hidden: true, role: 'status' });
+  /** When each frequency was last announced (a warning per new peak, not one per spectrum). */
+  private fbWarned = new Map<number, number>();
+
+  /** Feed the newest spectrum to the feedback finder; true when what it shows changed. */
+  private tickFeedback(): boolean {
+    const app = this.app;
+    if (!app.settings.feedbackFinder) {
+      if (this.fbStrip.hidden && !this.fb.length) return false;
+      this.fbStrip.hidden = true;
+      this.fb = [];
+      this.fbKey = '';
+      this.detector.reset();
+      return true;
+    }
+    this.fbStrip.hidden = false;
+    const m = app.measurements.find((x) => x.cfg.enabled && x.hasRta);
+    const sp = m?.narrowSpectrum();
+    if (!sp) {
+      if (this.fbKey !== 'none') this.fbStrip.replaceChildren(h('span', { class: 'dim' }, 'Feedback finder: start audio to listen for feedback.'));
+      this.fbKey = 'none';
+      return false;
+    }
+    if (sp.version === this.fbVersion) return false;
+    this.fbVersion = sp.version;
+    this.fb = this.detector.update(app.grid, sp.data, performance.now() / 1000).slice(0, 4);
+    const key = this.fb.map((c) => `${Math.round(c.f)}|${c.kind}|${Math.round(c.prominence)}|${c.notch.q}|${c.notch.gain}`).join(',');
+    if (key === this.fbKey) return false;
+    this.fbKey = key;
+    // A warning when a peak appears (again after a quiet minute)
+    const now = performance.now();
+    for (const c of this.fb) {
+      const near = [...this.fbWarned.keys()].find((f) => Math.abs(Math.log2(f / c.f)) < 1 / 24);
+      if (near !== undefined && now - this.fbWarned.get(near)! < 60000) continue;
+      this.fbWarned.set(near ?? c.f, now);
+      app.toast(`Feedback risk at ${fmtF(c.f)} (${c.kind === 'rising' ? 'rising' : 'ringing'}, ${c.prominence.toFixed(0)} dB above the spectrum)`, 'warn');
+    }
+    this.renderFeedback();
+    return true;
+  }
+
+  private renderFeedback(): void {
+    if (!this.fb.length) {
+      this.fbStrip.replaceChildren(h('span', { class: 'dim' }, 'Feedback finder: listening — no narrow, growing or ringing peaks.'));
+      return;
+    }
+    const eq = this.app.views.find((v) => v.id === 'eq') as unknown as EqView | undefined;
+    this.fbStrip.replaceChildren(
+      h('span', { class: 'fb-title' }, 'Feedback risk'),
+      ...this.fb.map((c) =>
+        h(
+          'span',
+          { class: `fb-item ${c.kind}` },
+          h('b', {}, fmtF(c.f)),
+          ` ${c.prominence.toFixed(0)} dB above${c.kind === 'rising' ? `, rising ${c.rising.toFixed(0)} dB/s` : ', ringing'} · notch Q ${c.notch.q}, ${c.notch.gain} dB `,
+          h(
+            'button',
+            {
+              class: 'btn tiny',
+              title: 'Add this notch filter to the EQ tab',
+              onclick: () => {
+                eq?.addFilter({ type: 'peak', f: c.notch.f, gain: c.notch.gain, q: c.notch.q });
+                this.app.toast(`Notch at ${fmtF(c.notch.f)} (Q ${c.notch.q}, ${c.notch.gain} dB) added to the EQ tab`, 'ok');
+              },
+            },
+            'Add notch to EQ',
+          ),
+        ),
+      ),
+    );
+  }
   /** How long the chosen averaging takes to follow a change (next to the Averaging setting). */
   private avgHint = h('span', { class: 'opt-note' });
 
@@ -150,6 +233,7 @@ export class SpectrumView extends DockedView implements View {
           ),
         ),
         optHead('Display'),
+        optRow('Peak hold', this.settingChip('peakHold', 'On', 'Keep the highest level at each frequency (P)')),
         optRow(
           'Motion',
           select(
@@ -270,8 +354,8 @@ export class SpectrumView extends DockedView implements View {
         this.settingChip('avgCurveShow', icon('eye', 14), 'Show / hide the average curve (it keeps averaging while hidden)'),
       ),
       this.target.targetControl(),
-      this.settingChip('peakHold', 'Peak hold', 'Peak hold (P)'),
       this.settingChip('rtaPeakMarks', 'Peaks', 'Highlight the highest peak in the low (20–250 Hz), mid (250 Hz–4 kHz) and high (4–20 kHz) ranges'),
+      this.settingChip('feedbackFinder', 'Feedback', 'Feedback finder: narrow peaks that grow or ring, each with a suggested notch filter for the EQ tab'),
       this.notes.button(),
       h('div', { class: 'spacer' }),
       options,
@@ -314,6 +398,7 @@ export class SpectrumView extends DockedView implements View {
     const s = app.settings;
     this.renderAvgHint();
     if (this.notes.apply()) this.lastKey = '';
+    if (this.tickFeedback()) this.lastKey = '';
     if (this.visible('rta')) {
       // Redraw only when what is shown changed (new analysis data arrives ~6–12 times a second)
       const key = `${app.traces.version}|${s.rtaStyle}|${s.rtaSmoothing}|${s.peakHold}|${s.rtaAverageCurve}|${s.rtaAverageSmoothing}|${s.avgCurveShow}|${s.rtaPeakMarks}|${s.rtaShowSweeps}|${s.rtaTraceColor}|${s.rtaFillColor}|${s.rtaFillOpacity}|${s.avgCurveColor}|${s.avgCurveWidth}|${s.micAverage}|${s.targetCurve}|${s.targetTolerance}|${s.theme}|${s.splCalibrated}|${s.splOffset}|${JSON.stringify(s.mics.map((mc) => [mc.channel, mc.splCalibrated && mc.splOffset]))}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.rtaShown}`).join(',')}`;
@@ -395,6 +480,7 @@ export class SpectrumView extends DockedView implements View {
         // Only real peaks get a label: a range whose highest point is just its edge (a slope) is left out
         this.rta.pins = this.peaks.filter((p) => p.isPeak).map((p) => ({ x: p.f, y: p.level, color: '#ffd60a', label: `${p.range.label} ${p.f >= 1000 ? `${+(p.f / 1000).toFixed(p.f >= 10000 ? 1 : 2)} kHz` : `${Math.round(p.f)} Hz`} · ${p.level.toFixed(1)} dB` }));
       } else this.peaks = [];
+      this.rta.markers = this.fb.map((c) => ({ x: c.f, color: '#ff4d5e', top: true, label: `${c.kind === 'rising' ? '↑ ' : ''}${fmtF(c.f)}` }));
       this.rta.cfg.yUnit = spl ? 'dB SPL' : 'dBFS';
       this.rta.series = series;
       this.rta.draw();

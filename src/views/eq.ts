@@ -173,6 +173,13 @@ export class EqView implements View {
     this.dirty = true;
   }
 
+  /** Add a filter from elsewhere (e.g. a notch from the feedback finder). */
+  addFilter(f: PeqFilter): void {
+    this.filters.push({ ...f });
+    this.renderList();
+    this.dirty = true;
+  }
+
   /** The current EQ (for sessions and reports), or null before Calculate EQ. */
   snapshot(): EqSnapshot | null {
     const r = this.result;
@@ -232,6 +239,11 @@ export class EqView implements View {
         { x0: 20, x1: this.opt.fMin, color: CHART.shade },
         { x0: this.opt.fMax, x1: 20000, color: CHART.shade },
       ];
+    } else if (this.filters.length) {
+      // Filters without a calculated EQ (e.g. notches from the feedback finder): their curve alone
+      const x = this.app.grid;
+      this.plot.series = [{ id: 'eq', label: 'EQ curve', x, y: eqResponse(this.filters, x), color: CHART.warn, width: 2 }];
+      this.plot.markers = this.filters.map((f, i) => ({ x: f.f, color: CHART.warnSoft, label: `${i + 1}` }));
     }
     this.plot.draw();
   }
