@@ -83,7 +83,7 @@ export class TargetOverlay {
           app.save();
           app.syncSettingControls();
         },
-        { title: 'Target curve: a reference line to tune towards (levelled to the measurement automatically)', dataset: { setting: this.key } },
+        { class: 'target-select', title: 'Target curve: a reference line to tune towards (levelled to the measurement automatically)', dataset: { setting: this.key } },
       ),
     );
   }

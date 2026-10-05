@@ -146,7 +146,7 @@ export function showHelp(app: App): void {
           { class: 'steps' },
           h('li', {}, h('b', {}, 'Start'), ' audio and pick your interface (or the demo room).'),
           h('li', {}, 'Turn on ', h('b', {}, 'pink noise'), ' and bring the level up until the mic reads 10–20 dB above the background.'),
-          h('li', {}, 'Press ', h('b', {}, 'Find'), ' on the measurement card so the reference is time-aligned with the mic. Coherence should rise toward 100 %.'),
+          h('li', {}, 'The app time-aligns the reference with the mic by itself; after moving the mic press ', h('b', {}, 'Find'), ' (D) on the measurement card. Coherence should rise toward 100 %.'),
           h('li', {}, 'Read the ', h('b', {}, 'magnitude'), ' (tonal balance), ', h('b', {}, 'phase'), ' (timing / crossover alignment) and ', h('b', {}, 'coherence'), ' (how trustworthy each frequency is). Data with low coherence is faded.'),
           h('li', {}, h('b', {}, 'Capture'), ' traces at several mic positions, select them and press ', h('b', {}, 'Avg'), ' for a spatial average — then use the ', h('b', {}, 'EQ'), ' tab.'),
           h('li', {}, 'For room acoustics, run a ', h('b', {}, 'sweep'), ' in Sweep & Room to get RT60 / EDT / C50 / C80 per band.'),

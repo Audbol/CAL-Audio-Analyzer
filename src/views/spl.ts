@@ -97,6 +97,7 @@ export class SplView extends DockedView implements View {
         return this.logSpan < 10 ? `${hm}:${String(t.getSeconds()).padStart(2, '0')}` : hm;
       },
     });
+    this.logPlot.placeholder = 'Press Start logging to record Leq and Lmax over time';
     this.logBtn.addEventListener('click', () => {
       if (lg.running) lg.stop();
       else {

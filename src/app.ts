@@ -1679,7 +1679,7 @@ export class App {
           apply(v);
         }
       };
-      set(0, pct(rmsDb), (v) => (ref.bar.style.width = v));
+      set(0, `inset(0 ${(100 - parseFloat(pct(rmsDb))).toFixed(1)}% 0 0)`, (v) => (ref.bar.style.clipPath = v));
       set(1, pct(pkDb), (v) => (ref.mark.style.left = v));
       if (text) set(2, e.running ? `${pkDb > -99 ? pkDb.toFixed(0) : '-∞'}` : '', (v) => (ref.val.textContent = v));
       set(3, `${l.clipped}${pkDb > -6}`, () => {

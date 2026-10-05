@@ -350,7 +350,8 @@ export class ToolsView implements View {
       else app.save();
     }, { 'aria-label': 'Loopback input', dataset: { ref: 'input' } });
     this.refHost.replaceChildren(
-      h('div', { class: 'row gap8 wrap' }, h('div', { class: 'segmented', role: 'group', 'aria-label': 'Reference signal' }, seg('internal', 'Internal (generator)', 'Compare with the generator’s own signal'), seg('loopback', 'Loopback input', 'Compare with an input carrying the signal sent to the system')), h('span', { class: 'dim small' }, 'Loopback on'), inputSel),
+      h('div', { class: 'segmented', role: 'group', 'aria-label': 'Reference signal' }, seg('internal', 'Internal (generator)', 'Compare with the generator’s own signal'), seg('loopback', 'Loopback input', 'Compare with an input carrying the signal sent to the system')),
+      h('div', { class: 'row gap8 ref-input-row' }, h('span', { class: 'dim small' }, 'Loopback input'), inputSel),
       h(
         'p',
         { class: 'small' },

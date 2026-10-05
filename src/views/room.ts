@@ -85,7 +85,9 @@ export class RoomView implements View {
     this.fr = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: -50, yMax: 10, yUnit: 'dB', yStep: 6, title: 'Frequency response & harmonic distortion', showNote: true, yLimits: [-200, 100] });
     this.irPlot = new Plot({ xType: 'lin', xMin: -5, xMax: 300, yMin: -90, yMax: 3, yUnit: 'dB', xUnit: 'ms', yStep: 10, title: 'Energy-time curve', yLimits: [-200, 20] });
     this.notes = new GraphNotes(app, 'room', this.fr);
+    for (const p of [this.fr, this.irPlot]) p.placeholder = 'No sweep yet: press Measure sweep';
     this.decay = new Plot({ xType: 'lin', xMin: 0, xMax: 1500, yMin: -70, yMax: 2, yUnit: 'dB', xUnit: 'ms', yStep: 10, title: 'Schroeder decay curves', yLimits: [-200, 20] });
+    this.decay.placeholder = 'No sweep yet: press Measure sweep';
     this.build();
   }
 

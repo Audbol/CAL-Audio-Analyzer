@@ -120,6 +120,8 @@ export class Plot {
   markers: Marker[] = [];
   pins: Pin[] = [];
   notes: PlotNote[] = [];
+  /** Shown in the middle of an empty plot (no series), e.g. what to do to get data. */
+  placeholder = '';
   /** Where each note's flag was drawn (CSS px), for clicks. */
   private noteBoxes: { x0: number; x1: number; y0: number; y1: number }[] = [];
   /** A click (or tap) on a note's flag. */
@@ -530,6 +532,15 @@ export class Plot {
       }
     }
     ctx.restore();
+    if (this.placeholder && !this.series.some((s) => !s.quiet && s.x.length)) {
+      ctx.font = "500 13px 'Inter Variable', Inter, system-ui, sans-serif";
+      ctx.fillStyle = COLORS.text;
+      ctx.globalAlpha = 0.8;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(this.placeholder, pad.l + (w - pad.l - pad.r) / 2, pad.t + (H - pad.t - pad.b) / 2);
+      ctx.globalAlpha = 1;
+    }
     this.drawCursor();
   }
 
@@ -612,7 +623,13 @@ export class Plot {
         ctx.lineTo(x, H - pad.b);
         ctx.stroke();
         ctx.fillStyle = COLORS.text;
-        ctx.fillText(trimNum(v), x, H - pad.b + 5);
+        ctx.fillText(this.cfg.formatX ? this.cfg.formatX(v) : trimNum(v), x, H - pad.b + 5);
+      }
+      // The unit in the free corner under the y axis labels
+      if (this.cfg.xUnit && !this.cfg.formatX) {
+        ctx.textAlign = 'right';
+        ctx.fillText(this.cfg.xUnit, pad.l - 6, H - pad.b + 5);
+        ctx.textAlign = 'center';
       }
     }
     // Y grid

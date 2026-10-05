@@ -48,6 +48,7 @@ export class EqView implements View {
     // Start from the target chosen for the Spectrum / Transfer views, when it is a built-in one
     if (TARGETS.some((t) => t.id === app.settings.targetCurve)) this.target = app.settings.targetCurve;
     this.plot = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: -18, yMax: 18, yUnit: 'dB', yStep: 3, title: 'Deviation from target, EQ and predicted result', showNote: true, yLimits: [-60, 60] });
+    this.plot.placeholder = 'Choose a source and a target, then press Calculate EQ';
     const numIn = (key: keyof typeof this.opt, step: string, label?: string) => {
       const i = h('input', { type: 'number', class: 'num', value: String(this.opt[key]), step, dataset: { eqOpt: key }, 'aria-label': label });
       i.addEventListener('change', () => ((this.opt[key] as number) = +i.value));
@@ -74,8 +75,9 @@ export class EqView implements View {
         h('button', { class: 'btn accent', onclick: () => this.run() }, icon('sparkle', 15), 'Calculate EQ'),
       ),
       this.summary,
-      h('div', { class: 'eq-split' }, h('div', { class: 'pane fill' }, this.plot.el), h('div', { class: 'peq-side' }, h('h4', {}, 'Parametric EQ'), this.list, h('div', { class: 'row gap4' }, h('button', { class: 'btn small', onclick: () => this.copy('text') }, 'Copy filter text'), h('button', { class: 'btn small', onclick: () => this.copy('csv') }, 'Copy CSV')))),
+      h('div', { class: 'eq-split' }, h('div', { class: 'pane fill' }, this.plot.el), h('div', { class: 'peq-side' }, h('h4', {}, 'Parametric EQ'), this.list, h('div', { class: 'row gap4' }, this.copyBtns[0], this.copyBtns[1]))),
     );
+    this.renderList();
     this.summary.textContent = 'Choose a source measurement and press Calculate EQ. Use a spatially averaged trace for best results.';
   }
 
@@ -122,10 +124,14 @@ export class EqView implements View {
     this.dirty = true;
   }
 
+  /** Copy buttons: only useful once there are filters. */
+  private copyBtns = [h('button', { class: 'btn small', onclick: () => this.copy('text') }, 'Copy filter text'), h('button', { class: 'btn small', onclick: () => this.copy('csv') }, 'Copy CSV')];
+
   private renderList(): void {
     clear(this.list);
+    for (const b of this.copyBtns) b.disabled = !this.filters.length;
     if (!this.filters.length) {
-      this.list.append(h('div', { class: 'empty' }, 'No filters yet.'));
+      this.list.append(h('div', { class: 'empty' }, 'No filters yet: press Calculate EQ.'));
       return;
     }
     this.filters.forEach((f, i) => {

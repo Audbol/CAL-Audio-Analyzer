@@ -345,7 +345,7 @@ export class AlignView implements View {
             'div',
             { class: 'align-el-src' },
             h('span', { class: 'dim small align-vs' }, 'Mains here'),
-            select([{ value: '', label: 'Same as the toolbar' }, ...opts], el.ref, (v) => {
+            select([{ value: '', label: 'Toolbar mains' }, ...opts], el.ref, (v) => {
               el.ref = v;
               el.result = null;
               el.names = null;

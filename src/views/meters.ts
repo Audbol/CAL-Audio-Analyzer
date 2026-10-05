@@ -116,8 +116,8 @@ export class LevelsPanel {
           apply(v);
         }
       };
-      set(0, `${pct(rms).toFixed(1)}%`, (v) => (ref.rms.style.height = v));
-      set(1, `${pct(pk).toFixed(1)}%`, (v) => (ref.peak.style.height = v));
+      set(0, `inset(${(100 - pct(rms)).toFixed(1)}% 0 0 0)`, (v) => (ref.rms.style.clipPath = v));
+      set(1, `inset(${(100 - pct(pk)).toFixed(1)}% 0 0 0)`, (v) => (ref.peak.style.clipPath = v));
       set(2, `${pct(hold.v).toFixed(1)}%`, (v) => (ref.hold.style.bottom = v));
       if (text) set(3, e.running && hold.v > -99 ? hold.v.toFixed(1) : '—', (v) => (ref.val.textContent = v));
       set(4, `${c.l.clipped}${pk > -6}`, () => {

@@ -719,10 +719,15 @@ input.name:hover {
   flex: none;
   flex-wrap: wrap;
 }
-.tb-group {
+.tb-group,
+.tb-res {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+/* Long target names (stored traces) would stretch the toolbars */
+.target-select {
+  width: 150px;
 }
 .tb-label {
   font-size: 11px;
@@ -746,6 +751,9 @@ label.inline {
   color: var(--dim);
 }
 .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   border: 1px solid var(--border-2);
   background: transparent;
   color: var(--dim);
@@ -1075,9 +1083,14 @@ body.popout-body {
   right: 0;
   bottom: 0;
 }
+.lv-peak,
+.lv-rms {
+  /* Full height, revealed from the bottom (clip-path set per frame): the colours sit at fixed levels */
+  top: 0;
+  will-change: clip-path;
+}
 .lv-peak {
   background: linear-gradient(0deg, #1f8f62 0%, #3ddc97 70%, var(--warn) 85%, var(--danger) 97%);
-  background-size: 100% var(--lv-h, 100%);
   opacity: 0.45;
 }
 .lv-rms {
@@ -1590,9 +1603,9 @@ html.compact .plot-zoom button {
 }
 .meter .bar i {
   position: absolute;
-  inset: 0 auto 0 0;
+  inset: 0;
   background: linear-gradient(90deg, #23b37a 0%, var(--ok) 72%, var(--warn) 88%, var(--danger) 97%);
-  background-size: 90px 100%;
+  will-change: clip-path;
 }
 .meter .bar b {
   position: absolute;
@@ -1778,12 +1791,25 @@ html.compact .plot-zoom button {
   color: var(--dim);
 }
 .steps {
-  padding-left: 20px;
+  padding-left: 0;
   margin: 0 0 8px;
+  list-style: none;
+  counter-reset: step;
 }
 .steps li {
+  position: relative;
+  padding-left: 22px;
   margin-bottom: 7px;
   color: var(--text-2);
+  counter-increment: step;
+}
+/* Explicit numbers: the list's own markers were not reliable in every layout */
+.steps li::before {
+  content: counter(step) '.';
+  position: absolute;
+  left: 0;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
 }
 .help-cols {
   display: grid;
@@ -3597,4 +3623,7 @@ html.compact .cmp-arrow {
   color: var(--text-2);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+.ref-card-body > * + * {
+  margin-top: 10px;
 }
