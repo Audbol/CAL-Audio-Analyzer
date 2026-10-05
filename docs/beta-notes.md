@@ -4,12 +4,12 @@
 
 | System | File |
 | --- | --- |
-| **Windows 10/11** – installer | `CAL-Audio-Analyzer-2.0.0-rc.1-win-x64.exe` |
-| **Windows 10/11** – portable (no install) | `CAL-Audio-Analyzer-2.0.0-rc.1-portable.exe` |
-| **macOS** – Apple Silicon (M1–M4) | `CAL-Audio-Analyzer-2.0.0-rc.1-mac-arm64.dmg` |
-| **macOS** – Intel | `CAL-Audio-Analyzer-2.0.0-rc.1-mac-x64.dmg` |
-| **Linux** – x64 | `CAL-Audio-Analyzer-2.0.0-rc.1-linux-x86_64.AppImage` |
-| **Linux** – ARM64 (e.g. Raspberry Pi 5) | `CAL-Audio-Analyzer-2.0.0-rc.1-linux-arm64.AppImage` |
+| **Windows 10/11** – installer | `CAL-Audio-Analyzer-2.0.0-rc.2-win-x64.exe` |
+| **Windows 10/11** – portable (no install) | `CAL-Audio-Analyzer-2.0.0-rc.2-portable.exe` |
+| **macOS** – Apple Silicon (M1–M4) | `CAL-Audio-Analyzer-2.0.0-rc.2-mac-arm64.dmg` |
+| **macOS** – Intel | `CAL-Audio-Analyzer-2.0.0-rc.2-mac-x64.dmg` |
+| **Linux** – x64 | `CAL-Audio-Analyzer-2.0.0-rc.2-linux-x86_64.AppImage` |
+| **Linux** – ARM64 (e.g. Raspberry Pi 5) | `CAL-Audio-Analyzer-2.0.0-rc.2-linux-arm64.AppImage` |
 
 The builds are not code-signed yet:
 
@@ -26,6 +26,7 @@ On first launch, choose **Explore with the demo room** to try every feature with
 ### Measure
 - **Group delay:** *Transfer → Options → Panels → Group delay* shows how late each frequency arrives, in milliseconds (a sub behind the mains, a crossover's delay), weighted by energy and coherence so dips and noise don't hide the real delay.
 - **Measure at several positions:** *Sweep & Room → Positions* runs one sweep per mic position, tells you where to move the mic in between, and saves the spatial average as a trace for the EQ tab. It works from a phone or tablet too.
+- **Feedback finder:** *Feedback* on the Spectrum toolbar listens for narrow peaks that grow or ring, warns with the frequency, and suggests a notch filter (frequency, Q, depth) that one click puts on the EQ tab.
 - **Room diagnosis:** after a sweep, *Diagnosis* separates room modes, speaker-boundary interference, reflections and modal nulls, says how sure it is and what to do, and marks them on the graphs.
 - **Sweeps on the Spectrum:** saved sweeps also show on the Spectrum, levelled to the live curve.
 - **Reference switch:** *Tools → Setup → Reference signal* switches every measurement between the generator and a loopback input.
@@ -43,8 +44,12 @@ On first launch, choose **Explore with the demo room** to try every feature with
 - **Lighter start:** the report and the QR code load when first used; graphs cache their grid and labels.
 
 ### Look and layout
+- **Themes:** besides Night and Day, ready-made *High contrast*, *Stage red*, *Colour-blind safe*, *Midnight blue* and *Paper* themes, and your own from a theme editor (background, panels, text, accent, graph and grid colours, and trace colours), with a live preview. Themes can be exported and shared.
+- **Guided tour:** a one-minute walk through the essentials, offered by the Assistant at the first start and always in Help.
+- **Automatic updates (desktop app):** new versions download in the background; *Restart to update* appears in the top bar when one is ready. *What's new* shows the highlights after an update to a new major version. The version and update status are under *Tools → About & data*.
+- **Level meters for what's in use:** the status bar shows meters only for the inputs the app uses, and the generator while it plays or serves as the reference.
 - **Colours:** choose the Spectrum's trace and fill colours and the fill opacity.
 - **SPL tab:** the level readout, history and noise log are panels you can float or detach (for example the big readout on a second screen), and the numbers scale with their panel.
-- **Tools:** split into sections (Setup, Session & report, Remote access, Display & performance, Calculators, Data & reset); the room-mode calculator is under *Calculators*.
+- **Tools:** split into sections (Setup, Session & report, Remote access, Display & performance, Calculators, About & data); the room-mode calculator is under *Calculators*.
 - **Tidier menus:** the Spectrum options are grouped into Analysis, Display, Average curve and Overlays; empty graphs say what to do; the Assistant can be hidden.
 - **Fixes:** level meters showed warning colours at low levels; several toolbar, axis and dialog details.

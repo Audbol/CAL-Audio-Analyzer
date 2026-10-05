@@ -161,6 +161,7 @@ check(after.name === 'Main PA tuning' && after.target === 'flat', 'session detai
 // --- Report
 const [popup] = await Promise.all([page.waitForEvent('popup'), page.getByRole('button', { name: 'Create report' }).click()]);
 await popup.waitForLoadState();
+  await popup.waitForFunction(() => document.body && document.body.innerText.length > 200, null, { timeout: 15000 }); // the report code loads on first use
 const rep = await popup.evaluate(() => ({
   title: document.title,
   sections: [...document.querySelectorAll('h2')].map((x) => x.textContent),

@@ -237,18 +237,22 @@ await rem.waitForFunction(() => !window.calApp.settings.graphNotes.length, null,
 
 // --- Traces are shared: captured on one device, visible (and deletable) everywhere
 const nTraces = await host.evaluate(() => window.calApp.traces.traces.length);
+// Capturing needs a transfer function on the remote (from the host's analysis): wait for it, then for the sync
+await rem.waitForFunction(() => window.calApp.measurements[0]?.tfReady, null, { timeout: 15000 }).catch(() => undefined);
 await rem.evaluate(() => window.calApp.captureTrace(window.calApp.measurements[0], 'tf'));
-await host.waitForTimeout(800);
+await host.waitForFunction((n) => window.calApp.traces.traces.length === n + 1, nTraces, { timeout: 8000 }).catch(() => undefined);
+await phone.waitForFunction((n) => window.calApp.traces.traces.length === n + 1, nTraces, { timeout: 8000 }).catch(() => undefined);
+await late.waitForFunction((n) => window.calApp.traces.traces.length === n + 1, nTraces, { timeout: 8000 }).catch(() => undefined);
 const names = (p) => p.evaluate(() => window.calApp.traces.traces.map((t) => t.name));
 const hostNames = await names(host);
 check(hostNames.length === nTraces + 1, 'a trace captured on a remote is stored on the host');
 check(JSON.stringify(await names(phone)) === JSON.stringify(hostNames) && JSON.stringify(await names(late)) === JSON.stringify(hostNames), 'the trace list is identical on every device');
 const id = await phone.evaluate(() => window.calApp.traces.traces.at(-1).id);
 await phone.evaluate((i) => window.calApp.traces.update(i, { name: 'Renamed on phone' }), id);
-await host.waitForTimeout(600);
+await rem.waitForFunction(() => window.calApp.traces.traces.some((t) => t.name === 'Renamed on phone'), null, { timeout: 8000 }).catch(() => undefined);
 check((await names(rem)).includes('Renamed on phone'), 'trace edits on one remote reach the others');
 await phone.evaluate((i) => window.calApp.traces.remove(i), id);
-await host.waitForTimeout(600);
+for (const p of [host, rem]) await p.waitForFunction((n) => window.calApp.traces.traces.length === n, nTraces, { timeout: 8000 }).catch(() => undefined);
 check((await names(host)).length === nTraces && (await names(rem)).length === nTraces, 'deleting a trace on a remote deletes it everywhere');
 
 // --- Measurement setup changed on a remote is applied on the host and the other remotes

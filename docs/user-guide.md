@@ -120,7 +120,7 @@ The **workspace** button sits at the right end of the tab row. See [Workspaces](
 
 On a phone, the sidebar opens from the menu button in the top-left corner.
 
-**Status bar** along the bottom. It shows the input and generator level meters, the audio device, the sample rate, and whether battery saver or remote access is on.
+**Status bar** along the bottom. It shows level meters for the inputs in use (measurement mics and references, the SPL meter's input) and for the generator while it plays or serves as the reference, then the audio device, the sample rate, and whether battery saver or remote access is on.
 
 ## 4. Try the demo room
 
@@ -129,6 +129,7 @@ The demo room is a virtual loudspeaker in a reverberant room. It behaves like a 
 1. In the welcome window, select **Explore with the demo room**.
 2. Select **Start demo**.
 3. The app starts pink noise, finds the delay, and opens the Transfer tab.
+4. The **Assistant** offers a one-minute **tour** of the essentials: select **Take the tour**. You can also start it from **Help** at any time. Use **Next** and **Back** (or the arrow keys), and Escape to stop.
 
 Every feature in this guide works in the demo room. To open the welcome window again later, select the setup assistant button at the right end of the top bar.
 
@@ -226,7 +227,8 @@ The average curve is a smooth line showing the long-term tonal balance. It is us
 
 ### Other displays
 
-- **Peak hold** (P) keeps the highest level at each frequency.
+- **Peak hold** (P, or under **Options → Display**) keeps the highest level at each frequency.
+- **Feedback** (in the toolbar) listens for feedback: narrow peaks that grow or ring well above the rest of the spectrum. A warning names the frequency, a red marker shows it, and the strip above the graph suggests a notch filter (frequency, Q and depth). **Add notch to EQ** puts it on the EQ tab, where you can copy it to your processor.
 - The **Spectrogram** tab (press 3) shows the spectrum over time. Frequency runs up the side, time runs from left to right with the newest data on the right, and colour shows level. **Layout** turns the picture the other way.
 - The **Impulse** tab (press 4) shows the impulse response. **Set delay to peak** sets the delay from the strongest arrival.
 
@@ -416,6 +418,8 @@ The app uses the music itself as the reference, so the transfer function works w
 - Each panel's title bar has buttons to float the panel over the view, open it in its own window (for example on a second monitor), or enlarge it.
 - **Options**, then **Reset layout**, restores the default arrangement.
 
+**Themes** (in Tools, under **Display & performance**): choose *Night* (OLED black) or *Day* (for sunlight), or a ready-made theme: *High contrast*, *Stage red* (keeps your eyes adjusted in a dark venue), *Colour-blind safe* (trace colours that people with colour blindness tell apart), *Midnight blue* or *Paper*. **New theme…** opens an editor: pick the background, panel, text, accent, graph and grid colours and, if you like, your own trace colours. Changes show at once. **Export** saves a theme as a file to share; **Import…** adds one. T still switches between Night and Day.
+
 **Display & performance** (in Tools):
 
 ![The Display & performance card, with graph quality, battery saver, bass resolution and analysis location.](guide/performance.png)
@@ -425,7 +429,9 @@ The app uses the music itself as the reference, so the transfer function works w
 - **Analysis:** *Background thread* (the default) computes the spectrum and transfer function beside the drawing, so the display stays smooth. *Main thread* works as in earlier versions.
 - **Bass resolution:** *High* or *Maximum* shows more detail in the bass, but the bass reacts more slowly.
 
-**Reset settings** (in Tools, under **Data**):
+**About & updates** (in Tools, under **About & data**): the version, and in the desktop app the update status. The desktop app checks for new versions shortly after it starts and every six hours, downloads them in the background, and shows **Restart to update** in the top bar when one is ready. The portable Windows version does not update itself. On macOS, updates need a signed build. **What's new** lists the highlights of this version; it also opens once by itself after an update to a new major version.
+
+**Reset settings** (in Tools, under **About & data**):
 
 - **Reset analysis & display to** returns the analysis and display settings to the *App defaults* or to a *Classic dual-FFT* setup. Your microphones, calibrations, inputs, remote access and workspaces stay as they are.
 - **Reset all settings** returns everything to the first start, including microphones and calibrations.

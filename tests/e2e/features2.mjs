@@ -138,6 +138,7 @@ await page.keyboard.press('9');
 await page.locator('[data-section="session"]').click();
 const [popup] = await Promise.all([page.waitForEvent('popup'), page.getByRole('button', { name: 'Create report' }).click()]);
 await popup.waitForLoadState();
+  await popup.waitForFunction(() => document.body && document.body.innerText.length > 200, null, { timeout: 15000 }); // the report code loads on first use
 const rep = await popup.evaluate(() => ({ h2: [...document.querySelectorAll('h2')].map((x) => x.textContent), text: document.body.innerText, photos: document.querySelectorAll('figure.photo img').length }));
 check(rep.h2.includes('Noise log') && rep.text.includes('Overall'), 'report has the noise log');
 check(rep.text.includes('Waterfall'), 'report has the waterfall');

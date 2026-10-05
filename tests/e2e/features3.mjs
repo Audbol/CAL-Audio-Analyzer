@@ -161,6 +161,7 @@ await page.keyboard.press('9');
 await page.locator('[data-section="session"]').click();
 const [popup] = await Promise.all([page.waitForEvent('popup'), page.getByRole('button', { name: 'Create report' }).click()]);
 await popup.waitForLoadState();
+  await popup.waitForFunction(() => document.body && document.body.innerText.length > 200, null, { timeout: 15000 }); // the report code loads on first use
 const rep = await popup.evaluate(() => document.body.innerText);
 check(rep.includes('System alignment') && rep.includes('Delay the mains by 3.0') && rep.includes('Delay the delay by 73.0') && rep.includes('Arrives 3.0'), 'report has the alignment plan for every part');
 check(rep.includes('Front mic on In 1') && rep.includes('Mic 2 on In 2'), 'report lists the mics and their calibrations');

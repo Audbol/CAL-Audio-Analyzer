@@ -20,6 +20,7 @@ const check = (cond, msg) => {
 };
 const only = process.env.ONLY ?? '';
 const want = (name) => !only || only.split(',').includes(name);
+const ensureRunning = () => page.evaluate(async () => { if (!window.calApp.engine.running) await window.calApp.start(); });
 
 await page.goto('http://localhost:4188/');
 await page.getByText('Explore with the demo room').click();
@@ -100,6 +101,7 @@ if (want('compare')) {
   await page.locator('[data-section="session"]').click();
   const [popup] = await Promise.all([page.waitForEvent('popup'), page.getByRole('button', { name: 'Create report' }).click()]);
   await popup.waitForLoadState();
+  await popup.waitForFunction(() => document.body && document.body.innerText.length > 200, null, { timeout: 15000 }); // the report code loads on first use
   const rep = await popup.evaluate(() => document.body.innerText);
   check(rep.includes('Before / after') && rep.includes('closer to the target'), 'the comparison is in the report');
   await popup.close();
@@ -134,6 +136,7 @@ if (want('notes')) {
   await page.locator('[data-section="session"]').click();
   const [popup] = await Promise.all([page.waitForEvent('popup'), page.getByRole('button', { name: 'Create report' }).click()]);
   await popup.waitForLoadState();
+  await popup.waitForFunction(() => document.body && document.body.innerText.length > 200, null, { timeout: 15000 }); // the report code loads on first use
   const rep = await popup.evaluate(() => document.body.innerText);
   check(rep.includes('Notes on graphs') && rep.includes('Desk reflection (moved desk)'), 'notes are listed in the report');
   await popup.close();
@@ -292,6 +295,8 @@ if (want('themes')) {
 
 // --- 10. The guided tour: offered by the Assistant, every step points at something, then it is not offered again
 if (want('tour')) {
+  await ensureRunning();
+  await page.waitForTimeout(1500);
   await page.evaluate(() => { document.activeElement?.blur(); window.calApp.setView('transfer'); });
   await page.waitForTimeout(900);
   const offer = page.locator('.assistant .hint button', { hasText: 'Take the tour' });
@@ -332,6 +337,8 @@ if (want('whatsnew')) {
 
 // --- 12. Feedback finder: quiet on pink noise, finds a steady tone, its notch goes to the EQ tab
 if (want('feedback')) {
+  await ensureRunning();
+  await page.waitForTimeout(1500);
   await page.evaluate(() => { document.activeElement?.blur(); window.calApp.setView('spectrum'); });
   await page.waitForTimeout(500);
   await page.locator('.toolbar button[data-chip="feedbackFinder"]').first().click();

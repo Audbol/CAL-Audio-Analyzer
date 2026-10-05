@@ -35,6 +35,9 @@ New to the app? The **[user guide](docs/user-guide.md)** walks you through insta
 | **Guided spatial average** | One sweep per mic position (3–8), with a prompt between positions; the power average is saved as a trace for the EQ tab. |
 | **Before / after compare** | Two traces on one graph with their difference and a score against the target (RMS deviation, share within tolerance, worst point); optionally a page of the report. |
 | **Notes on graphs** | Labelled flags on the Spectrum, Transfer and sweep graphs, saved with the session, shared with remote devices and listed in the report. |
+| **Feedback finder** | Narrow peaks that grow or ring are flagged on the Spectrum with a suggested notch (frequency, Q, depth) that goes to the EQ tab in one click. |
+| **Themes** | Night and Day plus High contrast, Stage red, Colour-blind safe, Midnight blue and Paper, and your own from a theme editor with live preview; export and import themes. |
+| **Guided tour & updates** | A one-minute tour of the essentials; the desktop app updates itself from the GitHub releases and shows what's new. |
 | **Smooth, fast metering** | Spectrum, transfer function and impulse response computed in a background thread; level meters with proper ballistics at the screen's rate; the spectrum glides between updates (25 or 50 spectra per second). |
 | **Waterfall** | Cumulative spectral decay from the sweep in 3-D: room modes (15–500 Hz over 400 ms) or full range (100 Hz–20 kHz over 20 ms). Ridges that reach far back are resonances that keep ringing. |
 | **Noise log** | Log Leq and Lmax per interval (1 s to 15 min, exact to the sample) with the third-octave spectrum from IEC 61260-style band filters, for hours. The weighting and input are locked while logging. Set a limit on the rolling Leq (e.g. 100 dB LAeq over 15 minutes): the level readout turns amber near it and red above it, with a warning. Export as CSV; the log is kept in sessions and reports. |
