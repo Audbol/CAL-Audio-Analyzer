@@ -67,6 +67,8 @@ export interface PlotConfig {
   xUnit?: string;
   yStep?: number;
   secondaryLabel?: string;
+  /** Part of the plot height the secondary axis (0–100 %) uses, from the bottom: [0.6, 1] = the top 40 %. */
+  secondaryBand?: [number, number];
   title?: string;
   /** Allowed y range for zooming. */
   yLimits?: [number, number];
@@ -472,7 +474,8 @@ export class Plot {
 
   yToPx(y: number, secondary = false): number {
     const plotH = this.hgt - this.pad.t - this.pad.b;
-    const t = secondary ? y : (y - this.cfg.yMin) / (this.cfg.yMax - this.cfg.yMin);
+    const band = this.cfg.secondaryBand;
+    const t = secondary ? (band ? band[0] + y * (band[1] - band[0]) : y) : (y - this.cfg.yMin) / (this.cfg.yMax - this.cfg.yMin);
     return this.pad.t + (1 - t) * plotH;
   }
 
@@ -636,6 +639,17 @@ export class Plot {
       ctx.textAlign = 'left';
       for (const v of [0, 0.5, 1]) {
         ctx.fillText(`${v * 100}%`, w - pad.r + 5, this.yToPx(v, true));
+      }
+      // A band of its own: a faint line where it starts
+      if (this.cfg.secondaryBand && this.cfg.secondaryBand[0] > 0) {
+        const y = Math.round(this.yToPx(0, true)) + 0.5;
+        ctx.strokeStyle = COLORS.grid;
+        ctx.setLineDash([2, 3]);
+        ctx.beginPath();
+        ctx.moveTo(pad.l, y);
+        ctx.lineTo(w - pad.r, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
       }
     }
   }

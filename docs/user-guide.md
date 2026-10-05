@@ -178,18 +178,18 @@ Without calibration, levels are shown in **dBFS** instead of **dB SPL**. That is
 
 The transfer function shows what the system does to the signal. It compares the microphone with the reference.
 
-![The Transfer tab. The magnitude graph is on top, with coherence as a thin line. The phase graph is below it.](guide/transfer.png)
+![The Transfer tab. The magnitude graph is on top, with coherence as a thin line across its top. The phase graph is below it.](guide/transfer.png)
 
 1. Start audio: select **Start** or press Enter.
 2. Turn on the generator with pink noise: press Space.
 3. Raise the level slowly until the microphone level is 10 to 20 dB above the background noise. Watch the In 1 meter in the status bar. It must not reach the top (clipping).
-4. Select **Find** on the measurement card in the sidebar, or press D. The app measures the delay between the reference and the microphone.
+4. The app measures the delay between the reference and the microphone by itself the first time the coherence is low. To measure it again (after moving the microphone), select **Find** on the measurement card in the sidebar, or press D.
 5. Open the **Transfer** tab (press 2).
 
 ### How to read it
 
 - **Magnitude** (top graph): how much louder or quieter each frequency is. A flat line means a neutral system.
-- **Coherence** (thin line, scale on the right): how reliable the data is at each frequency. 100% is fully reliable. Where coherence is low, the data is faded, because noise or reflections are disturbing the measurement.
+- **Coherence** (thin line across the top of the graph, scale on the right): how reliable the data is at each frequency. 100% is fully reliable. Where coherence is low, the data is faded, because noise or reflections are disturbing the measurement.
 - **Phase** (bottom graph): the timing of each frequency. It matters when two speakers play the same frequencies, for example a sub and a main speaker.
 - **Group delay** (turn it on under **Options → Panels**): how late each frequency arrives, in milliseconds. Near 0 ms means the frequency arrives with the rest; a sub that is 10 ms behind the mains shows as a rise of 10 ms in the bass. It is easier to read than phase. Dips in the response carry little sound, so they count less in this curve.
 

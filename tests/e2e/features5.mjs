@@ -139,7 +139,7 @@ if (want('peaks')) {
   await page.locator('.toolbar button[data-chip="rtaPeakMarks"]').first().click();
   await page.keyboard.press('b');
   await page.waitForTimeout(600);
-  check(await page.evaluate(() => window.calApp.views.find((x) => x.id === 'spectrum').rta.pins.length === 3), 'peaks are highlighted on bars too');
+  check(await page.evaluate(() => { const v = window.calApp.views.find((x) => x.id === 'spectrum'); return v.rta.pins.length >= 1 && v.rta.pins.length === v.peaks.filter((p) => p.isPeak).length; }), 'peaks are highlighted on bars too (real peaks only)');
   await page.keyboard.press('b');
 }
 

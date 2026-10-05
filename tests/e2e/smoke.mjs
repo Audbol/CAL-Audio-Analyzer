@@ -54,6 +54,7 @@ const peak = await page.evaluate(() => window.calApp.views.find((v) => v.id === 
 
 // Spectrum as third-octave bars (B), with peak hold caps
 await page.keyboard.press('1');
+await page.locator('.toolbar select[data-setting="rtaSmoothing"]').first().selectOption('3');
 await page.keyboard.press('b');
 await page.keyboard.press('p');
 await page.waitForTimeout(1200);

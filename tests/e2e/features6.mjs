@@ -213,6 +213,26 @@ if (want('worker')) {
   check((await probe()).active, 'background analysis can be switched on again');
 }
 
+// --- 7. Defaults for a first start: transfer function at 1/12 octave with coherence in its own band, the delay
+// found by itself when it was never set
+if (want('defaults')) {
+  const d = await page.evaluate(() => {
+    const a = window.calApp;
+    const v = a.views.find((x) => x.id === 'transfer');
+    return { tf: a.settings.tfSmoothing, rta: a.settings.rtaSmoothing, band: v.mag.cfg.secondaryBand, hidden: a.settings.transferLayout?.hidden ?? [] };
+  });
+  check(d.tf === 12 && d.rta === 6 && d.band?.[0] > 0.5 && d.hidden.includes('levels'), `first-start defaults (${JSON.stringify(d)})`);
+  await page.evaluate(() => {
+    const a = window.calApp;
+    const m = a.measurements[0];
+    m.cfg.delay = 0;
+    m.reset();
+  });
+  const found = await page.waitForFunction(() => window.calApp.measurements[0].cfg.delay > 0, null, { timeout: 15000 }).then(() => true).catch(() => false);
+  const ms = await page.evaluate(() => (window.calApp.measurements[0].cfg.delay / window.calApp.fs) * 1000);
+  check(found && Math.abs(ms - 12.54) < 0.2, `the delay is found automatically when it was never set (${ms.toFixed(2)} ms)`);
+}
+
 check(errors.length === 0, `no console errors ${errors.join(' | ')}`);
 await browser.close();
 await new Promise((r) => server.httpServer.close(r));

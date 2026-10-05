@@ -38,10 +38,11 @@ export function defaultSpectrumLayout(): DockLayout {
   return {
     order: ['rta', 'spl', 'levels'],
     sizes: { rta: 1, spl: 0.5, levels: 0.6 },
-    hidden: [],
+    // The level meters are in the status bar too: their panel starts hidden, the SPL meter floats
+    hidden: ['levels'],
     floating: {
       levels: { x: -14, y: -40, w: 250, h: 210 },
-      spl: { x: -276, y: -40, w: 250, h: 160 },
+      spl: { x: -14, y: -40, w: 250, h: 160 },
     },
   };
 }
@@ -392,7 +393,8 @@ export class SpectrumView extends DockedView implements View {
         const avg = s.avgCurveShow && !only ? ref.averageDb() : null;
         const [px, py] = avg ? [g, shiftBy(avg, off)] : bars ? [this.bands, atBands(ref.rtaOut, off)] : [g, shiftBy(ref.rtaOut, off)];
         this.peaks = rangePeaks(px, py);
-        this.rta.pins = this.peaks.map((p) => ({ x: p.f, y: p.level, color: '#ffd60a', label: `${p.range.label}${p.isPeak ? '' : ' (no peak)'} ${p.f >= 1000 ? `${+(p.f / 1000).toFixed(p.f >= 10000 ? 1 : 2)} kHz` : `${Math.round(p.f)} Hz`} · ${p.level.toFixed(1)} dB` }));
+        // Only real peaks get a label: a range whose highest point is just its edge (a slope) is left out
+        this.rta.pins = this.peaks.filter((p) => p.isPeak).map((p) => ({ x: p.f, y: p.level, color: '#ffd60a', label: `${p.range.label} ${p.f >= 1000 ? `${+(p.f / 1000).toFixed(p.f >= 10000 ? 1 : 2)} kHz` : `${Math.round(p.f)} Hz`} · ${p.level.toFixed(1)} dB` }));
       } else this.peaks = [];
       this.rta.cfg.yUnit = spl ? 'dB SPL' : 'dBFS';
       this.rta.series = series;

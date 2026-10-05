@@ -15,7 +15,8 @@ export function defaultTransferLayout(): DockLayout {
   return {
     order: ['mag', 'phase', 'gd', 'spl', 'levels'],
     sizes: { mag: 1.5, phase: 1, gd: 1, spl: 0.5, levels: 0.6 },
-    hidden: ['spl', 'gd'],
+    // Magnitude with coherence over phase, the full width for both (levels are in the status bar)
+    hidden: ['spl', 'gd', 'levels'],
     floating: {
       levels: { x: -14, y: -40, w: 250, h: 190 },
       spl: { x: -276, y: -40, w: 230, h: 150 },
@@ -41,7 +42,7 @@ export class TransferView extends DockedView implements View {
     super(app, 'transferLayout', defaultTransferLayout);
     this.target = new TargetOverlay(app);
     const s = app.settings;
-    this.mag = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: s.magRange[0], yMax: s.magRange[1], yUnit: 'dB', yStep: 6, secondaryLabel: 'Coherence', showNote: true, yLimits: [-120, 120] });
+    this.mag = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: s.magRange[0], yMax: s.magRange[1], yUnit: 'dB', yStep: 6, secondaryLabel: 'Coherence', secondaryBand: [0.62, 1], showNote: true, yLimits: [-120, 120] });
     this.phase = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: -180, yMax: 180, yUnit: 'deg', yStep: 45, yLimits: [-540, 540] });
     // Group delay: how late each frequency arrives (ms), e.g. a sub behind the mains, or a crossover's delay
     this.gd = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: -5, yMax: 30, yUnit: 'ms', yStep: 5, yLimits: [-500, 1000] });

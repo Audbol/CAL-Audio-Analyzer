@@ -30,7 +30,7 @@ await page.getByRole('button', { name: 'Start demo' }).click();
 await page.waitForTimeout(2500);
 
 check(JSON.stringify(await docked()) === '["mag","phase"]', `Transfer tab: default docked order ${JSON.stringify(await docked())}`);
-check((await vis('.dpanel[data-panel="levels"].floating:visible').count()) === 1, 'level meters float by default');
+check((await vis('.dpanel[data-panel="levels"]:visible').count()) === 0, 'the level meter panel starts hidden (the meters are in the status bar)');
 await page.screenshot({ path: `${out}/dock-01-default.png` });
 
 // 1. Rearrange: drag the phase panel's title bar above the magnitude panel
@@ -97,9 +97,6 @@ await page.screenshot({ path: `${out}/dock-01-default.png` });
 
 // 4. Drag a docked panel out of the stack → it floats where dropped
 {
-  await page.locator('.view:visible [data-options]').click(); // panel chips live in the Options panel
-  await page.locator('.view:visible .opt-panel .chip', { hasText: 'Levels' }).click(); // hide the meter so the drop area is clear
-  await page.keyboard.press('Escape');
   const hd = await head('phase').boundingBox();
   await page.mouse.move(hd.x + 100, hd.y + 12);
   await page.mouse.down();

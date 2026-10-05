@@ -211,7 +211,10 @@ export class App {
       this.hostLink?.sendTraces();
     });
     this.scheduleFrame();
-    setInterval(() => this.updateHints(), 700);
+    setInterval(() => {
+      this.updateHints();
+      this.autoDelay();
+    }, 700);
     this.bindKeys();
     if (this.remote) this.initRemoteClient();
     else {
@@ -320,6 +323,8 @@ export class App {
       if (this.settings.splChannel >= nCh) this.settings.splChannel = 0;
       this.rebuildMeasurements();
       this.analysisWorker.restart();
+      this.autoDelayed.clear();
+      this.lowCohSince.clear();
       this.spl = new SplMeter(this.fs, this.settings.splWeighting);
       // A running noise log continues on the new meter (new stream, possibly a new sample rate)
       if (this.logger.running) this.logger.attach(this.spl);
@@ -661,6 +666,44 @@ export class App {
     this.renderGenControls();
   }
   private lastGenType: GeneratorType | null = null;
+
+  /** Mean coherence from 200 Hz to 8 kHz (0–1). */
+  midCoherence(m: Measurement): number {
+    let s = 0;
+    let n = 0;
+    for (let i = 0; i < this.grid.length; i++) {
+      if (this.grid[i] > 200 && this.grid[i] < 8000) {
+        s += m.result.coh[i];
+        n++;
+      }
+    }
+    return n ? s / n : 0;
+  }
+
+  /** Measurements whose delay was looked for automatically (once each, per audio start). */
+  private autoDelayed = new Set<string>();
+  private lowCohSince = new Map<string, number>();
+
+  /**
+   * A transfer function that has never had its delay set and shows low coherence for 2 s: run the delay
+   * finder once by itself, as the first thing anyone would do. Later changes are left to the user.
+   */
+  private autoDelay(): void {
+    if (!this.engine.running || this.busy || this.settings.generator.type === 'off') return;
+    const now = performance.now();
+    for (const m of this.measurements) {
+      if (!m.cfg.enabled || m.cfg.delay !== 0 || !m.tfReady || this.autoDelayed.has(m.cfg.id)) continue;
+      if (this.midCoherence(m) >= 0.6) {
+        this.lowCohSince.delete(m.cfg.id);
+        continue;
+      }
+      const since = this.lowCohSince.get(m.cfg.id) ?? now;
+      this.lowCohSince.set(m.cfg.id, since);
+      if (now - since < 2000) continue;
+      this.autoDelayed.add(m.cfg.id);
+      this.findDelay(m);
+    }
+  }
 
   findDelay(m: Measurement): void {
     if (!this.engine.running) return this.toast('Start the audio engine first', 'warn');
@@ -1701,15 +1744,7 @@ export class App {
       if (lvl && lvl.peak < 0.001 && !e.simulate) out.push({ level: 'warn', text: `${m.cfg.name}: no signal on In ${m.cfg.mic + 1}. Check phantom power, cable and input gain.` });
       if (m.cfg.ref === m.cfg.mic) out.push({ level: 'warn', text: `${m.cfg.name}: mic and reference are the same channel.` });
       if (g.type !== 'off' && m.tfReady && !this.busy) {
-        let s = 0;
-        let n = 0;
-        for (let i = 0; i < this.grid.length; i++) {
-          if (this.grid[i] > 200 && this.grid[i] < 8000) {
-            s += m.result.coh[i];
-            n++;
-          }
-        }
-        const c = n ? s / n : 0;
+        const c = this.midCoherence(m);
         if (c < 0.35 && m.cfg.delay === 0) {
           out.push({ level: 'warn', text: `${m.cfg.name}: very low coherence — the reference delay is probably not set.`, action: { label: 'Find delay', run: () => this.findDelay(m) } });
         } else if (c < 0.6) {
@@ -1721,7 +1756,7 @@ export class App {
     }
     if (this.hostLink?.connected && this.hostLink.clients.length) out.push({ level: 'ok', text: `${this.hostLink.clients.length} remote client${this.hostLink.clients.length > 1 ? 's are' : ' is'} connected and receiving live audio.` });
     if (e.simulate) out.push({ level: 'info', text: 'Demo mode: a virtual loudspeaker in a reverberant room with modes at 47, 94 and 142 Hz. Nothing is played through your speakers.' });
-    if (!this.settings.splCalibrated && this.settings.view === 'spl') out.push({ level: 'info', text: 'SPL readings are in dBFS until you calibrate with a 94 dB or 114 dB calibrator (Tools → Microphones & calibration).' });
+    if (!this.settings.splCalibrated && this.settings.view === 'spl') out.push({ level: 'info', text: 'SPL readings are in dBFS until you calibrate with a 94 dB or 114 dB calibrator (Tools → Setup → Microphones & calibration).' });
     return out;
   }
 
