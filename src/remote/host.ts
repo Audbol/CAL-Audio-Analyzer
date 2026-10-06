@@ -11,7 +11,7 @@ export interface DesktopBridge {
     info(): Promise<unknown>;
   };
   window?: { pin(name: string, on: boolean): Promise<boolean> };
-  /** Native audio (ASIO), desktop app on Windows. */
+  /** Native audio (ASIO, Core Audio, JACK / PipeWire, ALSA), desktop app. */
   nativeAudio?: { available(): Promise<boolean>; connect(): void };
   /** Automatic updates (desktop app). */
   updates?: { state(): Promise<UpdateState>; check(): Promise<UpdateState>; download(): Promise<UpdateState>; setAuto(on: boolean): Promise<UpdateState>; install(): Promise<boolean>; onChange(fn: (s: UpdateState) => void): void };

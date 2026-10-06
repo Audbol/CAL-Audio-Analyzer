@@ -1,7 +1,7 @@
 // Electron main process: runs CAL Audio Analyzer as a standalone desktop application.
 'use strict';
 
-const { app, BrowserWindow, Menu, protocol, session, shell, net, ipcMain, utilityProcess, MessageChannelMain } = require('electron');
+const { app, BrowserWindow, Menu, protocol, session, shell, net, ipcMain, utilityProcess, MessageChannelMain, systemPreferences } = require('electron');
 const { setupUpdater } = require('./updater.cjs');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -77,20 +77,23 @@ function registerServerIpc() {
   });
 }
 
-// Native audio (ASIO on Windows): a utility process runs the native module and the signal generator, and talks
-// to the app page directly over a MessagePort. CAL_NATIVE_TEST=1 enables a virtual test device on any system.
+// Native audio (ASIO on Windows, Core Audio on macOS, JACK / PipeWire and ALSA on Linux): a utility process runs
+// the native module and the signal generator, and talks to the app page directly over a MessagePort.
+// CAL_NATIVE_TEST=1 adds a virtual test device.
 let audioHost = null;
 
+/** The native audio module built for this platform and architecture (none: browser audio only). */
 function nativeAddonPath() {
-  const rel = path.join('native', 'build', 'Release', 'cal_audio.node');
+  const prebuilt = path.join('native', 'prebuilt', `${process.platform}-${process.arch}`, 'cal_audio.node');
+  const local = path.join('native', 'build', 'Release', 'cal_audio.node');
   const candidates = app.isPackaged
-    ? [path.join(process.resourcesPath, 'app.asar.unpacked', rel), path.join(process.resourcesPath, rel)]
-    : [path.join(__dirname, '..', rel)];
+    ? [path.join(process.resourcesPath, 'app.asar.unpacked', prebuilt), path.join(process.resourcesPath, prebuilt)]
+    : [path.join(__dirname, '..', prebuilt), path.join(__dirname, '..', local)];
   return candidates.find((p) => fs.existsSync(p)) || null;
 }
 
 function nativeAudioAvailable() {
-  return (process.platform === 'win32' || process.env.CAL_NATIVE_TEST === '1') && !!nativeAddonPath();
+  return ['win32', 'darwin', 'linux'].includes(process.platform) && !!nativeAddonPath();
 }
 
 function startAudioHost() {
@@ -119,8 +122,12 @@ function registerNativeAudioIpc() {
     return nativeAudioAvailable();
   });
   // Connect the page to the audio host: each side gets one end of a new channel
-  ipcMain.on('native-audio:connect', (e) => {
+  ipcMain.on('native-audio:connect', async (e) => {
     if (!fromApp(e) || !nativeAudioAvailable()) return;
+    // macOS: Core Audio inputs need the microphone permission (asked once; the system remembers the answer)
+    if (process.platform === 'darwin' && systemPreferences.getMediaAccessStatus('microphone') !== 'granted') {
+      await systemPreferences.askForMediaAccess('microphone').catch(() => false);
+    }
     const host = startAudioHost();
     const { port1, port2 } = new MessageChannelMain();
     host.postMessage({ type: 'connect' }, [port2]);

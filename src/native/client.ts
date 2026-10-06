@@ -1,5 +1,5 @@
 /**
- * The app page's connection to the desktop app's native audio host (ASIO): device list, opening a stream,
+ * The app page's connection to the desktop app's native audio host (ASIO, Core Audio, JACK / PipeWire, ALSA): device list, opening a stream,
  * and the stream of captured blocks, which arrive as the same events the browser audio worklet sends.
  */
 import { desktopBridge } from '../remote/host';

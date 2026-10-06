@@ -39,6 +39,7 @@ import type { UpdateState } from './views/about-card';
 import { AnalysisWorkerClient } from './analysis/client';
 import { SplLogger } from './logger';
 import { NativeAudio } from './native/client';
+import { nativeApi, nativeDeviceLabel } from './native/apis';
 import type { NativeDevice, NativeOpenOptions } from './native/protocol';
 import type { MicProfile } from './state';
 import { BUILTIN_WORKSPACES, allWorkspaces, applyWorkspace, captureWorkspace, type Workspace } from './workspaces';
@@ -979,7 +980,7 @@ export class App {
       this.refreshDevices();
       changed = true;
     }
-    // The host's ASIO settings and stream status (Tools → Setup)
+    // The host's native audio settings and stream status (Tools → Setup)
     (this.views.find((v) => v.id === 'tools') as ToolsView | undefined)?.nativeCard.adoptHost(st.native);
     this.renderHostAudio(st);
     if (!changed) return;
@@ -1246,7 +1247,7 @@ export class App {
     });
     this.genControls = h('div', { class: 'gen-controls' });
     this.splMini = h('div', { class: 'spl-mini', title: 'Sound level (click for SPL meter)', onclick: () => this.setView('spl') });
-    // Native audio (ASIO): a lost stream (driver removed, host ended) and status for the Tools card
+    // Native audio: a lost stream (driver removed, host ended) and status for the Tools card
     this.engine.onNativeLost = (reason) => {
       this.toast(`The audio interface stopped: ${reason}`, 'warn');
       this.renderTopState();
@@ -1499,6 +1500,8 @@ export class App {
     this.save();
     if (this.sourceSel.value !== v) this.sourceSel.value = v;
     if (by) this.toast(`Audio source changed by ${by}`, 'info');
+    // The audio interface card follows the driver type (control panel, server-set rate and buffer)
+    (this.views.find((x) => x.id === 'tools') as ToolsView | undefined)?.nativeCard.render();
     // From a remote: start it too (the remote is waiting for live data from the host)
     // A restart while a signal plays keeps it; starting stopped audio (here or for a remote) starts it silent
     if (this.engine.running || by) void this.start({ resumeGenerator: this.engine.running });
@@ -1514,11 +1517,11 @@ export class App {
     return { value: this.sourceSel.value, options };
   }
 
-  /** Native audio (ASIO) on this desktop app: available, its settings and the stream status (for remotes). */
+  /** Native audio (ASIO, Core Audio, JACK / PipeWire, ALSA) on this desktop app: available, its settings and the stream status (for remotes). */
   nativeAvailable = false;
   hostNative(): NativeHostState | undefined {
     if (!this.nativeAvailable) return undefined;
-    return { available: true, settings: { ...this.settings.nativeAudio }, active: !!this.engine.nativeInfo, text: this.nativeStatusText };
+    return { available: true, settings: { ...this.settings.nativeAudio }, active: !!this.engine.nativeInfo, text: this.nativeStatusText, api: this.nativeSelection()?.api };
   }
   /** The native status line as the Tools card shows it (kept by the card). */
   nativeStatusText = '';
@@ -1538,13 +1541,13 @@ export class App {
     (this.views.find((v) => v.id === 'tools') as ToolsView | undefined)?.nativeCard.render();
   }
 
-  /** Open the ASIO driver's own control panel (on the host). */
+  /** Open the driver's own control panel (ASIO; on the host). */
   async openNativePanel(): Promise<void> {
     if (this.remote) {
       void this.sendToHost({ t: 'cmd', cmd: 'nativePanel' });
       return;
     }
-    if (!this.engine.nativeInfo) return this.toast('Start audio with an ASIO driver first.', 'warn');
+    if (!this.engine.nativeInfo) return this.toast('Start audio with the interface’s driver first.', 'warn');
     const ok = await this.engine.native.controlPanel().catch(() => false);
     if (!ok) this.toast('This driver has no control panel.', 'info');
   }
@@ -1588,7 +1591,7 @@ export class App {
     devices
       .filter((d) => d.deviceId && d.deviceId !== 'default')
       .forEach((d, i) => this.sourceSel.append(h('option', { value: d.deviceId }, d.label || `Input device ${i + 1}`)));
-    // Desktop app: native (ASIO) devices
+    // Desktop app: native devices (ASIO, Core Audio, JACK / PipeWire, ALSA)
     if (await NativeAudio.available()) {
       const apis = await this.engine.native.listApis().catch(() => [] as string[]);
       for (const api of apis) {
@@ -1597,9 +1600,10 @@ export class App {
           list = await this.engine.native.devices(api).catch(() => list);
           this.nativeDevices.set(api, list);
         }
-        const g = h('optgroup', { label: api === 'asio' ? 'ASIO (low latency, all channels)' : 'Virtual test interface' });
-        for (const d of list) g.append(h('option', { value: `native:${api}:${d.name}` }, `${api === 'asio' ? 'ASIO: ' : ''}${d.name} · ${d.inputs} in / ${d.outputs} out`));
-        if (!list.length) g.append(h('option', { value: '', disabled: true }, api === 'asio' ? 'No ASIO driver installed' : 'No devices'));
+        const info = nativeApi(api);
+        const g = h('optgroup', { label: info.group });
+        for (const d of list) g.append(h('option', { value: `native:${api}:${d.name}` }, `${nativeDeviceLabel(api, d.name)} · ${d.inputs} in / ${d.outputs} out`));
+        if (!list.length) g.append(h('option', { value: '', disabled: true }, info.none));
         this.sourceSel.append(g);
       }
       // Keep a selected native device listed even if it is missing right now

@@ -40,9 +40,21 @@
           }
         ],
         [
-          "OS!='win'",
+          "OS=='mac'",
           {
+            "defines": ["__MACOSX_CORE__"],
+            "link_settings": {
+              "libraries": ["CoreAudio.framework", "CoreFoundation.framework"]
+            },
             "libraries": ["-lpthread"]
+          }
+        ],
+        [
+          "OS=='linux'",
+          {
+            "sources": ["src/jack_loader.cpp"],
+            "defines": ["__LINUX_ALSA__", "__UNIX_JACK__"],
+            "libraries": ["-lasound", "-lpthread", "-ldl"]
           }
         ]
       ]

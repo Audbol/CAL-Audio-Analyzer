@@ -1,4 +1,5 @@
-// CAL Audio Analyzer native audio I/O (ASIO on Windows) for the desktop app.
+// CAL Audio Analyzer native audio I/O for the desktop app: ASIO on Windows, Core Audio on macOS, JACK (also
+// PipeWire's JACK layer) and ALSA on Linux.
 //
 // The audio callback runs on the driver's thread and never waits for JavaScript:
 //  - output: the generator signal (mono) is taken from a lock-free ring filled ahead by JavaScript and written
@@ -28,6 +29,12 @@
 #if defined(__WINDOWS_ASIO__)
 #include "asio.h"
 #endif
+#if defined(__LINUX_ALSA__)
+#include <alsa/asoundlib.h>
+#endif
+
+// JACK is loaded at run time (jack_loader.cpp): true when libjack or pipewire-jack is installed
+bool calJackLoad();
 
 namespace {
 
@@ -178,16 +185,35 @@ RtAudio::Api apiByName(const std::string& name) {
 #if defined(__WINDOWS_ASIO__)
   if (name == "asio") return RtAudio::WINDOWS_ASIO;
 #endif
+#if defined(__MACOSX_CORE__)
+  if (name == "core") return RtAudio::MACOSX_CORE;
+#endif
+#if defined(__UNIX_JACK__)
+  if (name == "jack" && calJackLoad()) return RtAudio::UNIX_JACK;
+#endif
+#if defined(__LINUX_ALSA__)
+  if (name == "alsa") return RtAudio::LINUX_ALSA;
+#endif
   (void)name;
   return RtAudio::RTAUDIO_DUMMY;
 }
 
+// apis(): the native audio APIs this build offers on this computer, in order of preference
 Napi::Value Apis(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   Napi::Array out = Napi::Array::New(env);
   uint32_t i = 0;
 #if defined(__WINDOWS_ASIO__)
   out.Set(i++, "asio");
+#endif
+#if defined(__MACOSX_CORE__)
+  out.Set(i++, "core");
+#endif
+#if defined(__UNIX_JACK__)
+  if (calJackLoad()) out.Set(i++, "jack");
+#endif
+#if defined(__LINUX_ALSA__)
+  out.Set(i++, "alsa");
 #endif
   if (testEnabled()) out.Set(i++, "test");
   return out;
@@ -471,7 +497,15 @@ Napi::Value ControlPanel(const Napi::CallbackInfo& info) {
   return Napi::Boolean::New(env, false);
 }
 
+#if defined(__LINUX_ALSA__)
+// ALSA prints its probing (missing cards, no PulseAudio, …) to stderr: errors reach the app through RtAudio instead
+void alsaQuiet(const char*, int, const char*, int, const char*, ...) {}
+#endif
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
+#if defined(__LINUX_ALSA__)
+  snd_lib_error_set_handler(&alsaQuiet);
+#endif
   exports.Set("apis", Napi::Function::New(env, Apis));
   exports.Set("devices", Napi::Function::New(env, Devices));
   exports.Set("open", Napi::Function::New(env, Open));

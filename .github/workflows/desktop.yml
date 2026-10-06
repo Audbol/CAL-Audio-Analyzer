@@ -52,17 +52,29 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      # Native audio (ASIO) module, Windows only: build it, check it loads, and run its tests on the
-      # virtual interface (the same code path an ASIO driver uses)
-      - name: Build native audio module (ASIO)
-        if: runner.os == 'Windows'
+      # Native audio module (ASIO on Windows, Core Audio on macOS, JACK / PipeWire and ALSA on Linux): build it,
+      # check it loads and lists its APIs, and run its tests on the virtual interface (the same code path a real
+      # driver uses). On Linux, JACK is loaded at run time, so only its headers are needed here.
+      - name: Linux audio headers (ALSA, JACK) and a JACK server for the tests
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y libasound2-dev libjack-jackd2-dev jackd2
+      - name: Build native audio module
         run: npm run build:native
       - name: Test native audio module
-        if: runner.os == 'Windows'
         shell: bash
         run: |
-          node -e "const a=require('./native/build/Release/cal_audio.node'); console.log('APIs', a.apis(), 'RtAudio', a.version, 'ASIO drivers', a.devices('asio'))"
+          node -e "const a=require('./native/build/Release/cal_audio.node'); console.log('APIs', a.apis(), 'RtAudio', a.version); for (const api of a.apis()) { try { console.log(api, a.devices(api).map((d) => d.name)); } catch (e) { console.log(api, e.message); } }"
+          # Linux: stream through a real JACK server (dummy driver, no sound card needed)
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            jackd --no-realtime -d dummy -r 48000 -p 256 > jackd.log 2>&1 &
+            sleep 3
+            export CAL_JACK_TEST=1
+          fi
           CAL_NATIVE_TEST=1 npx vitest run tests/native.test.ts
+      # macOS: the Intel download gets its own module (the runner is Apple Silicon; clang builds both)
+      - name: Native audio module for Intel Macs
+        if: runner.os == 'macOS'
+        run: npx node-gyp rebuild --directory native --arch=x64 && node scripts/stage-native.mjs x64
       # Code signing happens only when its secrets are set (see docs/signing.md); without them the builds are
       # unsigned, as before.
       - name: Build desktop app

@@ -101,6 +101,38 @@ await page.keyboard.press('Enter');
 await page.waitForTimeout(1500);
 check(await page.evaluate(() => window.calApp.engine.running && !window.calApp.engine.nativeInfo && window.calApp.engine.simulate), 'back to the demo (browser audio path)');
 
+// Linux: a real JACK server (CAL_JACK_TEST=1; CI runs one with the dummy driver). PipeWire offers the same
+// interface through pipewire-jack.
+if (process.env.CAL_JACK_TEST === '1') {
+  // Fresh device lists (JACK is listed while no native stream is open)
+  await page.evaluate(() => window.calApp.refreshDevices());
+  const jack = await page
+    .waitForFunction(() => [...document.querySelectorAll('select.source option')].find((o) => o.value.startsWith('native:jack:'))?.value, null, { timeout: 10000 })
+    .then((h) => h.jsonValue())
+    .catch(() => null);
+  const groups = await page.$$eval('select.source optgroup', (gs) => gs.map((g) => g.label));
+  check(!!jack && groups.some((g) => g.startsWith('JACK / PipeWire')), `JACK / PipeWire devices in the source menu (${groups.join(', ')})`);
+  if (jack) {
+    await page.selectOption('select.source', jack);
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => window.calApp.engine.nativeInfo, null, { timeout: 10000 }).catch(() => undefined);
+    const j = await page.evaluate(() => ({ info: window.calApp.engine.nativeInfo, label: window.calApp.engine.deviceLabel, gen: window.calApp.settings.generator.type }));
+    check(j.info && j.info.sampleRate === 48000 && /^JACK: /.test(j.label), `streams through JACK at the server's rate (${j.label}, ${j.info?.sampleRate} Hz, buffer ${j.info?.bufferFrames})`);
+    check(j.gen === 'off', 'and starts silent');
+    await page.evaluate(() => window.calApp.openTools('setup'));
+    await page.waitForTimeout(300);
+    const c = await page.evaluate(() => ({
+      rateDisabled: !document.querySelector('select[data-native="rate"]'),
+      note: !!document.querySelector('[data-native="server-format"]'),
+      panel: getComputedStyle(document.querySelector('.native-card .btn')).display,
+    }));
+    check(c.rateDisabled && c.note && c.panel === 'none', `the card says the server sets rate and buffer, and has no driver panel (${JSON.stringify(c)})`);
+    await page.locator('.native-card').screenshot({ path: 'test-results/native-04-jack.png' });
+    await page.keyboard.press('Enter');
+    await page.selectOption('select.source', '__demo');
+  }
+}
+
 check(errors.length === 0, `no console errors ${errors.length ? JSON.stringify(errors.slice(0, 5)) : ''}`);
 await app.close();
 process.exit(failed ? 1 : 0);

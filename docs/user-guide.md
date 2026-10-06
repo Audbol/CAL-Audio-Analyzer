@@ -151,7 +151,16 @@ Every feature in this guide works in the demo room. To open the welcome window a
 6. Select **Start measuring**. Your browser or system may ask for microphone permission. Allow it.
 7. Choose your audio interface in the **input source** list in the top bar.
 
-**Windows and ASIO:** the Windows app can use your interface's ASIO driver. Choose *ASIO: your interface name* as the input source. This gives you every channel and the lowest latency. Set the sample rate and buffer size in **Tools**, under **Audio interface (ASIO)**.
+**Native drivers (desktop app):** the desktop app can talk to your interface directly instead of through the browser's audio. You get every input and output channel, the lowest latency, and no system mixing or resampling. Choose the driver in the **input source** list:
+
+- **Windows:** *ASIO: your interface*. **Driver control panel** opens the driver's own settings.
+- **macOS:** *Core Audio: your interface*. macOS asks once for microphone permission; allow it. An interface with inputs and outputs is one device. To use separate devices together, such as the Mac's built-in microphone and speakers, combine them as an *Aggregate Device* in Audio MIDI Setup and choose that.
+- **Linux:** *JACK: …* for **PipeWire** or JACK, the low-latency route, or *ALSA: …* to talk to the interface directly.
+  - JACK needs PipeWire's JACK support (the *pipewire-jack* package, installed by default on many distributions) or a JACK server.
+  - With JACK / PipeWire, the server sets the sample rate and buffer for every program and the app uses them. For example, `pw-metadata -n settings 0 clock.force-rate 48000` sets PipeWire to 48 kHz.
+  - ALSA can't open an interface that PipeWire or PulseAudio is already using; use JACK then.
+
+Set the sample rate, buffer size and safety margin in **Tools → Setup → Audio interface (native driver)**.
 
 ## 6. Set up and calibrate microphones
 
@@ -466,9 +475,9 @@ Walk around the venue with a phone or tablet while the computer and audio interf
 
 **Control the computer from the phone:** with *Allow remote control* on (on the computer, in the Remote access card), the phone can change the setup like the computer itself. Open the settings sheet (the sliders button at the top on a phone, or the top bar on a tablet):
 
-- **Measurement host** lists the computer's audio sources: the demo room, its inputs and, in the desktop app, its ASIO drivers. Choosing one switches the computer to it.
+- **Measurement host** lists the computer's audio sources: the demo room, its inputs and, in the desktop app, its native drivers (ASIO, Core Audio, JACK / PipeWire, ALSA). Choosing one switches the computer to it.
 - **Start host audio** / **Stop host audio** starts or stops the computer's audio. The top-left button only connects or disconnects the phone. Connecting, reconnecting after a dropout or reloading the page never starts the computer's audio or its generator: only **Start host audio** does, and the generator then stays off until someone turns it on.
-- The generator, measurements, mics and calibration, sweeps, target curves and the music player are shared as before. In the desktop app, **Tools → Setup → Audio interface on the host** sets the computer's ASIO sample rate, buffer and safety margin.
+- The generator, measurements, mics and calibration, sweeps, target curves and the music player are shared as before. In the desktop app, **Tools → Setup → Audio interface on the host** sets the computer's native-driver sample rate, buffer and safety margin.
 
 ### If it doesn't connect
 

@@ -69,16 +69,16 @@ export interface HostStatus {
   analysis?: AnalysisSettings;
   /** Music generator playlist (position rounded to 0.5 s). */
   playlist?: PlaylistState;
-  /** The host's audio sources (demo, browser devices, ASIO drivers) and the selected one (older hosts don't send them). */
+  /** The host's audio sources (demo, browser devices, native drivers) and the selected one (older hosts don't send them). */
   source?: { value: string; options: SourceOption[] };
-  /** The host's native audio (ASIO) settings and stream status, when the host is the desktop app. */
+  /** The host's native audio settings and stream status, when the host is the desktop app. */
   native?: NativeHostState;
 }
 
 export interface SourceOption {
   value: string;
   label: string;
-  /** Option group (e.g. the ASIO drivers). */
+  /** Option group (e.g. ASIO or Core Audio devices). */
   group?: string;
   disabled?: boolean;
 }
@@ -96,6 +96,8 @@ export interface NativeHostState {
   active: boolean;
   /** The status line as the host shows it. */
   text: string;
+  /** The native API of the selected source (asio, core, jack, alsa), if it is one (older hosts don't send it). */
+  api?: string;
 }
 
 export interface AnalysisSettings {
@@ -139,9 +141,9 @@ export type RemoteCommand =
   | { t: 'cmd'; cmd: 'setSource'; value: string }
   /** Stop the host's audio. */
   | { t: 'cmd'; cmd: 'stop' }
-  /** Change the host's native audio (ASIO) settings. */
+  /** Change the host's native audio settings. */
   | { t: 'cmd'; cmd: 'setNative'; native: Partial<NativeSettings> }
-  /** Open the ASIO driver's control panel on the host. */
+  /** Open the driver's control panel on the host (ASIO). */
   | { t: 'cmd'; cmd: 'nativePanel' };
 
 /** Remote → hub: what this device wants streamed. */

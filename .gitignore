@@ -6,3 +6,4 @@ test-results/
 release/
 dist-electron/
 native/build/
+native/prebuilt/

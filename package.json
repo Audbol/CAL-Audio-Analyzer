@@ -24,7 +24,7 @@
     "bench:remote": "vite build && node tests/e2e/perf.mjs",
     "test:stress": "vite build && node tests/e2e/stress.mjs",
     "build:host": "vite build -c vite.native.config.ts",
-    "build:native": "node-gyp rebuild --directory native",
+    "build:native": "node-gyp rebuild --directory native && node scripts/stage-native.mjs",
     "test:native": "vite build && vite build -c vite.native.config.ts && vitest run tests/native.test.ts && xvfb-run -a node tests/e2e/electron-native.mjs"
   },
   "devDependencies": {
@@ -58,7 +58,7 @@
       "build/icon.png",
       "package.json",
       "dist-electron/**/*",
-      "native/build/Release/cal_audio.node",
+      "native/prebuilt/**/cal_audio.node",
       "electron/updater.cjs"
     ],
     "asar": true,
@@ -127,7 +127,7 @@
       "icon": "build/icon.png"
     },
     "asarUnpack": [
-      "native/build/Release/*.node",
+      "native/prebuilt/**/*.node",
       "dist-electron/**/*"
     ],
     "publish": [

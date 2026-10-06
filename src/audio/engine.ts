@@ -1,3 +1,4 @@
+import { nativeDeviceLabel } from '../native/apis';
 import processorUrl from './processor.ts?worker&url';
 import { RingBuffer } from '../dsp/ring';
 import type { GeneratorConfig, ProcessorEvent, ProcessorMessage } from './protocol';
@@ -8,7 +9,7 @@ export interface EngineOptions {
   deviceId?: string;
   simulate: boolean;
   sampleRate?: number;
-  /** Desktop app: open a native (ASIO) device instead of the browser's audio. */
+  /** Desktop app: open a native device (ASIO, Core Audio, JACK / PipeWire, ALSA) instead of the browser's audio. */
   native?: NativeOpenOptions;
 }
 
@@ -43,7 +44,7 @@ export class AudioEngine {
   protected listeners = new Set<(blocks: Float32Array[], gen: Float32Array) => void>();
   protected playWaiters = new Map<number, { start?: number; resolve: (r: { start: number; end: number }) => void; reject?: (e: Error) => void }>();
   protected playId = 1;
-  /** Native audio (desktop app, ASIO): the connection to the audio host and the open stream. */
+  /** Native audio (desktop app): the connection to the audio host and the open stream. */
   nativeLink: NativeAudio | null = null;
   nativeInfo: NativeStreamInfo | null = null;
   /** Called when a native stream is lost (driver removed, host process ended). */
@@ -156,7 +157,7 @@ export class AudioEngine {
     if (ctx.state !== 'running') await ctx.resume();
   }
 
-  /** Open a native (ASIO) device through the desktop app's audio host. */
+  /** Open a native device (ASIO, Core Audio, JACK / PipeWire, ALSA) through the desktop app's audio host. */
   private async startNative(opts: NativeOpenOptions): Promise<void> {
     this.simulate = false;
     this.musicPos = null;
@@ -164,7 +165,7 @@ export class AudioEngine {
     this.inputs = Array.from({ length: info.inputs }, () => new RingBuffer(RING_SIZE));
     this.levels = Array.from({ length: info.inputs }, () => ({ peak: 0, rms: 0, clipped: false }));
     this.gen.clear();
-    this.deviceLabel = opts.api === 'asio' ? `ASIO: ${info.name}` : info.name;
+    this.deviceLabel = nativeDeviceLabel(opts.api, info.name);
     this.nativeInfo = info;
   }
 

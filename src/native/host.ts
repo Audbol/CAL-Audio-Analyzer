@@ -1,5 +1,6 @@
 /**
- * Native audio host: runs in an Electron utility process next to the native audio module (ASIO on Windows).
+ * Native audio host: runs in an Electron utility process next to the native audio module (ASIO on Windows, Core Audio on macOS,
+ * JACK / PipeWire and ALSA on Linux).
  * It generates the measurement signal (the same generator as the browser audio worklet), keeps the driver's
  * output supplied a little ahead, and streams the captured inputs together with the generator signal that was
  * actually played (the internal reference) to the app page in 1024-frame blocks, like the audio worklet does.

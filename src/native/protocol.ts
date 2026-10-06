@@ -1,4 +1,4 @@
-/** Messages between the app page and the native audio host (desktop app: ASIO). */
+/** Messages between the app page and the native audio host (desktop app: ASIO, Core Audio, JACK / PipeWire, ALSA). */
 import type { ProcessorEvent, ProcessorMessage } from '../audio/protocol';
 
 export interface NativeDevice {

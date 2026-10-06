@@ -12,7 +12,7 @@ contextBridge.exposeInMainWorld('calDesktop', {
     info: () => ipcRenderer.invoke('server:info'),
   },
   nativeAudio: {
-    /** Whether native audio (ASIO) can be used on this computer. */
+    /** Whether native audio (ASIO, Core Audio, JACK / PipeWire, ALSA) can be used on this computer. */
     available: () => ipcRenderer.invoke('native-audio:available'),
     /** Ask for a connection to the audio host; the port arrives as a window message 'cal-native-audio-port'. */
     connect: () => ipcRenderer.send('native-audio:connect'),

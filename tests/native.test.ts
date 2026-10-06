@@ -16,6 +16,7 @@ interface Addon {
   write(a: Float32Array): number;
   setOutputs(c: number[]): void;
   apis(): string[];
+  devices(api: string): { id: number; name: string; inputs: number; outputs: number; sampleRates: number[]; preferredRate: number }[];
 }
 
 describe.skipIf(!built)('native audio module', () => {
@@ -50,5 +51,44 @@ describe.skipIf(!built)('native audio module', () => {
     expect(last!.underruns).toBeGreaterThan(0);
     // Every generator impulse actually played appears on the loopback input exactly 480 samples later
     for (const i of refs) expect(rows[i + 480][0]).toBe(1);
+  });
+
+  it('offers the platform’s native API (ASIO, Core Audio, or JACK / PipeWire and ALSA)', () => {
+    const a = createRequire(import.meta.url)(path) as Addon;
+    const apis = a.apis();
+    if (process.platform === 'win32') expect(apis).toContain('asio');
+    if (process.platform === 'darwin') expect(apis).toContain('core');
+    if (process.platform === 'linux') expect(apis).toContain('alsa');
+    // Listing never throws, even with no hardware or server
+    for (const api of apis) expect(Array.isArray(a.devices(api))).toBe(true);
+  });
+
+  // A JACK server must be running (CI starts one with the dummy driver): CAL_JACK_TEST=1
+  it.skipIf(process.env.CAL_JACK_TEST !== '1')('streams through JACK / PipeWire at the server’s rate', async () => {
+    const a = createRequire(import.meta.url)(path) as Addon;
+    expect(a.apis()).toContain('jack');
+    const dev = a.devices('jack').find((d) => d.inputs > 0 && d.outputs > 0)!;
+    expect(dev).toBeTruthy();
+    const info = a.open({ api: 'jack', device: dev.id, sampleRate: dev.preferredRate, bufferFrames: 256 }, () => undefined) as { sampleRate: number; inputs: number; bufferFrames: number };
+    expect(info.sampleRate).toBe(dev.preferredRate);
+    expect(info.inputs).toBe(dev.inputs);
+    a.setOutputs([0]);
+    a.write(new Float32Array(info.sampleRate / 2).fill(0.25));
+    a.start();
+    let frames = 0;
+    let consumed = 0;
+    const t0 = Date.now();
+    while (Date.now() - t0 < 800) {
+      await new Promise((r) => setTimeout(r, 20));
+      const r = a.read();
+      frames += r.frames;
+      consumed = (r as unknown as { consumed: number }).consumed;
+      // Every captured frame carries the inputs and the generator sample played with them
+      expect(r.data.length).toBe(r.frames * (info.inputs + 1));
+    }
+    a.close();
+    // About 0.8 s of audio arrived, and the generator signal written was played
+    expect(frames).toBeGreaterThan(info.sampleRate * 0.5);
+    expect(consumed).toBe(info.sampleRate / 2);
   });
 });

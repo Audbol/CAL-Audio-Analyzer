@@ -2,10 +2,11 @@ import type { App } from '../app';
 import { h, icon, select } from '../ui/dom';
 import { NativeAudio } from '../native/client';
 import type { NativeHostState, NativeSettings } from '../remote/protocol';
+import { nativeApi } from '../native/apis';
 
 /**
- * Tools card for native audio (desktop app, ASIO): sample rate, driver buffer size, the generator safety
- * margin, the driver's own control panel and live stream status. Hidden where native audio isn't available.
+ * Tools card for native audio (desktop app: ASIO, Core Audio, JACK / PipeWire, ALSA): sample rate, driver
+ * buffer size, the generator safety margin, the driver's own control panel (ASIO) and live stream status. Hidden where native audio isn't available.
  * On a remote device it shows and changes the host's settings (when the host is the desktop app).
  */
 export class NativeCard {
@@ -21,13 +22,13 @@ export class NativeCard {
   constructor(private app: App) {
     this.panelBtn = h('button', { class: 'btn small', title: 'Open the driver’s own settings (buffer size, clock source, routing)', onclick: () => void app.openNativePanel() }, icon('settings', 14), 'Driver control panel');
     this.el.append(
-      h('h4', {}, icon('sliders', 15), app.remote ? ' Audio interface on the host (ASIO)' : ' Audio interface (ASIO)'),
+      h('h4', {}, icon('sliders', 15), app.remote ? ' Audio interface on the host' : ' Audio interface (native driver)'),
       h(
         'p',
         { class: 'dim small' },
         app.remote
-          ? 'The measurement host’s ASIO settings. Choose its ASIO driver in the source menu (Measurement host). Changes reopen the host’s audio stream.'
-          : 'Choose an ASIO driver as the input source (top left) for the lowest latency and every input and output channel of your interface. The generator’s own signal stays sample-aligned with the inputs as the internal reference.',
+          ? 'The measurement host’s native audio settings. Choose its driver in the source menu (Measurement host). Changes reopen the host’s audio stream.'
+          : 'Choose your interface’s native driver as the input source (top left): ASIO on Windows, Core Audio on macOS, JACK / PipeWire or ALSA on Linux. You get every input and output channel and the lowest latency, and the generator’s own signal stays sample-aligned with the inputs as the internal reference.',
       ),
       this.controls,
       this.status,
@@ -45,12 +46,22 @@ export class NativeCard {
     return this.app.remote ? (this.host?.settings ?? { sampleRate: 48000, bufferFrames: 0, safetyMs: 80 }) : this.app.settings.nativeAudio;
   }
 
+  /** The API of the selected native source (here, or the host's). */
+  private get api(): string {
+    return (this.app.remote ? this.host?.api : this.app.nativeSelection()?.api) ?? '';
+  }
+
   /** Build the controls from the current settings. */
   render(): void {
     const s = this.settings;
+    const info = nativeApi(this.api);
+    // ASIO drivers have their own settings window; JACK / PipeWire set the rate and buffer for every program
+    this.panelBtn.style.display = info.controlPanel ? '' : 'none';
     const set = (patch: Partial<NativeSettings>) => this.app.setNative(patch);
-    this.controls.replaceChildren(
-      h(
+    // JACK / PipeWire: the server's rate and buffer (shown in the status line below), not settings of the app
+    const format = info.serverFormat
+      ? h('p', { class: 'dim small', dataset: { native: 'server-format' } }, 'Sample rate and buffer: set by JACK / PipeWire for every program (the status below shows them). Change them in the server’s settings, e.g. pw-metadata -n settings 0 clock.force-rate 48000 for PipeWire.')
+      : h(
         'div',
         { class: 'row gap8 wrap' },
         h('span', {}, 'Sample rate'),
@@ -62,7 +73,9 @@ export class NativeCard {
           (v) => set({ bufferFrames: v }),
           { title: 'Driver buffer size. Measurements don’t need a small buffer; larger is more robust.', dataset: { native: 'buffer' } },
         ),
-      ),
+      );
+    this.controls.replaceChildren(
+      format,
       h(
         'div',
         { class: 'row gap8 wrap' },
@@ -77,10 +90,10 @@ export class NativeCard {
     this.update();
   }
 
-  /** Remote: the host's native state from its status (the card shows only when the host has ASIO). */
+  /** Remote: the host's native state from its status (the card shows only when the host has native audio). */
   adoptHost(st: NativeHostState | undefined): void {
     if (!this.app.remote) return;
-    const key = JSON.stringify(st?.settings ?? null) + (st?.available ?? false);
+    const key = JSON.stringify(st?.settings ?? null) + (st?.available ?? false) + (st?.api ?? '');
     this.host = st ?? null;
     this.el.style.display = st?.available ? '' : 'none';
     if (key !== this.hostKey) {
@@ -108,7 +121,7 @@ export class NativeCard {
       text = `${info.name} · ${info.sampleRate / 1000} kHz · buffer ${info.bufferFrames} (${ms(info.bufferFrames)}) · ${info.inputs} in / ${info.outputs} out · driver latency ${ms(info.latency)}`;
       if (st) text += ` · generator ready ${st.queuedMs.toFixed(0)} ms · dropouts ${st.underruns}${st.overruns ? ` · input overruns ${st.overruns}` : ''}${st.xruns ? ` · driver xruns ${st.xruns}` : ''}`;
       if (st && st.underruns > this.lastUnderruns) {
-        if (this.lastUnderruns === 0) this.app.toast('The generator signal had a dropout. If it repeats, raise the safety margin (Tools → Audio interface).', 'warn');
+        if (this.lastUnderruns === 0) this.app.toast('The generator signal had a dropout. If it repeats, raise the safety margin (Tools → Setup → Audio interface).', 'warn');
         this.lastUnderruns = st.underruns;
       }
       if (st && st.underruns < this.lastUnderruns) this.lastUnderruns = st.underruns;
