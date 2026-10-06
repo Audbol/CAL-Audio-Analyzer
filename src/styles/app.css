@@ -532,7 +532,7 @@ input.name:hover {
   flex-shrink: 0;
 }
 .delay-row input.num {
-  width: 60px;
+  width: 64px;
   min-height: 24px;
   padding: 2px 5px;
 }
