@@ -260,6 +260,56 @@ if (want('console')) {
   await page.locator('select[data-eq-console]').selectOption('generic');
 }
 
+// --- 9. Microphone inventory: a measurement names what it measures and picks its mic
+if (want('inventory')) {
+  await page.evaluate(() => window.calApp.setView('transfer'));
+  await page.evaluate(async () => { if (!window.calApp.engine.running) await window.calApp.start(); });
+  // Two mics in the inventory, calibrated differently
+  await page.evaluate(() => {
+    const s = window.calApp.settings;
+    s.mics = [
+      { id: 'mA', name: 'M30 #1', model: 'M30', channel: -1, micCal: null, splOffset: 110, splCalibrated: true },
+      { id: 'mB', name: 'M30 #2', model: 'M30', channel: -1, micCal: null, splOffset: 120, splCalibrated: true },
+    ];
+    window.calApp.syncCal();
+    window.calApp.renderMeasurements();
+  });
+  const n0 = await page.evaluate(() => window.calApp.settings.measurements.length);
+  await page.locator('[data-add-measurement]').click();
+  await page.waitForSelector('.meas-modal');
+  await page.locator('[data-add-meas="name"]').fill('FOH left');
+  await page.locator('[data-add-meas="input"]').selectOption('0');
+  await page.locator('[data-add-meas="mic"]').selectOption('mA');
+  await page.locator('[data-add-meas="add"]').click();
+  await page.waitForTimeout(300);
+  let st = await page.evaluate(() => { const a = window.calApp; const m = a.settings.measurements.at(-1); return { n: a.settings.measurements.length, name: m.name, input: m.mic, micId: m.micId, off: a.splOffsetFor(m.mic), others: a.settings.measurements.filter((x) => x.mic === m.mic).map((x) => x.micId) }; });
+  check(st.n === n0 + 1 && st.name === 'FOH left' && st.input === 0 && st.micId === 'mA', `Add: name, input and inventory mic (${JSON.stringify(st)})`);
+  check(st.off === 110 && st.others.every((x) => x === 'mA'), 'its input uses that mic’s calibration (and every measurement on that input shows it)');
+  // Swap the mic on the measurement card
+  const id = await page.evaluate(() => window.calApp.settings.measurements.at(-1).id);
+  await page.locator(`[data-meas-mic="${id}"]`).selectOption('mB');
+  st = await page.evaluate(() => { const a = window.calApp; return { off: a.splOffsetFor(0), a: a.settings.mics[0].channel, b: a.settings.mics[1].channel }; });
+  check(st.off === 120 && st.b === 0 && st.a === -1, `choosing another mic on the card swaps the calibration (${JSON.stringify(st)})`);
+  // Move the measurement to another input: its mic goes with it
+  await page.locator(`[data-meas-input="${id}"]`).selectOption('1');
+  st = await page.evaluate(() => { const a = window.calApp; const m = a.settings.measurements.find((x) => x.mic === 1 && x.name === 'FOH left'); return { mic: m?.micId, ch: a.settings.mics[1].channel, off: a.splOffsetFor(1) }; });
+  check(st.mic === 'mB' && st.ch === 1 && st.off === 120, `the mic follows the measurement to its new input (${JSON.stringify(st)})`);
+  // A mic is in one place only
+  const first = await page.evaluate(() => window.calApp.settings.measurements[0].id);
+  await page.locator(`[data-meas-mic="${first}"]`).selectOption('mB');
+  st = await page.evaluate(() => { const a = window.calApp; return { first: a.settings.measurements[0].micId, foh: a.settings.measurements.find((x) => x.name === 'FOH left').micId ?? '' }; });
+  check(st.first === 'mB' && st.foh !== 'mB', `a mic chosen elsewhere leaves its old measurement (${JSON.stringify(st)})`);
+  await page.screenshot({ path: `${out}/feat7-08-inventory.png` });
+  // Tools: the inventory shows which measurement uses each mic
+  await page.evaluate(() => window.calApp.openTools('setup'));
+  await page.waitForTimeout(300);
+  const used = await page.locator('.mics-card .mic-row[data-mic-id="mB"] .mic-used').innerText();
+  check(used.includes(await page.evaluate(() => window.calApp.settings.measurements[0].name)), `the inventory shows where each mic is used (${used})`);
+  await page.locator('.mics-card').screenshot({ path: `${out}/feat7-09-inventory-card.png` });
+  // Clean up: back to one measurement
+  await page.evaluate(() => { const a = window.calApp; for (const m of [...a.settings.measurements.slice(1)]) a.removeMeasurement(m.id); a.settings.mics = []; a.syncCal(); a.save(); a.setView('transfer'); });
+}
+
 // --- 6. Trace rows stay inside the sidebar on narrow screens and with larger text
 if (want('traces')) {
   await page.evaluate(() => {
@@ -290,6 +340,20 @@ if (want('traces')) {
   await page.evaluate(() => (document.documentElement.style.fontSize = ''));
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.screenshot({ path: `${out}/feat7-06-traces.png`, clip: { x: 0, y: 0, width: 300, height: 600 } });
+}
+
+// --- 10. Older setups: a measurement used the mic set to its input; it now names that mic
+if (want('migrate')) {
+  await page.evaluate(() => {
+    const raw = JSON.parse(localStorage.getItem('cal-analyzer-settings-v1'));
+    raw.mics = [{ id: 'old1', name: 'Old mic', channel: raw.measurements[0].mic, micCal: null, splOffset: 105, splCalibrated: true }];
+    for (const m of raw.measurements) delete m.micId;
+    localStorage.setItem('cal-analyzer-settings-v1', JSON.stringify(raw));
+  });
+  await page.reload();
+  await page.waitForTimeout(1500);
+  const mig = await page.evaluate(() => ({ micId: window.calApp.settings.measurements[0].micId, mics: window.calApp.settings.mics.length }));
+  check(mig.micId === 'old1' && mig.mics === 1, `older setups keep their mic, now chosen from the inventory (${JSON.stringify(mig)})`);
 }
 
 check(errors.length === 0, `no console errors ${errors.join(' | ')}`);

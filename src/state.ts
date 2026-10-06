@@ -35,10 +35,17 @@ export interface RemoteServerSettings {
 }
 
 /** A measurement microphone: the input it is plugged into, its correction file and its SPL calibration. */
+/**
+ * A measurement mic in the inventory: set up once (correction file, SPL calibration) and chosen for a
+ * measurement. It follows the input of the measurement that uses it.
+ */
 export interface MicProfile {
   id: string;
   name: string;
-  /** Input channel the mic is connected to (−1 = not connected). */
+  /** Model and serial number, for the inventory and reports (optional). */
+  model?: string;
+  serial?: string;
+  /** Input channel the mic is plugged into now (−1 = not connected); set by the measurement that uses it. */
   channel: number;
   /** Frequency-response correction file supplied with the mic. */
   micCal: MicCalibration | null;
@@ -56,6 +63,8 @@ export interface MeasurementConfig {
   color: string;
   /** Input channel index for the measurement microphone. */
   mic: number;
+  /** The microphone from the inventory used for this measurement (its calibration applies). */
+  micId?: string;
   /** Input channel index for the reference, or GEN_CHANNEL for the internal generator reference. */
   ref: number;
   /** Delay applied to the reference, in samples. */
@@ -316,6 +325,12 @@ export function loadSettings(): Settings {
     // Before 1.9 there was one calibration for everything: it becomes the first mic, on the SPL meter's input
     if (!Array.isArray(s.mics)) {
       s.mics = s.splCalibrated || s.micCal ? [{ id: 'mic1', name: 'Mic 1', channel: s.splChannel ?? 0, micCal: s.micCal ?? null, splOffset: s.splOffset ?? 0, splCalibrated: !!s.splCalibrated }] : [];
+    }
+    // Before 2.0.2 a measurement used whichever mic was set to its input: it now names that mic
+    for (const m of s.measurements ?? []) {
+      if (m.micId) continue;
+      const mic = s.mics.find((x) => x.channel === m.mic);
+      if (mic) m.micId = mic.id;
     }
     return { ...d, ...s, generator: { ...d.generator, ...(s.generator ?? {}) }, remoteServer: { ...d.remoteServer, ...(s.remoteServer ?? {}) }, playlist: { ...d.playlist, ...(s.playlist ?? {}) }, session: { ...d.session, ...(s.session ?? {}) }, room: { ...d.room, ...(s.room ?? {}) }, nativeAudio: { ...d.nativeAudio, ...(s.nativeAudio ?? {}) }, watermark: { ...d.watermark, ...(s.watermark ?? {}) }, waterfallView: { ...d.waterfallView, ...(s.waterfallView ?? {}) }, crossover: { ...d.crossover, ...(s.crossover ?? {}) } } as Settings;
   } catch {

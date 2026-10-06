@@ -151,17 +151,30 @@ Every feature in this guide works in the demo room. To open the welcome window a
 
 ## 6. Set up and calibrate microphones
 
-Set up each measurement microphone once. The app then reads every microphone correctly, even with different preamp gains.
+Your microphones form an **inventory**: set up each one once (its correction file and SPL calibration), then choose it for a measurement. The app then reads every microphone correctly, even with different preamp gains.
 
-![The Microphones & calibration card in Tools. One microphone is set up on In 1 and is calibrated.](guide/mics.png)
+![The Microphones (inventory) card in Tools. One microphone is used by a measurement on In 1 and is calibrated.](guide/mics.png)
 
-### Add a microphone
+### Add a microphone to the inventory
 
-1. Open the **Tools** tab (press 9).
-2. In **Microphones & calibration**, select **Add microphone**.
-3. Type a name, for example "Front of house mic".
-4. Choose the input it is plugged into, for example **In 1**.
-5. If your microphone came with a calibration file, select **Load file…** and choose it. The app reads TXT, CAL, FRD and CSV files.
+1. Open the **Tools** tab (press 9), then **Setup**.
+2. In **Microphones (inventory)**, select **Add microphone**.
+3. Type a name, for example "M30 #1", and if you like its model and serial number.
+4. If your microphone came with a calibration file, select **Load file…** and choose it. The app reads TXT, CAL, FRD and CSV files.
+
+**Export inventory** saves the whole inventory (names, correction files, calibrations) as a file; **Import…** adds it on another computer.
+
+### Add a measurement and choose its mic
+
+A measurement is named after what it measures, for example "FOH left", "Row 12" or "Sub", rather than after the mic.
+
+1. In the sidebar, select **Add** next to **Measurements**.
+2. Type a **Name**.
+3. Choose the **Input** the mic is plugged into, and the **Reference**.
+4. Choose the **Microphone** from your inventory, or **New microphone…** to add one.
+5. Select **Add measurement**.
+
+Each measurement card also has a **Microphone** menu, to swap the mic later. The mic's correction file and calibration follow it to whichever input its measurement uses. A mic can only be in one place: choosing it for one measurement removes it from a measurement on another input. The inventory card shows which measurement uses each mic.
 
 ### Calibrate the sound level
 

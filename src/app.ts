@@ -19,6 +19,7 @@ import { AlignView } from './views/align';
 import { SplView } from './views/spl';
 import { ToolsView, type ToolsSection } from './views/tools';
 import { showWizard, showHelp, showRemoteConnect } from './ui/dialogs';
+import { showAddMeasurement, showNewMic } from './ui/measurement-dialogs';
 import { Dock } from './ui/dock';
 import { Plot } from './ui/plot';
 import { Playlist, RemotePlaylist, type PlaylistApi } from './audio/playlist';
@@ -604,6 +605,54 @@ export class App {
 
   // Measurement microphones ------------------------------------------------------------------------------
 
+  /**
+   * Inventory mics follow the measurements that use them: a mic chosen for a measurement is on that
+   * measurement's input (and any other mic there is unplugged). Everything that looks up the mic on an input
+   * (calibration, SPL meter, spectrogram) then finds the right one.
+   */
+  syncMicInputs(): void {
+    const s = this.settings;
+    for (const cfg of s.measurements) {
+      if (!cfg.micId) continue;
+      const mic = s.mics.find((x) => x.id === cfg.micId);
+      if (!mic) {
+        delete cfg.micId;
+        continue;
+      }
+      if (mic.channel === cfg.mic) continue;
+      for (const o of s.mics) if (o !== mic && o.channel === cfg.mic) o.channel = -1;
+      mic.channel = cfg.mic;
+    }
+    // A measurement uses the mic on its input (one mic per input): its menu shows that mic
+    for (const cfg of s.measurements) {
+      const on = s.mics.find((x) => x.channel === cfg.mic);
+      if (on && cfg.micId !== on.id) cfg.micId = on.id;
+      else if (!on && cfg.micId) delete cfg.micId;
+    }
+  }
+
+  /** Choose the inventory mic for a measurement ('' = none: the input is uncalibrated). */
+  setMeasurementMic(cfg: MeasurementConfig, micId: string): void {
+    const s = this.settings;
+    const before = s.mics.find((x) => x.id === cfg.micId);
+    // The mic it had leaves this input (unless another measurement on the same input still uses it)
+    if (before && before.channel === cfg.mic && !s.measurements.some((o) => o !== cfg && o.micId === before.id && o.mic === cfg.mic)) before.channel = -1;
+    if (micId) cfg.micId = micId;
+    else delete cfg.micId;
+    for (const o of s.measurements) {
+      if (o === cfg || !micId) continue;
+      // Other measurements on this input share the mic (one mic per input)…
+      if (o.mic === cfg.mic) o.micId = micId;
+      // …and a mic is in one place only: measurements on other inputs lose it
+      else if (o.micId === micId) delete o.micId;
+    }
+    this.syncCal();
+    this.measurements.find((m) => m.cfg.id === cfg.id)?.reset();
+    this.save();
+    this.renderMeasurements();
+    for (const v of this.views) v.invalidate?.();
+  }
+
   /** The mic connected to an input, or null. */
   micOn(channel: number): MicProfile | null {
     return this.settings.mics.find((m) => m.channel === channel) ?? null;
@@ -637,6 +686,7 @@ export class App {
 
   /** Bring the SPL meter's values (and the legacy single-calibration fields) in step with the mic on its input. */
   syncCal(): void {
+    this.syncMicInputs();
     const s = this.settings;
     const m = this.micOn(s.splChannel);
     const off = m?.splCalibrated ? m.splOffset : 0;
@@ -1164,7 +1214,7 @@ export class App {
       h(
         'section',
         {},
-        h('div', { class: 'sec-head' }, h('h3', {}, 'Measurements'), h('button', { class: 'btn small ghost', onclick: () => this.addMeasurement(), title: 'Add a measurement (mic/reference pair)' }, icon('plus', 14), 'Add')),
+        h('div', { class: 'sec-head' }, h('h3', {}, 'Measurements'), h('button', { class: 'btn small ghost', dataset: { addMeasurement: '' }, onclick: () => showAddMeasurement(this), title: 'Add a measurement: a name, its input and reference, and a mic from your inventory' }, icon('plus', 14), 'Add')),
         this.sidebarMeas,
       ),
       h(
@@ -1518,24 +1568,60 @@ export class App {
 
   // Sidebar: measurements -----------------------------------------------------------------------------------
 
-  addMeasurement(): void {
+  /**
+   * Add a measurement: a name (a position or purpose, e.g. "FOH left"), the input, the reference and the
+   * inventory mic. Without options it picks the next input and leaves the rest to edit (tests, older callers).
+   */
+  addMeasurement(opts: Partial<Pick<MeasurementConfig, 'name' | 'mic' | 'ref' | 'micId'>> = {}): MeasurementConfig {
     const n = this.settings.measurements.length;
     const nCh = Math.max(this.engine.channelCount, 2);
     const cfg: MeasurementConfig = {
       id: `m${Date.now().toString(36)}`,
-      name: `Mic ${n + 1}`,
+      name: opts.name?.trim() || `Mic ${n + 1}`,
       color: PALETTE[n % PALETTE.length],
-      mic: Math.min(n, nCh - 1),
-      ref: this.settings.measurements[0]?.ref ?? GEN_CHANNEL,
+      mic: opts.mic ?? Math.min(n, nCh - 1),
+      ref: opts.ref ?? this.settings.measurements[0]?.ref ?? GEN_CHANNEL,
       delay: 0,
       enabled: true,
       invert: false,
     };
     if (cfg.mic === cfg.ref) cfg.mic = 0;
+    // The mic already on that input, unless another one is chosen
+    const micId = opts.micId ?? this.micOn(cfg.mic)?.id;
+    if (micId) {
+      cfg.micId = micId;
+      for (const o of this.settings.measurements) {
+        if (o.mic === cfg.mic) o.micId = micId;
+        else if (o.micId === micId) delete o.micId;
+      }
+    }
     this.settings.measurements.push(cfg);
+    this.syncCal();
     if (this.engine.running) this.measurements.push(new Measurement(cfg, this.fs, this.grid, this.settings));
     this.save();
     this.renderMeasurements();
+    return cfg;
+  }
+
+  /**
+   * The inventory mic of a measurement: its calibration applies to the measurement's input. "New
+   * microphone…" adds one to the inventory and picks it.
+   */
+  private micSelect(cfg: MeasurementConfig): HTMLSelectElement {
+    const s = this.settings;
+    const opts = [
+      { value: '', label: 'None (uncalibrated)' },
+      ...s.mics.map((mic) => {
+        const elsewhere = s.measurements.find((o) => o !== cfg && o.micId === mic.id && o.mic !== cfg.mic);
+        const state = mic.splCalibrated ? '' : ' · not calibrated';
+        return { value: mic.id, label: `${mic.name}${mic.model ? ` (${mic.model})` : ''}${state}${elsewhere ? ` · in use: ${elsewhere.name}` : ''}` };
+      }),
+      { value: '__new', label: 'New microphone…' },
+    ];
+    return select(opts, cfg.micId && s.mics.some((x) => x.id === cfg.micId) ? cfg.micId : '', (v) => {
+      if (v === '__new') return void showNewMic(this, (mic) => this.setMeasurementMic(cfg, mic.id), () => this.renderMeasurements());
+      this.setMeasurementMic(cfg, v);
+    }, { dataset: { measMic: cfg.id }, title: 'The microphone from your inventory (Tools → Setup): its correction file and SPL calibration apply to this measurement' });
   }
 
   removeMeasurement(id: string): void {
@@ -1592,9 +1678,10 @@ export class App {
         h(
           'div',
           { class: 'grid2' },
-          h('label', {}, h('span', {}, icon('mic', 12), ' Mic'), select(this.channelOptions(false), cfg.mic, (v) => { cfg.mic = v; m?.reset(); this.save(); })),
+          h('label', {}, h('span', {}, icon('mic', 12), ' Input'), select(this.channelOptions(false), cfg.mic, (v) => { cfg.mic = v; m?.reset(); this.syncCal(); this.save(); this.renderMeasurements(); }, { dataset: { measInput: cfg.id } })),
           h('label', {}, h('span', {}, icon('wave', 12), ' Ref'), select(this.channelOptions(true), cfg.ref, (v) => { cfg.ref = v; m?.reset(); this.save(); })),
         ),
+        h('label', { class: 'meas-mic' }, h('span', {}, 'Microphone'), this.micSelect(cfg)),
         h(
           'div',
           { class: 'row delay-row' },

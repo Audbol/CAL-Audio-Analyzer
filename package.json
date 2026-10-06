@@ -1,6 +1,6 @@
 {
   "name": "cal-audio-analyzer",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "private": true,
   "description": "CAL Audio Analyzer: professional real-time sound system and room acoustics analyzer in the browser",
   "type": "module",

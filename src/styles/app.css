@@ -4053,3 +4053,59 @@ html.compact .peq-side {
   font-size: 10.5px;
   min-width: 18px;
 }
+
+/* Measurement card: the inventory mic */
+.meas-mic {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--dim);
+  min-width: 0;
+}
+.meas-mic select {
+  width: 100%;
+  min-width: 0;
+}
+/* Mic inventory rows */
+.mic-ident {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+}
+.mic-used {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--text-2);
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Add measurement / New microphone dialogs */
+.meas-modal {
+  width: min(520px, calc(100vw - 32px));
+}
+.meas-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.meas-dialog .cmp-field {
+  flex: 1;
+  min-width: 180px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+.meas-dialog .cmp-field input.text,
+.meas-dialog .cmp-field select {
+  width: 100%;
+}
+.meas-mic-host,
+.meas-mic-host select {
+  display: block;
+  width: 100%;
+}

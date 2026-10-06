@@ -5,8 +5,8 @@ import { parseMicCal } from '../dsp/calibration';
 import { WeightingFilter } from '../dsp/weighting';
 
 /**
- * Tools card: the measurement microphones. Each mic has a name, the input it is plugged into, its correction
- * file and its own SPL calibration, so several mics (each with its own preamp gain) all read correctly. The
+ * Tools card: the microphone inventory. Each mic is set up once (name, model and serial, correction file, SPL
+ * calibration) and chosen for a measurement in the sidebar; it then follows that measurement's input. The
  * spectrum, transfer function, sweeps, spectrogram and SPL meter use the mic on their input.
  */
 export class MicsCard {
@@ -16,10 +16,16 @@ export class MicsCard {
 
   constructor(private app: App) {
     this.el.append(
-      h('h4', {}, icon('mic', 15), ' Microphones & calibration'),
-      h('p', { class: 'dim small' }, 'Set up each measurement mic once: the input it is plugged into, its correction file and an SPL calibration. Every view uses the mic on its input. Calibrate with the calibrator on the mic (or a reference meter next to it), at the preamp gain you will measure with.'),
-      h('div', { class: 'row gap8 wrap' }, h('span', {}, 'Reference level'), this.refLevel, h('span', { class: 'unit' }, 'dB SPL'), h('div', { class: 'spacer' }), h('button', { class: 'btn small', onclick: () => this.add() }, icon('plus', 14), 'Add microphone')),
+      h('h4', {}, icon('mic', 15), ' Microphones (inventory)'),
+      h('p', { class: 'dim small' }, 'Set up each measurement mic once: its correction file and an SPL calibration. Then choose it for a measurement (Add, or the Microphone menu on a measurement in the sidebar): it follows that measurement’s input. Calibrate with the calibrator on the mic (or a reference meter next to it), at the preamp gain you will measure with.'),
+      h('div', { class: 'row gap8 wrap' }, h('span', {}, 'Reference level'), this.refLevel, h('span', { class: 'unit' }, 'dB SPL'), h('div', { class: 'spacer' }), h('button', { class: 'btn small', dataset: { mic: 'add' }, onclick: () => this.add() }, icon('plus', 14), 'Add microphone')),
       this.list,
+      h(
+        'div',
+        { class: 'row gap8 wrap' },
+        h('button', { class: 'btn small ghost', title: 'Save the inventory (names, correction files, calibrations) as a file, e.g. for another computer', onclick: () => this.exportInventory() }, icon('download', 13), 'Export inventory'),
+        h('button', { class: 'btn small ghost', title: 'Add the mics from an inventory file', onclick: () => this.importInventory() }, icon('upload', 13), 'Import…'),
+      ),
     );
     this.render();
   }
@@ -118,6 +124,12 @@ export class MicsCard {
         // One mic per input: a mic moved onto a used input takes it over
         for (const x of this.mics) if (x !== m && x.channel === v && v >= 0) x.channel = -1;
         m.channel = v;
+        // The measurements stay in step: the one that used this mic follows it, and the one on its new input uses it
+        for (const cfg of app.settings.measurements) {
+          if (cfg.micId === m.id && v < 0) delete cfg.micId;
+          else if (cfg.micId === m.id) cfg.mic = v;
+          else if (cfg.mic === v) cfg.micId = m.id;
+        }
         if (m.splCalibrated) app.toast(`${m.name} moved to a new input: check its calibration (the gain may differ).`, 'info');
         this.changed();
       }, { dataset: { mic: 'channel' }, title: 'Input the mic is plugged into' });
@@ -125,10 +137,22 @@ export class MicsCard {
         ? h('span', { class: 'mic-state ok' }, icon('check', 12), `0 dBFS = ${m.splOffset.toFixed(1)} dB SPL`, m.calibratedAt ? h('em', {}, ` · ${new Date(m.calibratedAt).toLocaleDateString()}`) : null)
         : h('span', { class: 'mic-state' }, 'Not calibrated (dBFS)');
       const corr = m.micCal ? h('span', { class: 'mic-state ok', title: m.micCal.name }, icon('check', 12), m.micCal.name) : h('span', { class: 'mic-state' }, 'No correction file');
+      const ident = h('input', { type: 'text', class: 'text mic-ident', value: [m.model, m.serial].filter(Boolean).join(' · '), placeholder: 'Model · serial number', 'aria-label': 'Model and serial number', dataset: { mic: 'ident' } }) as HTMLInputElement;
+      ident.addEventListener('change', () => {
+        const [model, ...rest] = ident.value.split('·').map((x) => x.trim());
+        m.model = model || undefined;
+        m.serial = rest.join(' ').trim() || undefined;
+        app.save();
+      });
+      const users = app.settings.measurements.filter((c) => c.micId === m.id);
+      const usedBy = users.length
+        ? h('span', { class: 'mic-used', title: 'The measurements that use this mic' }, icon('wave', 11), users.map((c) => c.name).join(', '))
+        : h('span', { class: 'mic-used dim' }, 'Not used by a measurement');
       return h(
         'div',
         { class: 'mic-row', dataset: { micId: m.id } },
         h('div', { class: 'mic-head' }, name, chSel, h('button', { class: 'btn tiny ghost', title: `Remove ${m.name}`, onclick: () => { this.app.settings.mics = this.mics.filter((x) => x !== m); this.changed(); } }, icon('trash', 13))),
+        h('div', { class: 'mic-line' }, ident, usedBy),
         h(
           'div',
           { class: 'mic-line' },
@@ -149,6 +173,47 @@ export class MicsCard {
         ),
       );
     });
-    this.list.replaceChildren(...(rows.length ? rows : [h('div', { class: 'empty' }, 'No microphones yet. Add one for each measurement mic you use.')]));
+    this.list.replaceChildren(...(rows.length ? rows : [h('div', { class: 'empty' }, 'No microphones yet. Add one for each measurement mic you own.')]));
+  }
+
+  /** The inventory as a file (without the inputs, which belong to this setup). */
+  private exportInventory(): void {
+    if (!this.mics.length) return this.app.toast('The inventory is empty.', 'warn');
+    const data = { format: 'cal-mics', version: 1, mics: this.mics.map(({ channel: _c, ...m }) => m) };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = h('a', { href: URL.createObjectURL(blob), download: 'microphones.calmics.json' }) as HTMLAnchorElement;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  /** Add the mics of an inventory file (a mic with the same id replaces the one here). */
+  private importInventory(): void {
+    const input = h('input', { type: 'file', accept: '.json,application/json', style: 'display:none' }) as HTMLInputElement;
+    input.addEventListener('change', async () => {
+      const f = input.files?.[0];
+      input.remove();
+      if (!f) return;
+      try {
+        const data = JSON.parse(await f.text()) as { format?: string; mics?: Partial<MicProfile>[] };
+        if (data.format !== 'cal-mics' || !Array.isArray(data.mics)) throw new Error(`${f.name} is not a microphone inventory`);
+        let n = 0;
+        for (const raw of data.mics) {
+          if (typeof raw.id !== 'string' || typeof raw.name !== 'string') continue;
+          const mic: MicProfile = { id: raw.id, name: raw.name, model: raw.model, serial: raw.serial, channel: -1, micCal: raw.micCal ?? null, splOffset: Number(raw.splOffset) || 0, splCalibrated: !!raw.splCalibrated, calibratedAt: raw.calibratedAt, calLevel: raw.calLevel };
+          const i = this.mics.findIndex((x) => x.id === mic.id);
+          if (i >= 0) this.mics[i] = { ...mic, channel: this.mics[i].channel };
+          else this.mics.push(mic);
+          n++;
+        }
+        this.app.toast(`${n} microphone${n === 1 ? '' : 's'} imported`, 'ok');
+        this.changed();
+      } catch (e) {
+        this.app.toast((e as Error).message, 'warn');
+      }
+    });
+    document.body.append(input);
+    input.click();
   }
 }
