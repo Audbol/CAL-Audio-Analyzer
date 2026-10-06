@@ -75,6 +75,9 @@ export interface AutoEqOptions {
   maxCut: number;
   /** Minimum coherence for a point to be considered (0..1). */
   minCoherence: number;
+  /** Q range the filters may use (default 0.3–10), e.g. a console's limits. */
+  qMin?: number;
+  qMax?: number;
 }
 
 export interface AutoEqResult {
@@ -151,7 +154,7 @@ export function autoEq(
       type: 'peak',
       f: freqs[worst],
       gain: Math.max(-opt.maxCut, Math.min(opt.maxBoost, -residual)),
-      q: 2,
+      q: Math.min(opt.qMax ?? 10, Math.max(opt.qMin ?? 0.3, 2)),
     };
     const base = err(filters);
     // Coordinate search refinement
@@ -167,7 +170,7 @@ export function autoEq(
         const opts = 'mul' in st ? st.mul!.map((m) => cand[st.key] * m) : st.add!.map((a) => cand[st.key] + a);
         for (const v of opts) {
           const trial = { ...cand, [st.key]: v } as PeqFilter;
-          trial.q = Math.min(10, Math.max(0.3, trial.q));
+          trial.q = Math.min(opt.qMax ?? 10, Math.max(opt.qMin ?? 0.3, trial.q));
           trial.gain = Math.max(-opt.maxCut, Math.min(opt.maxBoost, trial.gain));
           trial.f = Math.min(opt.fMax, Math.max(opt.fMin, trial.f));
           const e = err([...filters, trial]);

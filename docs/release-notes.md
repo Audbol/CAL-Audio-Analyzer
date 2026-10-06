@@ -34,6 +34,7 @@ On first launch, choose **Explore with the demo room** to try every feature with
 
 ### Tune and document
 - **Crossover designer:** *Align → Crossover* tries Linkwitz-Riley and Butterworth filters (6–48 dB/oct) on the measured sub and mains, with the sub's level and polarity, and aligns them through it. Each change re-aligns at once, so slopes and frequencies can be compared by their sum.
+- **Console EQ profiles:** *EQ → Console* fits the suggestion to the console you tune on: DiGiCo SD / Quantum, Yamaha CL / QL and RIVAGE PM / DM7, Allen & Heath dLive / Avantis / SQ, Midas M32 / Behringer X32, Behringer WING, Avid VENUE S6L, Midas HD96 / PRO and SSL Live. Only as many filters as its EQ has bands, within its gain and width ranges, in Q or octaves and with its band names, ready to copy band by band.
 - **FIR export:** *EQ → Export FIR…* saves the EQ as an impulse response (WAV, 32-bit float or 24-bit, or a coefficient list) for convolution, minimum or linear phase, at the processor's sample rate. It shows how closely the filter follows the EQ at the chosen length.
 - **Compare before / after:** *Compare* above the Traces list puts two traces on one graph with the change between them and a score against the target, such as "±4.1 dB → ±1.8 dB RMS from 40 Hz to 8 kHz (56 % closer to the target)". It can be a page of the report.
 - **Notes on graphs:** drop labelled flags on the Spectrum, Transfer and sweep graphs. They are saved with the session, shared with remote devices, and drawn on and listed in the report.

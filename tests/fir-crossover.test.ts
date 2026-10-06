@@ -76,3 +76,32 @@ describe('Crossover designer', () => {
     expect(r.after).toBeGreaterThan(0.99);
   });
 });
+
+describe('Console EQ profiles', () => {
+  it('convert between Q and octaves as consoles define them', async () => {
+    const { qToOctaves, octavesToQ } = await import('../src/dsp/console-eq');
+    expect(qToOctaves(1.414)).toBeCloseTo(1, 2);
+    expect(octavesToQ(1)).toBeCloseTo(1.414, 2);
+    expect(qToOctaves(octavesToQ(1 / 9))).toBeCloseTo(1 / 9, 4);
+  });
+  it('fit filters into a console’s ranges and precision', async () => {
+    const { fitToProfile, profileById, consoleText } = await import('../src/dsp/console-eq');
+    const ah = profileById('ah-dlive');
+    const f = fitToProfile({ type: 'peak', f: 63.37, gain: -21.26, q: 30 }, ah);
+    expect(f).toEqual({ type: 'peak', f: 63, gain: -15, q: 13 });
+    const y = profileById('yamaha-cl');
+    const text = consoleText([{ type: 'peak', f: 2512, gain: -3.04, q: 4.26 }, { type: 'peak', f: 80, gain: -6, q: 2 }], y);
+    expect(text.split('\n')).toEqual(['Yamaha CL / QL – Mix / matrix / stereo EQ, 4 bands', 'LOW: bell, 80 Hz, -6.0 dB, Q 2.0', 'LOW-MID: bell, 2.51 kHz, -3.0 dB, Q 4.3']);
+    expect(consoleText([{ type: 'peak', f: 1000, gain: 2, q: 1.414 }], ah)).toContain('LF: bell, 1.00 kHz, +2.0 dB, 1.00 oct');
+  });
+  it('the assistant keeps to a console’s bands and Q range', async () => {
+    const { autoEq, TARGETS } = await import('../src/dsp/eq');
+    const { logGrid } = await import('../src/dsp/freq');
+    const g = logGrid(20, 20000, 24);
+    // A response with many narrow bumps
+    const mag = Array.from(g, (f) => 6 * Math.sin(Math.log2(f) * 5));
+    const r = autoEq(g, mag, null, TARGETS[0], { fMin: 40, fMax: 12000, maxFilters: 4, maxBoost: 3, maxCut: 12, minCoherence: 0, qMin: 0.92, qMax: 13 });
+    expect(r.filters.length).toBeLessThanOrEqual(4);
+    for (const f of r.filters) expect(f.q >= 0.92 && f.q <= 13).toBe(true);
+  });
+});

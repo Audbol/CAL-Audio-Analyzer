@@ -280,6 +280,7 @@ A target is the response you want. The app draws it as a dashed line with a tole
 1. Measure at several positions and make a spatial average (see [Traces](#9-save-and-compare-traces)).
 2. Open the **EQ** tab (press 6).
 3. Choose the averaged trace as the **Source**, and choose a **Target**.
+   Choose the **Console** whose EQ you will use (for example *Yamaha CL / QL – Mix / matrix / stereo EQ*, *DiGiCo SD / Quantum – Output EQ*, *Allen & Heath dLive / Avantis / SQ*, *Midas M32 / Behringer X32*, *Behringer WING*, *Avid VENUE S6L*, *Midas HD96 / PRO* or *SSL Live*). The assistant then uses only as many filters as that EQ has bands, keeps gain and width within its ranges, shows width in Q or octaves as the console does, and names the bands as the console does (LF, LM, HM, HF…). **Copy filter text** then lists them band by band. *Any processor* has no limits. The panel above the filters says whether the ranges come from the manufacturer's documentation or are typical for that console family, in which case check them on your console.
 4. Select **Calculate EQ**.
 5. The list on the right shows the suggested filters: frequency (Fc), gain and Q. You can edit each value.
    - The **upper graph** shows the response against the target: dashed as measured, solid as predicted with the EQ. The shaded band is ±3 dB around the target.

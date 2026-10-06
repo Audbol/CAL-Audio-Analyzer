@@ -229,6 +229,28 @@ if (want('gradient')) {
   await page.keyboard.press('Escape');
 }
 
+// --- 8. Console EQ profiles on the EQ tab
+if (want('console')) {
+  await page.evaluate(() => window.calApp.setView('eq'));
+  await page.evaluate(async () => { if (!window.calApp.engine.running) await window.calApp.start(); });
+  await page.waitForTimeout(1500);
+  await page.locator('select[data-eq-console]').selectOption('ah-dlive');
+  await page.getByRole('button', { name: 'Calculate EQ' }).click();
+  await page.waitForTimeout(300);
+  const eq = await page.evaluate(() => window.calApp.views.find((v) => v.id === 'eq').filters.map((f) => ({ ...f })));
+  check(eq.length > 0 && eq.length <= 4, `dLive: at most 4 bands (${eq.length})`);
+  check(eq.every((f) => f.gain >= -15 && f.gain <= 15 && f.q >= 0.92 && f.q <= 13), 'within ±15 dB and 1.5 to 1/9 octave');
+  const label = await page.locator('.peq label').nth(2).innerText();
+  check(label.startsWith('Oct'), 'width shown in octaves, as on the console');
+  check((await page.locator('.peq-profile').innerText()).includes('Allen & Heath dLive'), 'the profile and its ranges are shown');
+  await page.screenshot({ path: `${out}/feat7-07-console-eq.png` });
+  await page.locator('select[data-eq-console]').selectOption('yamaha-cl');
+  const after = await page.evaluate(() => window.calApp.views.find((v) => v.id === 'eq').filters.every((f) => f.q >= 0.1 && f.q <= 16));
+  check(after && (await page.evaluate(() => window.calApp.settings.eqConsole)) === 'yamaha-cl', 'switching console refits the filters and is remembered');
+  await page.evaluate(() => navigator.clipboard.readText().catch(() => ''));
+  await page.locator('select[data-eq-console]').selectOption('generic');
+}
+
 // --- 6. Trace rows stay inside the sidebar on narrow screens and with larger text
 if (want('traces')) {
   await page.evaluate(() => {

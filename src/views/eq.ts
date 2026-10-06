@@ -6,6 +6,7 @@ import { autoEq, eqResponse, TARGETS, type AutoEqResult, type PeqFilter } from '
 import { smoothCurve } from '../dsp/freq';
 import { optionsMenu, optRow, optHead } from '../ui/popover';
 import { showFirExport } from './fir-export';
+import { CONSOLE_PROFILES, consoleText, fitToProfile, octavesToQ, profileById, qToOctaves, type ConsoleEqProfile } from '../dsp/console-eq';
 
 export interface EqSnapshot {
   source: string;
@@ -19,6 +20,8 @@ export interface EqSnapshot {
   rmsAfter: number;
   filters: PeqFilter[];
   summary: string;
+  /** The console profile the filters were made for. */
+  console?: string;
 }
 
 /**
@@ -48,14 +51,19 @@ export class EqView implements View {
   private summary = h('div', { class: 'info-strip' });
   private dirty = true;
   private sourceName = '';
+  /** The console the EQ is for (its bands and ranges limit the filters). */
+  private profile: ConsoleEqProfile;
+  private profileInfo = h('p', { class: 'peq-profile small' });
 
   constructor(private app: App) {
     // Start from the target chosen for the Spectrum / Transfer views, when it is a built-in one
     if (TARGETS.some((t) => t.id === app.settings.targetCurve)) this.target = app.settings.targetCurve;
     this.plot = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: -18, yMax: 12, yUnit: 'dB', yStep: 3, title: 'Response against the target (0 dB = on target)', showNote: true, yLimits: [-60, 60] });
     this.plot.placeholder = 'Choose a source and a target, then press Calculate EQ';
-    this.eqPlot = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: -12, yMax: 6, yUnit: 'dB', yStep: 3, title: 'EQ filters (numbered as in the list)', yLimits: [-40, 30] });
+    this.eqPlot = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: -12, yMax: 6, yUnit: 'dB', yStep: 3, title: 'EQ filters (labelled as in the list)', yLimits: [-40, 30] });
     this.eqPlot.placeholder = 'The EQ curve appears here';
+    this.profile = profileById(app.settings.eqConsole);
+    this.limitOpts();
     const numIn = (key: keyof typeof this.opt, step: string, label?: string) => {
       const i = h('input', { type: 'number', class: 'num', value: String(this.opt[key]), step, dataset: { eqOpt: key }, 'aria-label': label });
       i.addEventListener('change', () => ((this.opt[key] as number) = +i.value));
@@ -67,6 +75,17 @@ export class EqView implements View {
         { class: 'toolbar' },
         h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Source'), this.srcHost),
         h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Target'), select(TARGETS.map((t) => ({ value: t.id, label: t.label })), this.target, (v) => { this.target = v; })),
+        h(
+          'div',
+          { class: 'tb-group' },
+          h('span', { class: 'tb-label' }, 'Console'),
+          select(
+            CONSOLE_PROFILES.map((p) => ({ value: p.id, label: p.id === 'generic' ? p.name : `${p.name} – ${p.section}` })),
+            this.profile.id,
+            (v) => this.setProfile(v),
+            { dataset: { eqConsole: '' }, title: 'The console the EQ is for: the suggestion uses only as many bands as its EQ has, within its gain and width ranges, and lists them the way it labels them' },
+          ),
+        ),
         optionsMenu(
           [
             optHead('Range'),
@@ -85,7 +104,7 @@ export class EqView implements View {
       h(
         'div',
         { class: 'eq-split' },
-        h('div', { class: 'eq-plots' }, this.legend, h('div', { class: 'pane eq-main' }, this.plot.el), h('div', { class: 'pane eq-curve' }, this.eqPlot.el)), h('div', { class: 'peq-side' }, h('h4', {}, 'Parametric EQ'), this.list, h('div', { class: 'row gap4 wrap' }, ...this.copyBtns))),
+        h('div', { class: 'eq-plots' }, this.legend, h('div', { class: 'pane eq-main' }, this.plot.el), h('div', { class: 'pane eq-curve' }, this.eqPlot.el)), h('div', { class: 'peq-side' }, h('h4', {}, 'Parametric EQ'), this.profileInfo, this.list, h('div', { class: 'row gap4 wrap' }, ...this.copyBtns))),
     );
     this.renderList();
     this.summary.textContent = 'Choose a source measurement and press Calculate EQ. Use a spatially averaged trace for best results.';
@@ -124,8 +143,10 @@ export class EqView implements View {
     const sm = smoothCurve(src.freqs, lin, 6);
     const magDb = Float64Array.from(sm, (v) => 20 * Math.log10(Math.max(v, 1e-9)));
     this.freqs = Array.from(src.freqs);
-    this.result = autoEq(src.freqs, magDb, src.coh, target, this.opt);
-    this.filters = this.result.filters.map((f) => ({ ...f }));
+    const p = this.profile;
+    this.result = autoEq(src.freqs, magDb, src.coh, target, { ...this.opt, maxFilters: Math.min(this.opt.maxFilters, p.bands), qMin: p.qMin, qMax: p.qMax });
+    // As the console can set them: within its ranges, at the precision it shows
+    this.filters = this.result.filters.map((f) => fitToProfile(f, p));
     this.sourceName = src.name;
     this.summary.innerHTML = this.filters.length
       ? `<b>${this.filters.length} filters</b> for “${src.name}” → ${target.label}. RMS deviation ${this.result.rmsBefore.toFixed(1)} dB → <b>${this.result.rmsAfter.toFixed(1)} dB</b>. Tip: verify with a new measurement, and prefer fixing large dips with placement/delay rather than boost.`
@@ -148,11 +169,22 @@ export class EqView implements View {
       this.list.append(h('div', { class: 'empty' }, 'No filters yet: press Calculate EQ.'));
       return;
     }
+    const p = this.profile;
+    // In band order, as on the console
+    this.filters.sort((a, b) => a.f - b.f);
+    if (this.filters.length > p.bands) this.list.append(h('div', { class: 'warn-text small' }, `${this.filters.length} filters, but this EQ has ${p.bands} bands: remove ${this.filters.length - p.bands}, or use an extra EQ (insert) for the rest.`));
     this.filters.forEach((f, i) => {
+      const octaves = p.width === 'octaves';
       const inp = (key: 'f' | 'gain' | 'q', step: string) => {
-        const el = h('input', { type: 'number', class: 'num', value: String(f[key]), step });
+        const shown = key === 'q' && octaves ? +qToOctaves(f.q).toFixed(2) : f[key];
+        const el = h('input', { type: 'number', class: 'num', value: String(shown), step }) as HTMLInputElement;
         el.addEventListener('change', () => {
-          f[key] = +el.value;
+          const v = +el.value;
+          if (!Number.isFinite(v) || v <= 0 && key !== 'gain') return;
+          f[key] = key === 'q' && octaves ? octavesToQ(v) : v;
+          // Within the console's ranges
+          Object.assign(f, fitToProfile(f, p));
+          el.value = String(key === 'q' && octaves ? +qToOctaves(f.q).toFixed(2) : f[key]);
           this.dirty = true;
         });
         return el;
@@ -161,10 +193,10 @@ export class EqView implements View {
         h(
           'div',
           { class: 'peq' },
-          h('span', { class: 'idx' }, String(i + 1)),
+          h('span', { class: 'idx', title: p.bandNames[i] ?? '' }, this.bandLabel(i)),
           h('label', {}, 'Fc', inp('f', '1')),
           h('label', {}, 'Gain', inp('gain', '0.1')),
-          h('label', {}, 'Q', inp('q', '0.05')),
+          h('label', {}, octaves ? 'Oct' : 'Q', inp('q', octaves ? '0.01' : '0.05')),
           h('button', { class: 'btn tiny ghost', title: 'Remove', onclick: () => { this.filters.splice(i, 1); this.renderList(); this.dirty = true; } }, icon('x', 12)),
         ),
       );
@@ -174,7 +206,9 @@ export class EqView implements View {
   private copy(fmt: 'text' | 'csv'): void {
     if (!this.filters.length) return;
     const text =
-      fmt === 'text'
+      fmt === 'text' && this.profile.id !== 'generic'
+        ? consoleText(this.filters, this.profile)
+        : fmt === 'text'
         ? this.filters.map((f, i) => `Filter ${i + 1}: ON PK Fc ${f.f.toFixed(1)} Hz Gain ${f.gain.toFixed(1)} dB Q ${f.q.toFixed(2)}`).join('\n')
         : ['type,frequency_hz,gain_db,q', ...this.filters.map((f) => `${f.type},${f.f},${f.gain},${f.q}`)].join('\n');
     navigator.clipboard?.writeText(text).then(
@@ -185,6 +219,43 @@ export class EqView implements View {
 
   invalidate(): void {
     this.dirty = true;
+  }
+
+  /** A filter's label in the list and on the graph: the console's band name where it is short (LF, HM, L…), else its number. */
+  private bandLabel(i: number): string {
+    const n = this.profile.bandNames[i];
+    return n && n.length <= 3 ? n : String(i + 1);
+  }
+
+  /** Choose the console: limits the options to its EQ and refits the current filters to its ranges. */
+  setProfile(id: string): void {
+    this.profile = profileById(id);
+    this.app.settings.eqConsole = this.profile.id;
+    this.app.save();
+    this.limitOpts();
+    this.filters = this.filters.map((f) => fitToProfile(f, this.profile));
+    this.renderList();
+    this.dirty = true;
+  }
+
+  /** The options within the console's EQ: as many filters as it has bands, boost and cut within its range. */
+  private limitOpts(): void {
+    const p = this.profile;
+    this.opt.maxFilters = p.bands;
+    this.opt.maxBoost = Math.min(this.opt.maxBoost, p.gainMax);
+    this.opt.maxCut = Math.min(this.opt.maxCut, -p.gainMin);
+    for (const k of ['maxFilters', 'maxBoost', 'maxCut'] as const) {
+      const el = this.el.querySelector<HTMLInputElement>(`[data-eq-opt="${k}"]`);
+      if (el) el.value = String(this.opt[k]);
+    }
+    const width = p.width === 'octaves' ? `width ${+qToOctaves(p.qMin).toFixed(2)} to ${+qToOctaves(p.qMax).toFixed(2)} octave` : `Q ${p.qMin}–${p.qMax}`;
+    const gain = -p.gainMin === p.gainMax ? `±${p.gainMax} dB` : `${p.gainMin} to +${p.gainMax} dB`;
+    this.profileInfo.replaceChildren(
+      h('b', {}, p.id === 'generic' ? p.name : `${p.name}: ${p.section}`),
+      h('br'),
+      `${p.bands} bands, ${gain}, ${width}. ${p.note} `,
+      h('span', { class: p.source === 'documented' ? 'ok-text' : 'dim' }, p.source === 'documented' ? 'Ranges from the manufacturer’s documentation.' : 'Typical ranges: check them on your console.'),
+    );
   }
 
   /** Add a filter from elsewhere (e.g. a notch from the feedback finder). */
@@ -209,6 +280,7 @@ export class EqView implements View {
       rmsBefore: r.rmsBefore,
       rmsAfter: r.rmsAfter,
       filters: this.filters.map((f) => ({ ...f })),
+      console: this.profile.id,
       summary: this.summary.textContent ?? '',
     };
   }
@@ -231,6 +303,10 @@ export class EqView implements View {
       this.filters = snap.filters.map((f) => ({ ...f }));
       this.sourceName = snap.source;
       this.summary.textContent = snap.summary;
+      if (snap.console) {
+        this.profile = profileById(snap.console);
+        this.limitOpts();
+      }
     }
     this.renderList();
     this.dirty = true;
@@ -259,7 +335,7 @@ export class EqView implements View {
       { id: 'eq', label: 'EQ', x, y: eq, color: CHART.warn, width: 2 },
     ];
     // A numbered point on the curve at each filter, instead of a line across the whole graph
-    this.eqPlot.pins = this.filters.map((f, i) => ({ x: f.f, y: eqResponse(this.filters, [f.f])[0], label: `${i + 1}`, color: CHART.warn }));
+    this.eqPlot.pins = this.filters.map((f, i) => ({ x: f.f, y: eqResponse(this.filters, [f.f])[0], label: this.bandLabel(i), color: CHART.warn }));
     this.eqPlot.shades = this.result
       ? [
           { x0: 20, x1: this.opt.fMin, color: CHART.shade },

@@ -165,6 +165,8 @@ export interface Settings {
   autoUpdateCheck: boolean;
   /** The Room waterfall's 3-D angle and zoom. */
   waterfallView: WaterfallView;
+  /** EQ tab: the console (or processor) the EQ is for: its bands and ranges limit the suggested filters. */
+  eqConsole: string;
   /** Align: the virtual crossover applied to subs and mains to preview their sum. */
   crossover: CrossoverDesign;
   /** An image (logo) drawn faintly on the graphs. */
@@ -265,6 +267,7 @@ export function defaultSettings(): Settings {
     waterfallView: { yaw: 32, pitch: 24, zoom: 1 },
     watermark: { ...DEFAULT_WATERMARK },
     crossover: JSON.parse(JSON.stringify(DEFAULT_CROSSOVER)),
+    eqConsole: 'generic',
     customThemes: [],
     analysisThread: 'worker',
     rtaShowSweeps: true,

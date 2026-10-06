@@ -1474,7 +1474,7 @@ html.compact .plot-zoom button {
   padding: 1px 4px;
 }
 .peq .idx {
-  width: 16px;
+  min-width: 16px;
   font-weight: 700;
   color: var(--warn);
 }
@@ -3974,4 +3974,9 @@ html.compact .cmp-arrow {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+}
+.peq-profile {
+  margin: 0;
+  color: var(--text-2);
+  line-height: 1.45;
 }
