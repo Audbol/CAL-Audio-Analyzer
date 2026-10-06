@@ -229,6 +229,25 @@ if (want('safety')) {
   await page.waitForTimeout(1500);
 }
 
+// --- 7. The app is pinned to the screen: the page can't be left scrolled (touches would land off target)
+if (want('viewport')) {
+  const pin = await page.evaluate(() => {
+    window.scrollTo(0, 300);
+    document.scrollingElement.scrollTop = 300;
+    const r = document.getElementById('app').getBoundingClientRect();
+    return { y: window.scrollY, top: r.top, h: Math.round(r.height), vh: window.innerHeight };
+  });
+  check(pin.y === 0 && pin.top === 0 && pin.h === pin.vh, `the page never scrolls and the app fills the screen (${JSON.stringify(pin)})`);
+  // In fullscreen a tap at a tab's drawn position opens that tab
+  await page.evaluate(() => document.documentElement.requestFullscreen());
+  await page.waitForTimeout(900);
+  const box = await page.locator('.tabs .tab[data-view="spl"]').boundingBox();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  check((await page.evaluate(() => window.calApp.settings.view)) === 'spl', 'in fullscreen, tapping where a tab is drawn opens it');
+  await page.evaluate(() => document.exitFullscreen());
+  await page.waitForTimeout(500);
+}
+
 check(errors.length === 0, `no console errors ${errors.join(' | ')}`);
 await browser.close();
 await new Promise((r) => server.httpServer.close(r));

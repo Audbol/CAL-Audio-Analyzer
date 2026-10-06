@@ -127,10 +127,19 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* The app is pinned to the visible screen (not 100vh, which mobile browsers measure without their toolbars) and
+   the page itself never scrolls: in fullscreen on tablets (e.g. Firefox for Android hiding its toolbar) a page
+   left scrolled by the toolbar's height would put every touch that far from what is shown */
+html,
+body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
 #app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  position: fixed;
+  inset: 0;
   overflow: hidden;
 }
 
@@ -2081,9 +2090,6 @@ html.compact .compact-only {
 html.compact body {
   font-size: 13.5px;
   -webkit-text-size-adjust: 100%;
-}
-html.compact #app {
-  height: 100dvh;
 }
 html.compact .topbar {
   flex-wrap: nowrap;

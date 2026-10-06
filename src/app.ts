@@ -215,6 +215,8 @@ export class App {
   constructor(root: HTMLElement) {
     this.root = root;
     setCustomTargets(this.settings.customTargets);
+    for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => this.settleViewport());
+    window.addEventListener('orientationchange', () => this.settleViewport());
     const desk = desktopBridge();
     if (desk?.window) {
       const bridge = desk.window;
@@ -1132,6 +1134,26 @@ export class App {
   }
 
   toggleFullscreen: () => void = () => undefined;
+
+  /**
+   * After entering or leaving fullscreen (the app or a panel) or turning the device, while the browser's toolbars
+   * slide in or out: undo any page scroll the browser left behind and let every graph measure itself again, once now and again
+   * when the toolbar animation has finished, so touches land where things are drawn.
+   */
+  private settleViewport = (() => {
+    let timers: number[] = [];
+    return () => {
+      for (const t of timers) clearTimeout(t);
+      const settle = () => {
+        if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+        if (document.scrollingElement && document.scrollingElement.scrollTop) document.scrollingElement.scrollTop = 0;
+        window.dispatchEvent(new Event('resize'));
+        Plot.invalidateAll();
+      };
+      requestAnimationFrame(settle);
+      timers = [250, 700].map((ms) => window.setTimeout(settle, ms));
+    };
+  })();
 
   /**
    * The app menu (top right): the view (simple or advanced), help, the setup assistant, the tour, what's new,
