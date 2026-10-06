@@ -165,10 +165,13 @@ await page.screenshot({ path: `${out}/09-hardware.png` });
   await page.locator('body').click({ position: { x: 5, y: 900 } });
 }
 
-// App fullscreen button
+// App fullscreen (in the app menu)
+await page.locator('[data-options="app"] ').click();
 await page.locator('.fullscreen-btn').click();
 await page.waitForTimeout(400);
 check(await page.evaluate(() => !!document.fullscreenElement), 'fullscreen button enters fullscreen');
+check(!(await page.locator('.app-menu').isVisible()), 'the menu closes after choosing an item');
+await page.locator('[data-options="app"]').click();
 await page.locator('.fullscreen-btn').click();
 await page.waitForTimeout(400);
 check(await page.evaluate(() => !document.fullscreenElement), 'fullscreen button exits fullscreen');

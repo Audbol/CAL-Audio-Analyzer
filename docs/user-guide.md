@@ -92,9 +92,13 @@ The window has five areas.
 - **Outputs** chooses which outputs play the signal (for example Out 1+2).
 - **Remote on** appears while phones and tablets can connect.
 - **Sound level** shows the current level. Select it to open the SPL tab.
-- On the right are buttons for full screen, day or night colours, help and the setup assistant.
+- On the right are the **day / night** button (shortcut: T) and the **menu** (☰). The menu holds the view (Simple or Advanced), the setup assistant, the guided tour, help and shortcuts, what's new, full screen (F11) and settings.
 
-**Tabs** below the top bar. Each tab is one tool. You can also press the number keys 1 to 9 to switch tabs.
+**Tabs** below the top bar. Each tab is one tool. You can also press the number keys 1 to 9 to switch tabs (they count the tabs you can see).
+
+**Simple or Advanced view.** Choose it when you first start, or any time in the menu (☰ → View). The simple view shows the essential tabs (Spectrum, Transfer, EQ, SPL and Tools) and hides advanced controls such as graph notes, polarity invert, workspaces, FIR export and the calculators. Advanced shows every tool. Switching changes only what is shown: no setting, trace or measurement is changed or lost. Each device keeps its own choice, so a phone used as a remote can use the simple view while the measurement computer uses Advanced.
+
+The table lists the tabs of the advanced view; in the simple view the keys are 1 Spectrum, 2 Transfer, 3 EQ, 4 SPL and 5 Tools.
 
 | Key | Tab | What it does |
 | --- | --- | --- |

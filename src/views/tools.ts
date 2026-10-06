@@ -305,6 +305,11 @@ export class ToolsView implements View {
     this.renderStatus();
   }
 
+  /** The simple view has no calculators section. */
+  setUiMode(simple: boolean): void {
+    if (simple && this.app.settings.toolsSection === 'calc') this.open('setup');
+  }
+
   /** Show one section (also from links elsewhere, e.g. SPL → Calibrate opens Setup). */
   open(section: ToolsSection): void {
     this.app.settings.toolsSection = section;
@@ -312,7 +317,7 @@ export class ToolsView implements View {
       ...SECTIONS.map((x) =>
         h(
           'button',
-          { class: `tools-nav-item${x.id === section ? ' on' : ''}`, title: x.hint, 'aria-current': x.id === section ? 'page' : null, dataset: { section: x.id }, onclick: () => { this.open(x.id); this.app.save(); } },
+          { class: `tools-nav-item${x.id === section ? ' on' : ''}${x.id === 'calc' ? ' adv-only' : ''}`, title: x.hint, 'aria-current': x.id === section ? 'page' : null, dataset: { section: x.id }, onclick: () => { this.open(x.id); this.app.save(); } },
           icon(x.icon, 15),
           h('span', {}, x.label),
         ),

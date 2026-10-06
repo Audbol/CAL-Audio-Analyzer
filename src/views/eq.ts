@@ -160,7 +160,7 @@ export class EqView implements View {
   private copyBtns = [
     h('button', { class: 'btn small', onclick: () => this.copy('text') }, 'Copy filter text'),
     h('button', { class: 'btn small', onclick: () => this.copy('csv') }, 'Copy CSV'),
-    h('button', { class: 'btn small', dataset: { firExport: '' }, title: 'The EQ as an impulse response (WAV) for convolution in a DSP or player', onclick: () => showFirExport(this.app, this.filters, this.sourceName) }, icon('download', 13), 'Export FIR…'),
+    h('button', { class: 'btn small adv-only', dataset: { firExport: '' }, title: 'The EQ as an impulse response (WAV) for convolution in a DSP or player', onclick: () => showFirExport(this.app, this.filters, this.sourceName) }, icon('download', 13), 'Export FIR…'),
   ];
 
   private renderList(): void {

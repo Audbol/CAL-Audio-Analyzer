@@ -66,7 +66,7 @@ const STEPS: TourStep[] = [
     view: 'transfer',
     target: '.theme-btn',
     title: 'Make it yours',
-    body: 'T switches between night and day; Tools → Display has more themes. Press ? for help and keyboard shortcuts. Enjoy measuring!',
+    body: 'T switches between night and day; Tools → Display has more themes. The menu (☰) switches between the simple and advanced view and has help and keyboard shortcuts (?). Enjoy measuring!',
   },
 ];
 
@@ -83,6 +83,8 @@ let running: (() => void) | null = null;
 
 /** The guided tour (first start in the demo, or Help → Take the tour). */
 export function startTour(app: App): void {
+  // Only the tabs of the current view (simple or advanced)
+  const steps = STEPS.filter((st) => !st.view || app.visibleViews().some((v) => v.id === st.view));
   running?.();
   let i = 0;
   const spot = h('div', { class: 'tour-spot', 'aria-hidden': 'true' });
@@ -97,7 +99,7 @@ export function startTour(app: App): void {
   document.body.append(layer);
 
   const place = () => {
-    const step = STEPS[i];
+    const step = steps[i];
     const el = find(step);
     const vw = window.innerWidth;
     const vh = window.innerHeight;
@@ -119,13 +121,13 @@ export function startTour(app: App): void {
     }
   };
   const show = () => {
-    const step = STEPS[i];
+    const step = steps[i];
     if (step.view && app.settings.view !== step.view) app.setView(step.view);
     title.textContent = step.title;
     body.textContent = step.body;
-    count.textContent = `${i + 1} / ${STEPS.length}`;
+    count.textContent = `${i + 1} / ${steps.length}`;
     back.disabled = i === 0;
-    next.textContent = i === STEPS.length - 1 ? 'Done' : 'Next';
+    next.textContent = i === steps.length - 1 ? 'Done' : 'Next';
     // Let the tab lay out before measuring where the target is
     requestAnimationFrame(() => requestAnimationFrame(place));
     next.focus();
@@ -141,7 +143,7 @@ export function startTour(app: App): void {
     }
   };
   const go = (d: number) => {
-    if (i + d >= STEPS.length) return end();
+    if (i + d >= steps.length) return end();
     i = Math.max(0, i + d);
     show();
   };

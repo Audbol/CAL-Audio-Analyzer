@@ -342,6 +342,65 @@ if (want('traces')) {
   await page.screenshot({ path: `${out}/feat7-06-traces.png`, clip: { x: 0, y: 0, width: 300, height: 600 } });
 }
 
+// --- 11. Tidy top bar, app menu, simple and advanced view, splash
+if (want('menu')) {
+  await page.evaluate(() => window.calApp.setView('transfer'));
+  const top = await page.evaluate(() => ({
+    icons: document.querySelectorAll('.topbar .extra-group > .btn.icon-btn, .topbar .extra-group > .opt-wrap > .btn').length,
+    menu: !!document.querySelector('.topbar [data-options="app"]'),
+  }));
+  check(top.menu && top.icons <= 2, `top bar: theme and one menu button (${JSON.stringify(top)})`);
+  await page.locator('[data-options="app"]').click();
+  const items = await page.$$eval('.app-menu .menu-item span', (els) => els.map((e) => e.textContent));
+  check(['Setup assistant…', 'Guided tour', 'Help & shortcuts', 'What’s new', 'Settings & tools'].every((x) => items.includes(x)), `menu has help, assistant, tour, what’s new, settings (${items.join(', ')})`);
+  await page.screenshot({ path: `${out}/feat7-11-menu.png`, clip: { x: 1000, y: 0, width: 440, height: 420 } });
+  await page.keyboard.press('Escape');
+  // Simple view: four advanced tabs go, the rest stay; keys follow the visible tabs
+  await page.evaluate(() => window.calApp.setView('align'));
+  await page.locator('[data-options="app"]').click();
+  await page.locator('.app-menu [data-ui-mode="simple"]').click();
+  await page.waitForTimeout(200);
+  const simple = await page.evaluate(() => ({
+    tabs: [...document.querySelectorAll('.tabs .tab')].filter((t) => !t.hidden).map((t) => t.dataset.view),
+    view: window.calApp.settings.view,
+    note: !!document.querySelector('[data-notes]')?.offsetParent,
+    mode: window.calApp.settings.uiMode,
+  }));
+  check(simple.mode === 'simple' && simple.tabs.join() === 'spectrum,transfer,eq,spl,tools', `simple view: essential tabs only (${simple.tabs.join(', ')})`);
+  check(simple.view === 'transfer', `a hidden tab is left for Transfer (${simple.view})`);
+  check(!simple.note, 'simple view hides advanced controls (graph notes)');
+  await page.locator('body').click({ position: { x: 700, y: 880 } });
+  await page.keyboard.press('3');
+  check((await page.evaluate(() => window.calApp.settings.view)) === 'eq', 'number keys follow the visible tabs (3 → EQ)');
+  await page.screenshot({ path: `${out}/feat7-11-simple.png` });
+  await page.locator('[data-options="app"]').click();
+  await page.locator('.app-menu [data-ui-mode="advanced"]').click();
+  const adv = await page.evaluate(() => [...document.querySelectorAll('.tabs .tab')].filter((t) => !t.hidden).length);
+  check(adv === 9, `advanced view: all nine tabs (${adv})`);
+  await page.locator('body').click({ position: { x: 700, y: 880 } });
+  // Help from the menu
+  await page.locator('[data-options="app"]').click();
+  await page.locator('.app-menu [data-menu="help"]').click();
+  check(await page.locator('.modal').first().isVisible(), 'Help opens from the menu');
+  await page.keyboard.press('Escape');
+  await page.locator('.modal-overlay').first().waitFor({ state: 'detached', timeout: 2000 }).catch(() => undefined);
+  // The welcome dialog chooses the view too
+  await page.evaluate(() => window.calApp.setView('transfer'));
+  await page.locator('[data-options="app"]').click();
+  await page.locator('.app-menu [data-menu="wizard"]').click();
+  await page.locator('[data-wizard-view="simple"]').click();
+  await page.locator('.modal .btn.accent').click();
+  await page.waitForTimeout(500);
+  check((await page.evaluate(() => window.calApp.settings.uiMode)) === 'simple', 'the welcome dialog sets the simple view');
+  await page.evaluate(() => window.calApp.setUiMode('advanced'));
+  // Splash: shows the name and version while loading, then goes away
+  await page.reload();
+  const ver = await page.evaluate(() => document.querySelector('#splash .splash-ver')?.textContent ?? '');
+  check(/^Version \d+\.\d+\.\d+/.test(ver), `splash shows the version (${ver})`);
+  await page.waitForTimeout(1600);
+  check(!(await page.evaluate(() => !!document.getElementById('splash'))), 'splash is gone once the app is ready');
+}
+
 // --- 10. Older setups: a measurement used the mic set to its input; it now names that mic
 if (want('migrate')) {
   await page.evaluate(() => {

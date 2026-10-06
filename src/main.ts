@@ -7,6 +7,9 @@ import { App } from './app';
 import { Plot } from './ui/plot';
 
 const root = document.getElementById('app');
+const splash = document.getElementById('splash');
+const splashVer = splash?.querySelector('.splash-ver');
+if (splashVer) splashVer.textContent = `Version ${__APP_VERSION__}`;
 if (root) {
   const app = new App(root);
   (window as unknown as { calApp: App }).calApp = app;
@@ -15,4 +18,13 @@ if (root) {
     Plot.invalidateAll();
     for (const v of app.views) v.invalidate?.();
   });
+}
+
+// The splash shows the name for a moment (at least ~0.9 s from the start), then fades out; it never blocks input
+if (splash) {
+  const hide = () => {
+    splash.classList.add('out');
+    setTimeout(() => splash.remove(), 400);
+  };
+  setTimeout(hide, Math.max(0, 900 - performance.now()));
 }

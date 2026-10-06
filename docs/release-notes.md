@@ -21,6 +21,9 @@ On first launch, choose **Explore with the demo room** to try every feature with
 
 ## What's new in 2.0.2
 
+- **Simple or Advanced view:** the simple view shows the essentials (Spectrum, Transfer, EQ, SPL and Tools) and hides the advanced tabs and controls; Advanced shows every tool. Choose it in the welcome dialog or any time in the menu. Nothing is changed or lost when you switch, and each device keeps its own choice.
+- **Tidier top bar:** help, the setup assistant, the guided tour, what's new, full screen and settings are now in one menu (☰) next to the day / night button.
+- **Splash screen** with the version while the app starts.
 - **Microphone inventory:** set up each mic once (name, model and serial, correction file, SPL calibration) and choose it for a measurement. **Add** now asks for the measurement's name (what it measures, e.g. "FOH left"), its input and reference, and the mic; each measurement card has a Microphone menu to swap it. The mic's calibration follows the measurement's input. Export the inventory to use it on another computer. Setups from earlier versions keep their mics.
 - **Console EQ widths:** every console profile shows and takes the width the way that console does: Q, or width in octaves on Allen & Heath (with fractions such as 1/3 and 1/9) and on the Midas PRO series, which now has its own profile (width 0.1–2 octaves) separate from the HD96. A width typed in octaves stays exactly as typed.
 

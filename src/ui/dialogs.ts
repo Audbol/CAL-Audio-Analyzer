@@ -30,6 +30,7 @@ export function showWizard(app: App): void {
   let step = 0;
   let mode: 'demo' | 'hw' = app.settings.simulate ? 'demo' : 'hw';
   let refMode: 'loopback' | 'internal' = 'internal';
+  let uiMode = app.settings.uiMode;
   const next = h('button', { class: 'btn accent' });
   const back = h('button', { class: 'btn ghost' }, 'Back');
   const { close } = modal('Welcome to CAL Audio Analyzer', body, [back, h('div', { class: 'spacer' }), next]);
@@ -49,6 +50,19 @@ export function showWizard(app: App): void {
           { class: 'choices' },
           choice(mode === 'demo', 'Explore with the demo room', 'A virtual loudspeaker in a reverberant room. No hardware needed, and nothing is played through your speakers.', 'sparkle', () => (mode = 'demo')),
           choice(mode === 'hw', 'Measure a real system', 'Use your audio interface and a measurement microphone.', 'mic', () => (mode = 'hw')),
+        ),
+        h(
+          'div',
+          { class: 'wizard-view row gap8 wrap' },
+          h('span', { class: 'dim small' }, 'View'),
+          h(
+            'div',
+            { class: 'segmented', role: 'group', 'aria-label': 'View' },
+            ...(['simple', 'advanced'] as const).map((v) =>
+              h('button', { class: `seg${uiMode === v ? ' on' : ''}`, dataset: { wizardView: v }, onclick: () => { uiMode = v; render(); } }, v === 'simple' ? 'Simple' : 'Advanced'),
+            ),
+          ),
+          h('span', { class: 'dim small' }, uiMode === 'simple' ? 'Spectrum, Transfer, EQ and SPL: the essentials.' : 'Every tool. Change it any time in the menu (top right).'),
         ),
       );
       next.textContent = mode === 'demo' ? 'Start demo' : 'Next';
@@ -83,6 +97,7 @@ export function showWizard(app: App): void {
     const s = app.settings;
     s.simulate = mode === 'demo';
     s.wizardDone = true;
+    if (uiMode !== s.uiMode) app.setUiMode(uiMode);
     const m = s.measurements[0];
     if (mode === 'demo') {
       m.mic = 0;
@@ -126,7 +141,7 @@ export function showHelp(app: App): void {
     ['P', 'Toggle RTA peak hold'],
     ['B', 'Spectrum as line / bars'],
     ['F', 'Freeze / unfreeze display'],
-    ['1 – 9', 'Switch views'],
+    [app.settings.uiMode === 'simple' ? '1 – 5' : '1 – 9', 'Switch tabs (the ones shown)'],
     ['T', 'Day / night colour scheme'],
     ['F11', 'Fullscreen'],
     ['?', 'This help'],

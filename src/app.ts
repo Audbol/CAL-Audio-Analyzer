@@ -30,7 +30,8 @@ import { MeterBallistics, type MeterReading } from './audio/meter-ballistics';
 import { THEME_PRESETS, applyTheme as applyThemeTo, type CustomTheme } from './ui/themes';
 import { displayColor } from './ui/theme';
 import { startTour } from './ui/tour';
-import { maybeShowWhatsNew } from './ui/whats-new';
+import { maybeShowWhatsNew, showWhatsNew } from './ui/whats-new';
+import { optionsMenu, optHead } from './ui/popover';
 import { setWatermark } from './ui/watermark';
 import { MARK_SVG } from './ui/brand';
 import type { UpdateState } from './views/about-card';
@@ -149,7 +150,7 @@ export class App {
   busy = false;
   /** The last report created (tests and re-download). */
   lastReport: string | null = null;
-  private workspaceHost = h('div', { class: 'ws-ctl' });
+  private workspaceHost = h('div', { class: 'ws-ctl adv-only' });
 
   /** Workspace picker at the end of the tab bar: built-in and saved workspaces, save and delete. */
   renderWorkspaces(): void {
@@ -1069,17 +1070,16 @@ export class App {
     }
   }
 
-  /** Whole-app fullscreen toggle (hidden where the browser can't do it, e.g. iPhone Safari). */
-  private fullscreenBtn(): HTMLElement | null {
+  /** Whole-app fullscreen: a menu item (left out where the browser can't do it, e.g. iPhone Safari). */
+  private fullscreenItem(): HTMLElement | null {
     type FsDoc = Document & { webkitFullscreenElement?: Element; webkitExitFullscreen?: () => void; webkitFullscreenEnabled?: boolean };
     type FsEl = HTMLElement & { webkitRequestFullscreen?: () => void };
     const doc = document as FsDoc;
     if (!(doc.fullscreenEnabled || doc.webkitFullscreenEnabled)) return null;
-    const btn = h('button', { class: 'btn icon-btn fullscreen-btn', onclick: () => this.toggleFullscreen() });
+    const btn = h('button', { class: 'menu-item fullscreen-btn', dataset: { menuClose: '' }, onclick: () => this.toggleFullscreen() });
     const render = () => {
       const on = !!(doc.fullscreenElement || doc.webkitFullscreenElement);
-      btn.replaceChildren(icon(on ? 'minimize' : 'maximize', 18));
-      btn.title = on ? 'Exit fullscreen — F11' : 'Fullscreen — F11';
+      btn.replaceChildren(icon(on ? 'minimize' : 'maximize', 15), h('span', {}, on ? 'Exit fullscreen' : 'Fullscreen'), h('kbd', {}, 'F11'));
       btn.classList.toggle('on', on);
     };
     document.addEventListener('fullscreenchange', render);
@@ -1099,6 +1099,69 @@ export class App {
   }
 
   toggleFullscreen: () => void = () => undefined;
+
+  /**
+   * The app menu (top right): the view (simple or advanced), help, the setup assistant, the tour, what's new,
+   * fullscreen and settings. Keeps the top bar to the controls used while measuring.
+   */
+  private appMenu(): HTMLElement {
+    const item = (ic: Parameters<typeof icon>[0], label: string, run: () => void, key = '', id = '') =>
+      h('button', { class: 'menu-item', dataset: { menuClose: '', menu: id }, onclick: run }, icon(ic, 15), h('span', {}, label), key ? h('kbd', {}, key) : null);
+    const seg = (mode: Settings['uiMode'], label: string, hint: string) => {
+      const b = h('button', { class: 'seg', title: hint, dataset: { uiMode: mode }, onclick: () => this.setUiMode(mode) }, label);
+      return b;
+    };
+    this.modeSeg = h('div', { class: 'segmented ui-mode', role: 'group', 'aria-label': 'View' }, seg('simple', 'Simple', 'The essentials: Spectrum, Transfer, EQ and SPL'), seg('advanced', 'Advanced', 'Every tool: spectrogram, impulse, sweeps and room, alignment and more'));
+    return optionsMenu(
+      [
+        optHead('View'),
+        this.modeSeg,
+        h('p', { class: 'dim small menu-note' }, 'Simple shows the essentials; Advanced every tool. Nothing is lost when you switch.'),
+        h('div', { class: 'menu-sep' }),
+        this.remote ? null : item('sparkle', 'Setup assistant…', () => showWizard(this), '', 'wizard'),
+        item('play', 'Guided tour', () => startTour(this), '', 'tour'),
+        item('help', 'Help & shortcuts', () => showHelp(this), '?', 'help'),
+        item('list', 'What’s new', () => showWhatsNew(this), '', 'whats-new'),
+        h('div', { class: 'menu-sep' }),
+        this.fullscreenItem(),
+        item('settings', 'Settings & tools', () => this.setView('tools'), '9', 'tools'),
+      ],
+      { title: 'Menu', id: 'app', icon: 'menu', iconOnly: true, panelClass: 'app-menu' },
+    );
+  }
+
+  private modeSeg!: HTMLElement;
+
+  /** Tabs only in the advanced view. */
+  static readonly ADVANCED_VIEWS: readonly ViewId[] = ['spectrogram', 'impulse', 'room', 'align'];
+
+  /** The tabs shown in the current view (simple or advanced), in order. */
+  visibleViews(): View[] {
+    return this.settings.uiMode === 'simple' ? this.views.filter((v) => !App.ADVANCED_VIEWS.includes(v.id)) : this.views;
+  }
+
+  setUiMode(mode: Settings['uiMode']): void {
+    this.settings.uiMode = mode;
+    this.save();
+    this.applyUiMode();
+  }
+
+  /** Show or hide what belongs to the advanced view (tabs, and controls marked `adv-only`). */
+  applyUiMode(): void {
+    const simple = this.settings.uiMode === 'simple';
+    document.documentElement.classList.toggle('ui-simple', simple);
+    for (const b of this.modeSeg?.querySelectorAll<HTMLElement>('.seg') ?? []) b.classList.toggle('on', b.dataset.uiMode === this.settings.uiMode);
+    const shown = this.visibleViews();
+    for (const b of this.tabs?.querySelectorAll<HTMLButtonElement>('.tab') ?? []) {
+      const i = shown.findIndex((v) => v.id === b.dataset.view);
+      b.hidden = i < 0;
+      const v = this.views.find((x) => x.id === b.dataset.view);
+      if (v) b.title = i >= 0 && i < 9 ? `${v.title} (${i + 1})` : v.title;
+    }
+    // Leave a tab that the simple view hides
+    if (this.active && !shown.includes(this.active)) this.setView('transfer');
+    for (const v of this.views) (v as View & { setUiMode?(simple: boolean): void }).setUiMode?.(simple);
+  }
 
   toggleTheme(): void {
     // T / the sun-moon button: between the built-in Night and Day (leaving a custom theme)
@@ -1147,15 +1210,7 @@ export class App {
     if (this.remote) this.sourceGroup.append(this.hostAudioBtn);
     else void NativeAudio.available().then((ok) => (this.nativeAvailable = ok));
     this.genGroup = h('div', { class: 'group gen' }, h('span', { class: 'label' }, 'Generator'), this.genBtn, this.genControls);
-    this.extraGroup = h(
-      'div',
-      { class: 'group extra-group' },
-      this.updateBtn,
-      this.fullscreenBtn(),
-      this.themeBtn,
-      h('button', { class: 'btn icon-btn', title: 'Help & shortcuts (?)', onclick: () => showHelp(this) }, icon('help', 18)),
-      this.remote ? null : h('button', { class: 'btn icon-btn', title: 'Setup assistant', onclick: () => showWizard(this) }, icon('sparkle', 18)),
-    );
+    this.extraGroup = h('div', { class: 'group extra-group' }, this.updateBtn, this.themeBtn, this.appMenu());
     const drawerBtn = h('button', { class: 'btn icon-btn compact-only', title: 'Measurements, traces & assistant', onclick: () => this.toggleDrawer() }, icon('menu', 18));
     const moreBtn = h('button', { class: 'btn icon-btn compact-only', title: 'Source, generator & display settings', onclick: () => this.toggleSheet() }, icon('more', 18));
     this.startGroup = h('div', { class: 'group start-group' }, this.startBtn);
@@ -1251,6 +1306,7 @@ export class App {
     this.applyCompact();
 
     this.setView(this.settings.view);
+    this.applyUiMode();
     this.renderTopState();
     this.renderGenControls();
     this.renderMeasurements();
@@ -1329,7 +1385,7 @@ export class App {
         h('div', { class: 'sheet-head' }, h('b', {}, 'Settings'), h('button', { class: 'btn icon-btn ghost', title: 'Close', onclick: () => this.closeOverlays() }, icon('x', 18))),
         h('div', { class: 'sheet-sec' }, h('div', { class: 'remote-label' }, this.remote ? 'Measurement host' : 'Audio source'), this.sourceGroup),
         h('div', { class: 'sheet-sec' }, h('div', { class: 'remote-label' }, 'Generator'), this.genGroup),
-        h('div', { class: 'sheet-sec' }, h('div', { class: 'remote-label' }, 'Display & help'), this.extraGroup),
+        h('div', { class: 'sheet-sec' }, h('div', { class: 'remote-label' }, 'Theme & menu'), this.extraGroup),
       );
     } else {
       // Put the controls back into the top bar, in their original order
@@ -1695,7 +1751,7 @@ export class App {
         h(
           'div',
           { class: 'row' },
-          h('label', { class: 'check', title: 'Invert polarity of the measurement' }, (() => {
+          h('label', { class: 'check adv-only', title: 'Invert polarity of the measurement' }, (() => {
             const c = h('input', { type: 'checkbox', checked: cfg.invert });
             c.addEventListener('change', () => { cfg.invert = c.checked; this.save(); });
             return c;
@@ -2136,7 +2192,10 @@ export class App {
           this.toggleTheme();
           break;
         default:
-          if (/^[1-9]$/.test(e.key)) this.setView(this.views[+e.key - 1].id);
+          if (/^[1-9]$/.test(e.key)) {
+            const v = this.visibleViews()[+e.key - 1];
+            if (v) this.setView(v.id);
+          }
       }
     });
   }

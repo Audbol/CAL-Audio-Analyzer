@@ -195,6 +195,8 @@ export interface Settings {
   powerMode: 'auto' | 'normal' | 'saver';
   /** The Assistant tips in the sidebar (hidden: the traces get the space). */
   showAssistant: boolean;
+  /** Simple view: the essential tabs and controls only; advanced: every tool. Per device (not shared). */
+  uiMode: 'simple' | 'advanced';
   /** Several mics: show their live power average (and the spread between them) on Spectrum and Transfer. */
   micAverage: 'off' | 'avg' | 'spread' | 'only';
   /** Workspaces saved by the user (built-in ones live in workspaces.ts), and the last one chosen. */
@@ -286,6 +288,7 @@ export function defaultSettings(): Settings {
     avgCurveWidth: 2,
     powerMode: 'auto',
     showAssistant: true,
+    uiMode: 'advanced',
     micAverage: 'off',
     workspaces: [],
     workspace: '',

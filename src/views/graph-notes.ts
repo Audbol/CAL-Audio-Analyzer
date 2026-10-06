@@ -28,7 +28,7 @@ export class GraphNotes {
     private readonly graph: GraphNote['graph'],
     private readonly plot: Plot,
   ) {
-    this.btn = h('button', { class: 'chip', title: 'Add a note: press, then click the graph where it belongs (click a note to change or delete it)', dataset: { notes: graph } }, icon('note', 14), 'Note');
+    this.btn = h('button', { class: 'chip adv-only', title: 'Add a note: press, then click the graph where it belongs (click a note to change or delete it)', dataset: { notes: graph } }, icon('note', 14), 'Note');
     this.btn.addEventListener('click', () => this.setAdding(adding !== this));
     plot.onClick = (f) => {
       if (adding !== this) return;

@@ -5,25 +5,38 @@ import { h, icon } from './dom';
  * the time. The panel stays in the page (its controls keep their state and stay in sync); it closes on a click
  * outside, on Escape, or when the button is pressed again.
  */
-export function optionsMenu(content: (HTMLElement | null)[], opts: { label?: string; title?: string; id?: string } = {}): HTMLElement {
-  const panel = h('div', { class: 'opt-panel', role: 'dialog', 'aria-label': opts.title ?? 'Options' });
+export function optionsMenu(
+  content: (HTMLElement | null)[],
+  opts: { label?: string; title?: string; id?: string; icon?: Parameters<typeof icon>[0]; iconOnly?: boolean; panelClass?: string } = {},
+): HTMLElement {
+  const panel = h('div', { class: `opt-panel${opts.panelClass ? ` ${opts.panelClass}` : ''}`, role: 'dialog', 'aria-label': opts.title ?? 'Options' });
   panel.append(...content.filter((c): c is HTMLElement => !!c));
-  const btn = h(
-    'button',
-    { class: 'btn small opt-btn', title: opts.title ?? 'More options', 'aria-expanded': 'false', 'aria-haspopup': 'dialog', dataset: { options: opts.id ?? '' } },
-    icon('sliders', 14),
-    opts.label ?? 'Options',
-    h('span', { class: 'opt-caret' }),
-  );
+  const btn = opts.iconOnly
+    ? h('button', { class: 'btn icon-btn opt-btn', title: opts.title ?? 'Menu', 'aria-label': opts.title ?? 'Menu', 'aria-expanded': 'false', 'aria-haspopup': 'dialog', dataset: { options: opts.id ?? '' } }, icon(opts.icon ?? 'more', 18))
+    : h(
+        'button',
+        { class: 'btn small opt-btn', title: opts.title ?? 'More options', 'aria-expanded': 'false', 'aria-haspopup': 'dialog', dataset: { options: opts.id ?? '' } },
+        icon(opts.icon ?? 'sliders', 14),
+        opts.label ?? 'Options',
+        h('span', { class: 'opt-caret' }),
+      );
   const wrap = h('div', { class: 'opt-wrap' }, btn, panel);
   const place = () => {
     // Fixed position so the panel is never clipped by the toolbar; kept inside the window
     const r = btn.getBoundingClientRect();
     const w = panel.offsetWidth;
     const view = wrap.ownerDocument.defaultView ?? window;
-    panel.style.top = `${Math.round(r.bottom + 6)}px`;
     panel.style.left = `${Math.round(Math.max(8, Math.min(r.right - w, view.innerWidth - w - 8)))}px`;
-    panel.style.maxHeight = `${Math.max(160, view.innerHeight - r.bottom - 20)}px`;
+    const below = view.innerHeight - r.bottom - 20;
+    const above = r.top - 20;
+    // Open upwards when the button is near the bottom (e.g. in the settings sheet on phones)
+    if (below < Math.min(panel.scrollHeight, 320) && above > below) {
+      panel.style.maxHeight = `${above}px`;
+      panel.style.top = `${Math.round(Math.max(8, r.top - 6 - Math.min(panel.scrollHeight, above)))}px`;
+    } else {
+      panel.style.top = `${Math.round(r.bottom + 6)}px`;
+      panel.style.maxHeight = `${Math.max(160, below)}px`;
+    }
   };
   const onDown = (e: PointerEvent) => {
     if (!wrap.contains(e.target as Node) && !(e.target as HTMLElement).closest?.('.opt-panel')) close();
@@ -55,6 +68,10 @@ export function optionsMenu(content: (HTMLElement | null)[], opts: { label?: str
     doc.defaultView?.removeEventListener('resize', onResize);
   }
   btn.addEventListener('click', () => (wrap.classList.contains('open') ? close() : open()));
+  // Menu items that do something (rather than change a setting) close the panel
+  panel.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest?.('[data-menu-close]')) close();
+  });
   return wrap;
 }
 

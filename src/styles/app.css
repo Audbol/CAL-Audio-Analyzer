@@ -4109,3 +4109,74 @@ html.compact .peq-side {
   display: block;
   width: 100%;
 }
+
+/* App menu (top right): view, help, assistant, tour, what's new, fullscreen, settings */
+.opt-panel.app-menu {
+  min-width: 250px;
+  display: none;
+}
+.opt-wrap.open .opt-panel.app-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.app-menu .ui-mode {
+  display: flex;
+  margin: 6px 0 4px;
+}
+.app-menu .ui-mode .seg {
+  flex: 1;
+}
+.app-menu .menu-note {
+  margin: 2px 0 4px;
+  line-height: 1.35;
+}
+.app-menu .menu-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 6px -12px;
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: var(--panel-2, rgba(127, 140, 160, 0.12));
+}
+.menu-item svg {
+  color: var(--text-2);
+  flex: none;
+}
+.menu-item span {
+  flex: 1;
+}
+.menu-item kbd {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* Simple view: the advanced tabs and controls are hidden (nothing is changed or lost) */
+.tab[hidden] {
+  display: none !important;
+}
+html.ui-simple .adv-only {
+  display: none !important;
+}
+
+/* Welcome dialog: simple or advanced view */
+.wizard-view {
+  align-items: center;
+  margin-top: 14px;
+}
