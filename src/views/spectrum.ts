@@ -457,12 +457,12 @@ export class SpectrumView extends DockedView implements View {
         if (!m.cfg.enabled || only || !m.hasRta) continue;
         const off = offOf(m.cfg.mic);
         if (bars) {
-          series.push({ id: m.cfg.id, label: nameOf(m), x: this.bands, y: atBands(m.rtaOut, off), color: traceOf(m.cfg.color), bars, ...fillStyle });
-          if (s.peakHold) series.push({ id: `${m.cfg.id}-pk`, label: `${m.cfg.name} peak`, x: this.bands, y: atBands(m.rtaPeakOut, off), color: traceOf(m.cfg.color), bars, cap: true });
+          series.push({ id: m.cfg.id, label: nameOf(m), x: this.bands, y: atBands(m.rtaOut, off), color: traceOf(m.cfg.color), colorExact: s.rtaTraceColor !== 'auto', bars, ...fillStyle });
+          if (s.peakHold) series.push({ id: `${m.cfg.id}-pk`, label: `${m.cfg.name} peak`, x: this.bands, y: atBands(m.rtaPeakOut, off), color: traceOf(m.cfg.color), colorExact: s.rtaTraceColor !== 'auto', bars, cap: true });
           continue;
         }
-        if (s.peakHold) series.push({ id: `${m.cfg.id}-pk`, label: `${m.cfg.name} peak`, x: g, y: shiftBy(m.rtaPeakOut, off), color: traceOf(m.cfg.color), width: 1, dash: [2, 2] });
-        series.push({ id: m.cfg.id, label: nameOf(m), x: g, y: shiftBy(m.rtaOut, off), color: traceOf(m.cfg.color), width: 1.6, fill: true, ...fillStyle });
+        if (s.peakHold) series.push({ id: `${m.cfg.id}-pk`, label: `${m.cfg.name} peak`, x: g, y: shiftBy(m.rtaPeakOut, off), color: traceOf(m.cfg.color), colorExact: s.rtaTraceColor !== 'auto', width: 1, dash: [2, 2] });
+        series.push({ id: m.cfg.id, label: nameOf(m), x: g, y: shiftBy(m.rtaOut, off), color: traceOf(m.cfg.color), colorExact: s.rtaTraceColor !== 'auto', width: 1.6, fill: true, ...fillStyle });
       }
       // Average curves (for tuning) on top of everything: the long-term balance behind the live RTA
       const day = s.theme === 'day';

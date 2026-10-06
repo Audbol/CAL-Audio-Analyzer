@@ -93,7 +93,8 @@ export function seriesColor(c: string): string {
   }
   const n = parseInt(m[1], 16);
   const [hh, ss, ll] = rgbToHsl((n >> 16) & 255, (n >> 8) & 255, n & 255);
-  const [r, g, b] = hslToRgb(hh, Math.max(ss, 0.7), Math.min(ll, 0.38));
+  // Greys and white have no hue: keep them neutral (forcing saturation would turn them red)
+  const [r, g, b] = hslToRgb(hh, ss < 0.12 ? ss : Math.max(ss, 0.7), Math.min(ll, 0.38));
   const out = `#${[r, g, b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}${m[2] ?? ''}`;
   cache.set(c, out);
   return out;

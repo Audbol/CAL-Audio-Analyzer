@@ -115,6 +115,26 @@ check(await rem.evaluate(() => window.calApp.engine.state !== 'connected'), 'rem
 await rem.waitForFunction(() => window.calApp.engine.running === true, null, { timeout: 10000 }).catch(() => undefined);
 check(await rem.evaluate(() => window.calApp.engine.running), 'remote reconnects automatically and resumes live data');
 
+// --- Remote controls the host's setup: its audio source and starting / stopping its audio
+const srcs = await rem.evaluate(() => [...document.querySelectorAll('select.source option')].map((o) => o.value));
+check(srcs.includes('__demo') && srcs.includes('__default') && !(await rem.locator('select.source').isDisabled()), `remote lists the host's audio sources and may change them (${srcs.length})`);
+await rem.evaluate(() => { const s = document.querySelector('select.source'); s.value = '__default'; s.dispatchEvent(new Event('change')); });
+await host.waitForFunction(() => window.calApp.settings.simulate === false, null, { timeout: 5000 }).then(() => check(true, 'the host switches to the source chosen on the remote')).catch(() => check(false, 'the host switches to the source chosen on the remote'));
+await rem.evaluate(() => { const s = document.querySelector('select.source'); s.value = '__demo'; s.dispatchEvent(new Event('change')); });
+await host.waitForFunction(() => window.calApp.settings.simulate === true && window.calApp.engine.running, null, { timeout: 10000 }).catch(() => undefined);
+check(await host.evaluate(() => window.calApp.settings.simulate && window.calApp.engine.running), 'and back to the demo room, running');
+await rem.waitForFunction(() => document.querySelector('select.source')?.value === '__demo', null, { timeout: 5000 }).catch(() => undefined);
+check((await rem.locator('select.source').inputValue()) === '__demo', 'the remote shows the host’s current source');
+await rem.evaluate(() => document.querySelector('[data-host-audio]').click());
+await host.waitForFunction(() => !window.calApp.engine.running, null, { timeout: 5000 }).catch(() => undefined);
+check(!(await host.evaluate(() => window.calApp.engine.running)), 'Stop host audio stops the host');
+await rem.waitForFunction(() => document.querySelector('[data-host-audio]')?.textContent.includes('Start'), null, { timeout: 5000 }).catch(() => undefined);
+await rem.evaluate(() => document.querySelector('[data-host-audio]').click());
+await host.waitForFunction(() => window.calApp.engine.running, null, { timeout: 10000 }).catch(() => undefined);
+check(await host.evaluate(() => window.calApp.engine.running), 'Start host audio starts it again');
+await rem.waitForFunction(() => window.calApp.engine.running === true, null, { timeout: 15000 }).catch(() => undefined);
+await rem.waitForTimeout(2500);
+
 // --- Remote controls the host's generator
 await rem.keyboard.press(' ');
 await host.waitForTimeout(700);

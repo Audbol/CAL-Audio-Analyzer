@@ -3,7 +3,7 @@
  * plot area, under the curves. It goes into screenshots, copied graph images and reports too.
  */
 
-export type WatermarkPosition = 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+export type WatermarkPosition = 'center' | 'top-center' | 'bottom-center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 
 export interface WatermarkSettings {
   on: boolean;
@@ -74,8 +74,8 @@ export function drawWatermark(ctx: CanvasRenderingContext2D, x: number, y: numbe
     dh = maxH;
   }
   const p = cfg.position;
-  const dx = p === 'center' ? x + (w - dw) / 2 : p.endsWith('left') ? x + margin : x + w - dw - margin;
-  const dy = p === 'center' ? y + (h - dh) / 2 : p.startsWith('top') ? y + margin : y + h - dh - margin;
+  const dx = p.endsWith('left') ? x + margin : p.endsWith('right') ? x + w - dw - margin : x + (w - dw) / 2;
+  const dy = p.startsWith('top') ? y + margin : p.startsWith('bottom') ? y + h - dh - margin : y + (h - dh) / 2;
   ctx.save();
   ctx.globalAlpha = Math.max(0.03, Math.min(1, cfg.opacity));
   ctx.imageSmoothingQuality = 'high';

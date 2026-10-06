@@ -26,7 +26,10 @@ export interface Series {
   /** Fill area under the curve down to the bottom of the plot. */
   fill?: boolean;
   /** Colour of the fill (line fill or bar bodies); the series colour when not set. */
+  /** Fill colour, used exactly as given (a colour the user chose; not adapted to the theme). */
   fillColor?: string;
+  /** `color` is the user's own choice: draw it exactly, without the day-theme adaptation. */
+  colorExact?: boolean;
   /** Opacity of the fill (0..1); the theme's default when not set. */
   fillAlpha?: number;
   /**
@@ -795,7 +798,7 @@ export class Plot {
     const ctx = this.ctx;
     const n = Math.min(s.x.length, s.y.length);
     if (!n) return;
-    const color = seriesColor(s.color);
+    const color = s.colorExact ? s.color : seriesColor(s.color);
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
     ctx.lineWidth = (s.width ?? 1.5) * COLORS.lineScale;
@@ -842,7 +845,7 @@ export class Plot {
         tops.rect(x0 + gap, y - cap / 2, Math.max(1, x1 - x0 - 2 * gap), cap);
       }
       if (!s.cap && s.fillAlpha !== 0) {
-        ctx.fillStyle = this.fillPaint(s, s.fillColor ? seriesColor(s.fillColor) : color, top);
+        ctx.fillStyle = this.fillPaint(s, s.fillColor ?? color, top);
         ctx.globalAlpha = s.fillAlpha ?? (s.fillGradient === 'level' || s.fillGradient === 'frequency' ? 0.8 : s.fillGradient === 'fade' ? 0.7 : 0.45);
         ctx.fill(fill);
         ctx.fillStyle = color;
@@ -958,7 +961,7 @@ export class Plot {
       ctx.lineTo(lastX, bottom);
       ctx.lineTo(firstX, bottom);
       ctx.closePath();
-      ctx.fillStyle = this.fillPaint(s, s.fillColor ? seriesColor(s.fillColor) : color, top);
+      ctx.fillStyle = this.fillPaint(s, s.fillColor ?? color, top);
       ctx.globalAlpha = s.fillAlpha ?? (s.fillGradient === 'level' || s.fillGradient === 'frequency' ? 0.45 : s.fillGradient === 'fade' ? 0.5 : COLORS.fillAlpha);
       ctx.fill();
       ctx.globalAlpha = 1;

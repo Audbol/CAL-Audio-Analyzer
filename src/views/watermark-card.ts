@@ -53,6 +53,8 @@ export class WatermarkCard {
     };
     const positions: { value: WatermarkPosition; label: string }[] = [
       { value: 'center', label: 'Centre' },
+      { value: 'top-center', label: 'Top centre' },
+      { value: 'bottom-center', label: 'Bottom centre' },
       { value: 'top-left', label: 'Top left' },
       { value: 'top-right', label: 'Top right' },
       { value: 'bottom-left', label: 'Bottom left' },

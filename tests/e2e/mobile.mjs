@@ -82,7 +82,17 @@ for (const [name, dev] of [
     const genAfter = await host.evaluate(() => window.calApp.settings.generator.type);
     check(genBefore !== genAfter, 'phone: generator switch in the settings sheet controls the host');
     await p.locator('.sheet .btn-gen').click();
+    // The host's audio source and its audio can be changed from the phone too
+    check(!(await p.locator('.sheet select.source').isDisabled()) && (await p.locator('.sheet select.source option').count()) >= 2, 'phone: the host’s audio source can be chosen in the settings sheet');
+    check(await p.locator('.sheet [data-host-audio]').isVisible(), 'phone: the host’s audio can be started and stopped from the sheet');
     await p.locator('.sheet-head button').click();
+    // Align and EQ: graphs keep a readable height (the tab scrolls)
+    for (const id of ['align', 'eq']) {
+      await p.evaluate((v) => window.calApp.setView(v), id);
+      await p.waitForTimeout(400);
+      const hs = await p.evaluate((v) => [...document.querySelectorAll(`.view.${v} .plot`)].map((x) => x.getBoundingClientRect().height), id);
+      check(hs.length >= 2 && hs.every((x) => x >= 200), `phone: ${id} graphs are readable (${hs.map((x) => x.toFixed(0)).join(', ')} px)`);
+    }
     // Every tab renders without horizontal overflow
     for (const id of ['spectrum', 'spectrogram', 'impulse', 'room', 'eq', 'spl', 'tools']) {
       await p.evaluate((v) => window.calApp.setView(v), id);

@@ -87,8 +87,10 @@ function setupUpdater(windowGetter) {
   // Never download or install by itself
   updater.autoDownload = false;
   updater.autoInstallOnAppQuit = false;
-  // A beta or release candidate also gets newer betas; a stable version only stable releases
-  updater.allowPrerelease = app.getVersion().includes('-');
+  // A beta also gets newer betas (and the stable release); everything else only stable releases. The update
+  // library looks only for its own channel when a pre-release is named anything but alpha or beta (an "-rc"
+  // copy would never see the stable release), so release candidates follow the stable releases.
+  updater.allowPrerelease = /-(alpha|beta)\b/.test(app.getVersion());
   updater.logger = null;
   updater.on('checking-for-update', () => set({ status: 'checking', error: null }));
   updater.on('update-not-available', () => set({ status: 'current' }));

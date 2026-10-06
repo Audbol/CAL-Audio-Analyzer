@@ -19,6 +19,14 @@ The builds are not code-signed yet:
 
 On first launch, choose **Explore with the demo room** to try every feature without hardware.
 
+## What's new in 2.0.1
+
+- **Remote control of the setup:** a phone or tablet can now choose the measurement computer's audio source (demo room, inputs, ASIO drivers), start and stop its audio, and set its ASIO sample rate, buffer and safety margin (Tools → Setup), as on the computer itself.
+- **Phones:** the Align and EQ tabs scroll, and their graphs keep a readable size.
+- **Updates on Windows:** copies of a 2.0 release candidate looked only for newer release candidates and never found the 2.0 release. Install 2.0.1 once by hand; from then on *Check for updates* finds new versions.
+- **Day theme:** a white (or grey) trace or fill colour stayed white instead of turning red; the colours you choose are used exactly.
+- **Watermark:** top centre and bottom centre positions.
+
 ## What's new in 2.0
 
 **A faster start for transfer-function work.** The app now opens on the transfer function at 1/12 octave, with coherence drawn in its own band across the top of the magnitude graph and phase below. The delay is found by itself the first time the coherence is low, the level meters live in the status bar, and the Spectrum shows a 1/6-octave line with a 10-second average curve and its real peaks labelled.

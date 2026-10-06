@@ -174,6 +174,8 @@ export class HostLink {
       busy: a.busy,
       analysis: { rtaFft: s.rtaFft, rtaAveraging: s.rtaAveraging, tfAveraging: s.tfAveraging, lfResolution: s.lfResolution },
       playlist: this.playlistState(),
+      source: a.hostSources(),
+      native: a.hostNative(),
     };
   }
 
@@ -245,6 +247,18 @@ export class HostLink {
         break;
       case 'playlist':
         app.playlist.act(msg.a);
+        break;
+      case 'setSource':
+        app.selectSource(msg.value, remoteName(this.info, msg.from));
+        break;
+      case 'stop':
+        if (app.engine.running) void app.stop();
+        break;
+      case 'setNative':
+        app.setNative(msg.native);
+        break;
+      case 'nativePanel':
+        void app.openNativePanel();
         break;
       case 'setAnalysis':
         Object.assign(app.settings, { rtaFft: msg.analysis.rtaFft, rtaAveraging: msg.analysis.rtaAveraging, tfAveraging: msg.analysis.tfAveraging, lfResolution: msg.analysis.lfResolution ?? app.settings.lfResolution });

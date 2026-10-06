@@ -41,7 +41,7 @@ import type { MicProfile } from './state';
 import { BUILTIN_WORKSPACES, allWorkspaces, applyWorkspace, captureWorkspace, type Workspace } from './workspaces';
 import { RemoteEngine } from './remote/client';
 import { HostLink, desktopBridge, hubPageInfo } from './remote/host';
-import { sharedOf, TUNING_KEYS, type Tuning, type HostStatus, type RemoteCommand, type SharedSettings, type SweepMeta, type SweepRequest } from './remote/protocol';
+import { sharedOf, TUNING_KEYS, type Tuning, type HostStatus, type NativeHostState, type RemoteCommand, type SharedSettings, type SourceOption, type SweepMeta, type SweepRequest } from './remote/protocol';
 
 export interface View {
   id: ViewId;
@@ -887,12 +887,15 @@ export class App {
       if (this.engine.running) this.rebuildMeasurements();
       this.renderMeasurements();
     }
-    const label = `${st.deviceLabel}|${st.running}`;
+    const label = `${st.deviceLabel}|${st.running}|${JSON.stringify(st.source ?? null)}|${(this.engine as RemoteEngine).allowControl}`;
     if (label !== this.lastHostLabel) {
       this.lastHostLabel = label;
       this.refreshDevices();
       changed = true;
     }
+    // The host's ASIO settings and stream status (Tools → Setup)
+    (this.views.find((v) => v.id === 'tools') as ToolsView | undefined)?.nativeCard.adoptHost(st.native);
+    this.renderHostAudio(st);
     if (!changed) return;
     this.save();
     if (genChanged) this.renderGenControls();
@@ -1065,10 +1068,12 @@ export class App {
     this.sourceSel = h('select', { class: 'source', title: 'Audio input source' });
     this.sourceSel.addEventListener('change', () => {
       const v = this.sourceSel.value;
-      this.settings.simulate = v === '__demo';
-      if (!this.settings.simulate) this.settings.deviceId = v === '__default' ? '' : v;
-      this.save();
-      if (this.engine.running) this.start();
+      // A remote chooses the host's source; the host switches and reports back
+      if (this.remote) {
+        if (v) void this.sendToHost({ t: 'cmd', cmd: 'setSource', value: v });
+        return;
+      }
+      this.selectSource(v);
     });
     this.genControls = h('div', { class: 'gen-controls' });
     this.splMini = h('div', { class: 'spl-mini', title: 'Sound level (click for SPL meter)', onclick: () => this.setView('spl') });
@@ -1089,6 +1094,8 @@ export class App {
 
     // Controls that move into the "more" sheet on small screens
     this.sourceGroup = h('div', { class: 'group src-group' }, this.sourceSel);
+    if (this.remote) this.sourceGroup.append(this.hostAudioBtn);
+    else void NativeAudio.available().then((ok) => (this.nativeAvailable = ok));
     this.genGroup = h('div', { class: 'group gen' }, h('span', { class: 'label' }, 'Generator'), this.genBtn, this.genControls);
     this.extraGroup = h(
       'div',
@@ -1245,6 +1252,17 @@ export class App {
   private sheet!: HTMLElement;
   private scrim!: HTMLElement;
   private sourceGroup!: HTMLElement;
+  /** Remote: start or stop the host's audio (the top-left button connects and disconnects this device). */
+  private hostAudioBtn = h('button', { class: 'btn small host-audio', dataset: { hostAudio: '' } });
+
+  private renderHostAudio(st: HostStatus): void {
+    const b = this.hostAudioBtn;
+    const can = (this.engine as RemoteEngine).allowControl;
+    b.replaceChildren(icon(st.running ? 'stop' : 'power', 13), st.running ? 'Stop host audio' : 'Start host audio');
+    b.disabled = !can;
+    b.title = can ? (st.running ? 'Stop the audio on the measurement host' : 'Start the audio on the measurement host') : 'Remote control is turned off on the host';
+    b.onclick = () => void this.sendToHost({ t: 'cmd', cmd: st.running ? 'stop' : 'start' });
+  }
   private genGroup!: HTMLElement;
   private extraGroup!: HTMLElement;
   private startGroup!: HTMLElement;
@@ -1308,12 +1326,95 @@ export class App {
     for (const b of this.tabs.querySelectorAll<HTMLButtonElement>('.tab')) b.classList.toggle('active', b.dataset.view === v.id);
   }
 
+  /**
+   * Use an input source: `__demo`, `__default` (the system input), a browser device id or `native:<api>:<name>`.
+   * From the source menu, or from a remote device (`by`). Restarts the audio when it is running.
+   */
+  selectSource(v: string, by?: string): void {
+    if (this.remote) return;
+    this.settings.simulate = v === '__demo';
+    if (!this.settings.simulate) this.settings.deviceId = v === '__default' ? '' : v;
+    this.save();
+    if (this.sourceSel.value !== v) this.sourceSel.value = v;
+    if (by) this.toast(`Audio source changed by ${by}`, 'info');
+    // From a remote: start it too (the remote is waiting for live data from the host)
+    if (this.engine.running || by) void this.start();
+  }
+
+  /** The source menu as data, for remote devices (the host's devices, drivers and the selection). */
+  hostSources(): { value: string; options: SourceOption[] } {
+    const options: SourceOption[] = [];
+    for (const el of this.sourceSel.children) {
+      if (el instanceof HTMLOptGroupElement) for (const o of el.children) options.push({ value: (o as HTMLOptionElement).value, label: (o as HTMLOptionElement).label || o.textContent || '', group: el.label, disabled: (o as HTMLOptionElement).disabled || undefined });
+      else if (el instanceof HTMLOptionElement) options.push({ value: el.value, label: el.textContent ?? '' });
+    }
+    return { value: this.sourceSel.value, options };
+  }
+
+  /** Native audio (ASIO) on this desktop app: available, its settings and the stream status (for remotes). */
+  nativeAvailable = false;
+  hostNative(): NativeHostState | undefined {
+    if (!this.nativeAvailable) return undefined;
+    return { available: true, settings: { ...this.settings.nativeAudio }, active: !!this.engine.nativeInfo, text: this.nativeStatusText };
+  }
+  /** The native status line as the Tools card shows it (kept by the card). */
+  nativeStatusText = '';
+
+  /** Change the native audio settings (here, or from a remote); a running native stream reopens with them. */
+  setNative(patch: Partial<NativeHostState['settings']>): void {
+    if (this.remote) {
+      void this.sendToHost({ t: 'cmd', cmd: 'setNative', native: patch });
+      return;
+    }
+    const na = this.settings.nativeAudio;
+    const restart = (patch.sampleRate !== undefined && patch.sampleRate !== na.sampleRate) || (patch.bufferFrames !== undefined && patch.bufferFrames !== na.bufferFrames);
+    Object.assign(na, patch);
+    this.save();
+    if (patch.safetyMs !== undefined) this.engine.nativeLink?.setSafety(na.safetyMs);
+    if (restart && this.engine.nativeInfo) void this.start();
+    (this.views.find((v) => v.id === 'tools') as ToolsView | undefined)?.nativeCard.render();
+  }
+
+  /** Open the ASIO driver's own control panel (on the host). */
+  async openNativePanel(): Promise<void> {
+    if (this.remote) {
+      void this.sendToHost({ t: 'cmd', cmd: 'nativePanel' });
+      return;
+    }
+    if (!this.engine.nativeInfo) return this.toast('Start audio with an ASIO driver first.', 'warn');
+    const ok = await this.engine.native.controlPanel().catch(() => false);
+    if (!ok) this.toast('This driver has no control panel.', 'info');
+  }
+
   async refreshDevices(): Promise<void> {
     if (this.remote) {
-      const st = (this.engine as RemoteEngine).status;
+      // The host's own source menu: any device with control rights can switch the host's input
+      const eng = this.engine as RemoteEngine;
+      const st = eng.status;
       clear(this.sourceSel);
-      this.sourceSel.append(h('option', { value: '' }, `Remote host: ${st ? st.deviceLabel : location.host}`));
-      this.sourceSel.disabled = true;
+      const src = st?.source;
+      if (!src || !src.options.length) {
+        this.sourceSel.append(h('option', { value: '' }, `Remote host: ${st ? st.deviceLabel : location.host}`));
+        this.sourceSel.disabled = true;
+        return;
+      }
+      const groups = new Map<string, HTMLOptGroupElement>();
+      for (const o of src.options) {
+        const opt = h('option', { value: o.value, disabled: !!o.disabled }, o.label);
+        if (!o.group) this.sourceSel.append(opt);
+        else {
+          let g = groups.get(o.group);
+          if (!g) {
+            g = h('optgroup', { label: o.group }) as HTMLOptGroupElement;
+            groups.set(o.group, g);
+            this.sourceSel.append(g);
+          }
+          g.append(opt);
+        }
+      }
+      this.sourceSel.value = src.value;
+      this.sourceSel.disabled = !eng.allowControl;
+      this.sourceSel.title = eng.allowControl ? 'The host’s audio input source' : 'Remote control is turned off on the host';
       return;
     }
     const devices = await AudioEngine.listDevices().catch(() => []);

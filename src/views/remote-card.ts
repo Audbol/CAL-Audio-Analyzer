@@ -91,7 +91,7 @@ export class RemoteCard {
         icon('reset', 13),
         'New PIN',
       ),
-      h('label', { class: 'check', title: 'Remote devices may switch the generator, run sweeps and start audio. Turn off for view-only access.' }, control, 'Allow remote control of generator & sweeps'),
+      h('label', { class: 'check', title: 'Remote devices may switch the generator, run sweeps, choose the audio source and start or stop the audio. Turn off for view-only access.' }, control, 'Allow remote control (generator, sweeps, audio source)'),
     );
   }
 
