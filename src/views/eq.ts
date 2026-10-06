@@ -6,7 +6,7 @@ import { autoEq, eqResponse, TARGETS, type AutoEqResult, type PeqFilter } from '
 import { smoothCurve } from '../dsp/freq';
 import { optionsMenu, optRow, optHead } from '../ui/popover';
 import { showFirExport } from './fir-export';
-import { CONSOLE_PROFILES, consoleText, fitToProfile, octavesToQ, profileById, qToOctaves, type ConsoleEqProfile } from '../dsp/console-eq';
+import { CONSOLE_PROFILES, consoleText, fitToProfile, octaveFraction, profileById, qToOctaves, widthName, widthToQ, type ConsoleEqProfile } from '../dsp/console-eq';
 
 export interface EqSnapshot {
   source: string;
@@ -176,16 +176,20 @@ export class EqView implements View {
     if (this.filters.length > p.bands) this.list.append(h('div', { class: 'warn-text small' }, `${this.filters.length} filters, but this EQ has ${p.bands} bands: remove ${this.filters.length - p.bands}, or use an extra EQ (insert) for the rest.`));
     this.filters.forEach((f, i) => {
       const octaves = p.width === 'octaves';
+      // Octave consoles: the width's unit, or its fraction of an octave where it is one (1/3, 1/6…)
+      const unitText = () => (p.fractions && octaveFraction(qToOctaves(f.q))) || 'oct';
+      const unit = h('span', { class: 'unit', title: 'Octaves (the fraction of an octave where it is one)' }, unitText());
       const inp = (key: 'f' | 'gain' | 'q', step: string) => {
         const shown = key === 'q' && octaves ? +qToOctaves(f.q).toFixed(2) : f[key];
         const el = h('input', { type: 'number', class: 'num', value: String(shown), step }) as HTMLInputElement;
         el.addEventListener('change', () => {
           const v = +el.value;
           if (!Number.isFinite(v) || v <= 0 && key !== 'gain') return;
-          f[key] = key === 'q' && octaves ? octavesToQ(v) : v;
+          f[key] = key === 'q' ? widthToQ(v, p) : v;
           // Within the console's ranges
           Object.assign(f, fitToProfile(f, p));
           el.value = String(key === 'q' && octaves ? +qToOctaves(f.q).toFixed(2) : f[key]);
+          unit.textContent = unitText();
           this.dirty = true;
         });
         return el;
@@ -197,7 +201,12 @@ export class EqView implements View {
           h('span', { class: 'idx', title: p.bandNames[i] ?? '' }, this.bandLabel(i)),
           h('label', {}, 'Fc', inp('f', '1')),
           h('label', {}, 'Gain', inp('gain', '0.1')),
-          h('label', {}, octaves ? 'Oct' : 'Q', inp('q', octaves ? '0.01' : '0.05')),
+          h(
+            'label',
+            { class: octaves ? 'peq-w' : '', title: octaves ? 'Width in octaves, as on the console' : 'Q, as on the console' },
+            widthName(p),
+            octaves ? h('span', { class: 'peq-width' }, inp('q', '0.01'), unit) : inp('q', '0.05'),
+          ),
           h('button', { class: 'btn tiny ghost', title: 'Remove', onclick: () => { this.filters.splice(i, 1); this.renderList(); this.dirty = true; } }, icon('x', 12)),
         ),
       );

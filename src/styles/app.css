@@ -4035,3 +4035,21 @@ html.compact .eq-plots .eq-curve {
 html.compact .peq-side {
   overflow: visible;
 }
+/* EQ list: a width in octaves with its unit (or fraction) right beside it, as on the console */
+.peq-width {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+.peq-width input.num {
+  flex: 1;
+  min-width: 0;
+}
+.peq label.peq-w {
+  flex: 1.4;
+}
+.peq-width .unit {
+  font-size: 10.5px;
+  min-width: 18px;
+}

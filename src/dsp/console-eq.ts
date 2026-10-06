@@ -19,8 +19,10 @@ export interface ConsoleEqProfile {
   gainMax: number;
   qMin: number;
   qMax: number;
-  /** How width is shown on the console. */
+  /** How width is shown on the console: as Q, or as a width in octaves. */
   width: 'q' | 'octaves';
+  /** Octave widths are also shown as fractions where they are one (1/3, 1/6, 1/9…), as on the console. */
+  fractions?: boolean;
   /** The first and last band can be shelves. */
   shelves: boolean;
   /** Band names in order of frequency (fewer filters use the first names). */
@@ -133,10 +135,11 @@ export const CONSOLE_PROFILES: ConsoleEqProfile[] = [
     qMin: 0.92,
     qMax: 13,
     width: 'octaves',
+    fractions: true,
     shelves: true,
     bandNames: ['LF', 'LM', 'HM', 'HF'],
     source: 'documented',
-    note: 'Width is set in octaves; LF and HF can be shelves. Mixes also have a 28-band graphic EQ.',
+    note: 'Width is set in octaves (shown as decimals and as 1/3, 1/6, 1/9…); LF and HF can be shelves. Allen & Heath’s octave width is not quite the usual Q conversion, so a band can come out slightly wider or narrower than predicted: check it with a measurement. Mixes also have a 28-band graphic EQ.',
   },
   {
     id: 'x32-bus',
@@ -170,7 +173,7 @@ export const CONSOLE_PROFILES: ConsoleEqProfile[] = [
   },
   {
     id: 'midas-hd96',
-    name: 'Midas HD96 / PRO',
+    name: 'Midas HD96',
     section: 'Output EQ, 4 bands',
     bands: 4,
     gainMin: -15,
@@ -182,6 +185,22 @@ export const CONSOLE_PROFILES: ConsoleEqProfile[] = [
     bandNames: ['LF', 'LMF', 'HMF', 'HF'],
     source: 'typical',
     note: 'Outputs have a 4-band parametric EQ with shelf options on the outer bands; insert a GEQ or PEQ for more.',
+  },
+  {
+    id: 'midas-pro',
+    name: 'Midas PRO series',
+    section: 'Output EQ, 4 bands',
+    bands: 4,
+    gainMin: -15,
+    gainMax: 15,
+    // Width 2 to 0.1 octave
+    qMin: 0.67,
+    qMax: 14.4,
+    width: 'octaves',
+    shelves: true,
+    bandNames: ['LF', 'LMF', 'HMF', 'HF'],
+    source: 'typical',
+    note: 'Width is set in octaves (0.1 to 2), not Q. The outer bands can be shelves.',
   },
   {
     id: 'ssl-live',
@@ -220,14 +239,43 @@ export function fitToProfile(f: PeqFilter, p: ConsoleEqProfile): PeqFilter {
   if (p.id === 'generic') return { ...f, gain: Math.min(p.gainMax, Math.max(p.gainMin, f.gain)), q: Math.min(p.qMax, Math.max(p.qMin, f.q)) };
   const gain = Math.round(Math.min(p.gainMax, Math.max(p.gainMin, f.gain)) * 10) / 10;
   let q = Math.min(p.qMax, Math.max(p.qMin, f.q));
-  q = q < 1 ? Math.round(q * 100) / 100 : Math.round(q * 10) / 10;
+  // At the precision the console shows: the width in octaves (two decimals) on octave consoles, else Q
+  if (p.width === 'octaves') q = octavesToQ(Math.round(qToOctaves(q) * 100) / 100);
+  else q = q < 1 ? Math.round(q * 100) / 100 : Math.round(q * 10) / 10;
   const fr = Math.min(20000, Math.max(20, f.f));
   return { ...f, f: fr < 1000 ? Math.round(fr) : Math.round(fr / 10) * 10, gain, q };
 }
 
 /** How the console labels a filter's width. */
 export function widthLabel(q: number, p: ConsoleEqProfile): string {
-  return p.width === 'octaves' ? `${qToOctaves(q).toFixed(2)} oct` : `Q ${q < 1 ? q.toFixed(2) : q.toFixed(1)}`;
+  return p.width === 'octaves' ? `width ${octaveText(qToOctaves(q), p)}` : `Q ${formatQ(q)}`;
+}
+
+/** The console's word for the width control. */
+export function widthName(p: ConsoleEqProfile): string {
+  return p.width === 'octaves' ? 'Width' : 'Q';
+}
+
+/** Q as consoles show it: two decimals below 1, one above. */
+export function formatQ(q: number): string {
+  return q < 1 ? q.toFixed(2) : q.toFixed(1);
+}
+
+/** The nearest simple fraction of an octave (1/2 … 1/12), when the width is within 2 % of one. */
+export function octaveFraction(n: number): string | null {
+  for (let k = 2; k <= 12; k++) if (Math.abs(n * k - 1) < 0.02) return `1/${k}`;
+  return null;
+}
+
+/** An octave width as the console shows it: "0.33 oct (1/3)" on consoles that use fractions. */
+export function octaveText(n: number, p: ConsoleEqProfile): string {
+  const frac = p.fractions ? octaveFraction(n) : null;
+  return `${n.toFixed(2)} oct${frac ? ` (${frac})` : ''}`;
+}
+
+/** Bring a value typed in the console's own units (Q, or width in octaves) to a filter Q. */
+export function widthToQ(v: number, p: ConsoleEqProfile): number {
+  return p.width === 'octaves' ? octavesToQ(v) : v;
 }
 
 const fmtF = (f: number) => (f >= 1000 ? `${(f / 1000).toFixed(f >= 10000 ? 1 : 2)} kHz` : `${Math.round(f)} Hz`);

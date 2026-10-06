@@ -26,6 +26,7 @@ On first launch, choose **Explore with the demo room** to try every feature with
 - **Updates on Windows:** copies of a 2.0 release candidate looked only for newer release candidates and never found the 2.0 release. Install 2.0.1 once by hand; from then on *Check for updates* finds new versions.
 - **Day theme:** a white (or grey) trace or fill colour stayed white instead of turning red; the colours you choose are used exactly.
 - **Watermark:** top centre and bottom centre positions.
+- **Console EQ widths:** every console profile shows and takes the width the way that console does: Q, or width in octaves on Allen & Heath (with fractions such as 1/3 and 1/9) and on the Midas PRO series, which now has its own profile (width 0.1–2 octaves) separate from the HD96. A width typed in octaves stays exactly as typed.
 
 ## What's new in 2.0
 

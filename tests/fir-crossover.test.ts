@@ -85,14 +85,33 @@ describe('Console EQ profiles', () => {
     expect(qToOctaves(octavesToQ(1 / 9))).toBeCloseTo(1 / 9, 4);
   });
   it('fit filters into a console’s ranges and precision', async () => {
-    const { fitToProfile, profileById, consoleText } = await import('../src/dsp/console-eq');
+    const { fitToProfile, profileById, consoleText, qToOctaves } = await import('../src/dsp/console-eq');
     const ah = profileById('ah-dlive');
     const f = fitToProfile({ type: 'peak', f: 63.37, gain: -21.26, q: 30 }, ah);
-    expect(f).toEqual({ type: 'peak', f: 63, gain: -15, q: 13 });
+    expect(f.f).toBe(63);
+    expect(f.gain).toBe(-15);
+    // The narrowest dLive width, 1/9 octave, rounded to what the console shows (0.11 oct)
+    expect(qToOctaves(f.q)).toBeCloseTo(0.11, 6);
     const y = profileById('yamaha-cl');
     const text = consoleText([{ type: 'peak', f: 2512, gain: -3.04, q: 4.26 }, { type: 'peak', f: 80, gain: -6, q: 2 }], y);
     expect(text.split('\n')).toEqual(['Yamaha CL / QL – Mix / matrix / stereo EQ, 4 bands', 'LOW: bell, 80 Hz, -6.0 dB, Q 2.0', 'LOW-MID: bell, 2.51 kHz, -3.0 dB, Q 4.3']);
-    expect(consoleText([{ type: 'peak', f: 1000, gain: 2, q: 1.414 }], ah)).toContain('LF: bell, 1.00 kHz, +2.0 dB, 1.00 oct');
+    expect(consoleText([{ type: 'peak', f: 1000, gain: 2, q: 1.414 }], ah)).toContain('LF: bell, 1.00 kHz, +2.0 dB, width 1.00 oct');
+    // dLive also shows widths as fractions of an octave
+    expect(consoleText([{ type: 'peak', f: 1000, gain: -3, q: 4.32 }], ah)).toContain('width 0.33 oct (1/3)');
+  });
+  it('octave consoles keep their widths in octaves; Q consoles in Q', async () => {
+    const { CONSOLE_PROFILES, fitToProfile, widthName, widthToQ, qToOctaves } = await import('../src/dsp/console-eq');
+    for (const p of CONSOLE_PROFILES) {
+      const f = fitToProfile({ type: 'peak', f: 500, gain: -4, q: 3.3 }, p);
+      if (p.width === 'octaves') {
+        expect(widthName(p)).toBe('Width');
+        // What the list shows (octaves, two decimals) is exactly what the filter uses
+        const shown = +qToOctaves(f.q).toFixed(2);
+        expect(Math.abs(qToOctaves(widthToQ(shown, p)) - qToOctaves(f.q))).toBeLessThan(1e-9);
+      } else expect(widthName(p)).toBe('Q');
+    }
+    const ids = CONSOLE_PROFILES.filter((p) => p.width === 'octaves').map((p) => p.id);
+    expect(ids).toEqual(['ah-dlive', 'midas-pro']);
   });
   it('the assistant keeps to a console’s bands and Q range', async () => {
     const { autoEq, TARGETS } = await import('../src/dsp/eq');

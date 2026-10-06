@@ -241,9 +241,18 @@ if (want('console')) {
   check(eq.length > 0 && eq.length <= 4, `dLive: at most 4 bands (${eq.length})`);
   check(eq.every((f) => f.gain >= -15 && f.gain <= 15 && f.q >= 0.92 && f.q <= 13), 'within ±15 dB and 1.5 to 1/9 octave');
   const label = await page.locator('.peq label').nth(2).innerText();
-  check(label.startsWith('Oct'), 'width shown in octaves, as on the console');
+  check(label.startsWith('Width') && /oct|1\//.test(label), `width shown in octaves, as on the console (${label.replace(/\s+/g, ' ')})`);
   check((await page.locator('.peq-profile').innerText()).includes('Allen & Heath dLive'), 'the profile and its ranges are shown');
   await page.screenshot({ path: `${out}/feat7-07-console-eq.png` });
+  // Typing a width in octaves keeps it (what you enter is what the console gets)
+  await page.locator('.peq').first().locator('input').nth(2).fill('0.33');
+  await page.locator('.peq').first().locator('input').nth(2).dispatchEvent('change');
+  const typed = await page.evaluate(() => { const v = window.calApp.views.find((x) => x.id === 'eq'); const q = v.filters[0].q; return (2 / Math.LN2) * Math.asinh(1 / (2 * q)); });
+  check(Math.abs(typed - 0.33) < 0.005 && (await page.locator('.peq').first().locator('.unit').innerText()) === '1/3', `a width typed in octaves stays as typed (${typed.toFixed(3)} oct, shown as 1/3)`);
+  await page.locator('select[data-eq-console]').selectOption('midas-pro');
+  check((await page.locator('.peq label').nth(2).innerText()).startsWith('Width'), 'Midas PRO: width in octaves too');
+  await page.locator('select[data-eq-console]').selectOption('x32-bus');
+  check((await page.locator('.peq label').nth(2).innerText()).startsWith('Q'), 'X32: Q');
   await page.locator('select[data-eq-console]').selectOption('yamaha-cl');
   const after = await page.evaluate(() => window.calApp.views.find((v) => v.id === 'eq').filters.every((f) => f.q >= 0.1 && f.q <= 16));
   check(after && (await page.evaluate(() => window.calApp.settings.eqConsole)) === 'yamaha-cl', 'switching console refits the filters and is remembered');
