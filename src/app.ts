@@ -329,7 +329,12 @@ export class App {
   // ---------------------------------------------------------------------------------------------------------
   // Engine control
 
-  async start(): Promise<void> {
+  /**
+   * Start audio (on a remote device: connect to the host). The generator always starts off, so starting audio
+   * never makes a sound by itself; `resumeGenerator` keeps a signal that was already playing (a restart for a
+   * new input or driver setting while it plays). The demo room plays nothing through speakers, so it keeps its signal.
+   */
+  async start(opts: { resumeGenerator?: boolean } = {}): Promise<void> {
     if (this.starting) return;
     this.starting = true;
     this.startBtn.disabled = true;
@@ -374,7 +379,15 @@ export class App {
       if (this.remote) {
         this.toast(this.engine.running ? `Connected to the measurement host · ${this.fs / 1000} kHz · ${nCh} input channel${nCh > 1 ? 's' : ''}` : 'Connected. Audio on the measurement host is stopped.', 'ok');
       } else {
-        this.engine.setGenerator(this.settings.generator);
+        const g = this.settings.generator;
+        if (g.type !== 'off' && !opts.resumeGenerator && !this.settings.simulate) {
+          // The signal last used comes back with the next On (or Space), never by itself
+          this.lastGenType = g.type;
+          g.type = 'off';
+          this.save();
+          this.renderGenControls();
+        }
+        this.engine.setGenerator(g);
         this.toast(`Audio running · ${this.engine.deviceLabel} · ${this.fs / 1000} kHz · ${nCh} input channel${nCh > 1 ? 's' : ''}`, 'ok');
       }
       this.refreshDevices();
@@ -400,6 +413,14 @@ export class App {
 
   async stop(): Promise<void> {
     await this.engine.stop();
+    // Stopped is silent, and starting again is too: the generator shows off until it is turned on again
+    const g = this.settings.generator;
+    if (!this.remote && g.type !== 'off') {
+      this.lastGenType = g.type;
+      g.type = 'off';
+      this.save();
+      this.renderGenControls();
+    }
     this.renderTopState();
   }
 
@@ -1456,7 +1477,8 @@ export class App {
     if (this.sourceSel.value !== v) this.sourceSel.value = v;
     if (by) this.toast(`Audio source changed by ${by}`, 'info');
     // From a remote: start it too (the remote is waiting for live data from the host)
-    if (this.engine.running || by) void this.start();
+    // A restart while a signal plays keeps it; starting stopped audio (here or for a remote) starts it silent
+    if (this.engine.running || by) void this.start({ resumeGenerator: this.engine.running });
   }
 
   /** The source menu as data, for remote devices (the host's devices, drivers and the selection). */
@@ -1489,7 +1511,7 @@ export class App {
     Object.assign(na, patch);
     this.save();
     if (patch.safetyMs !== undefined) this.engine.nativeLink?.setSafety(na.safetyMs);
-    if (restart && this.engine.nativeInfo) void this.start();
+    if (restart && this.engine.nativeInfo) void this.start({ resumeGenerator: true });
     (this.views.find((v) => v.id === 'tools') as ToolsView | undefined)?.nativeCard.render();
   }
 
@@ -2110,7 +2132,7 @@ export class App {
         return out;
       }
       if (!r.hostConnected) out.push({ level: 'warn', text: 'The measurement host app is not connected to its server. Check the host computer.' });
-      else if (!e.running) out.push({ level: 'info', text: 'Audio on the measurement host is stopped.', action: r.allowControl ? { label: 'Start host audio', run: () => this.start() } : undefined });
+      else if (!e.running) out.push({ level: 'info', text: 'Audio on the measurement host is stopped.', action: r.allowControl ? { label: 'Start host audio', run: () => void this.sendToHost({ t: 'cmd', cmd: 'start' }) } : undefined });
       if (r.droppedBlocks > 0) {
         out.push({ level: 'warn', text: 'The network is too slow for the live audio stream, so some audio was dropped. Move closer to the Wi-Fi access point or use 5 GHz Wi-Fi / Ethernet.' });
         r.droppedBlocks = 0;

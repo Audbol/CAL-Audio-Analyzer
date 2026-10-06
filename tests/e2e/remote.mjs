@@ -135,13 +135,42 @@ check(await host.evaluate(() => window.calApp.engine.running), 'Start host audio
 await rem.waitForFunction(() => window.calApp.engine.running === true, null, { timeout: 15000 }).catch(() => undefined);
 await rem.waitForTimeout(2500);
 
-// --- Remote controls the host's generator
+// --- Remote controls the host's generator (after Stop and Start host audio it is off: starting is silent)
+check((await host.evaluate(() => window.calApp.settings.generator.type)) === 'off', 'after Stop and Start host audio the generator is off');
 await rem.keyboard.press(' ');
-await host.waitForTimeout(700);
+await host.waitForTimeout(1000);
+check((await host.evaluate(() => window.calApp.settings.generator.type)) !== 'off', 'remote switched the host generator on');
+await rem.keyboard.press(' ');
+await host.waitForTimeout(1000);
 check((await host.evaluate(() => window.calApp.settings.generator.type)) === 'off', 'remote switched the host generator off');
 await rem.keyboard.press(' ');
-await host.waitForTimeout(700);
-check((await host.evaluate(() => window.calApp.settings.generator.type)) !== 'off', 'remote switched the host generator on');
+await host.waitForTimeout(1000);
+check((await host.evaluate(() => window.calApp.settings.generator.type)) !== 'off', 'and on again');
+
+// --- Safety: losing and regaining the connection (or reloading the page) never starts the host's audio or sound
+await host.evaluate(() => window.calApp.stop());
+await host.waitForFunction(() => !window.calApp.engine.running, null, { timeout: 5000 });
+check((await host.evaluate(() => window.calApp.settings.generator.type)) === 'off', 'stopping the host audio turns its generator off');
+await rem.evaluate(() => window.calApp.engine.ws.close(4000, 'network drop'));
+await rem.waitForFunction(() => window.calApp.engine.state === 'connected', null, { timeout: 15000 }).catch(() => undefined);
+await rem.waitForTimeout(2500);
+check(await rem.evaluate(() => window.calApp.engine.state === 'connected'), 'the remote reconnects');
+check(!(await host.evaluate(() => window.calApp.engine.running)), 'a reconnecting remote does not start the host audio');
+await rem.reload();
+await rem.waitForFunction(() => window.calApp.engine.state === 'connected', null, { timeout: 15000 }).catch(() => undefined);
+await rem.waitForTimeout(2500);
+check(!(await host.evaluate(() => window.calApp.engine.running)), 'nor does reloading the remote page');
+check((await host.evaluate(() => window.calApp.settings.generator.type)) === 'off', 'and the generator stays off');
+// Only the explicit button starts it, and it starts silent
+await rem.waitForFunction(() => document.querySelector('[data-host-audio]')?.textContent.includes('Start'), null, { timeout: 5000 }).catch(() => undefined);
+await rem.evaluate(() => document.querySelector('[data-host-audio]').click());
+await host.waitForFunction(() => window.calApp.engine.running, null, { timeout: 10000 }).catch(() => undefined);
+check(await host.evaluate(() => window.calApp.engine.running), 'Start host audio on the remote starts it');
+check((await host.evaluate(() => window.calApp.settings.generator.type)) === 'off', 'with the generator off');
+await rem.waitForFunction(() => window.calApp.engine.running === true, null, { timeout: 15000 }).catch(() => undefined);
+await rem.keyboard.press(' ');
+await host.waitForFunction(() => window.calApp.settings.generator.type !== 'off', null, { timeout: 5000 }).catch(() => undefined);
+check((await host.evaluate(() => window.calApp.settings.generator.type)) === 'pink', 'turning it on brings back the last signal (pink noise)');
 
 // --- A second remote (phone) joins: shared session state is kept on the host
 const phoneCtx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true });

@@ -86,7 +86,7 @@ The window has five areas.
 
 - **Start / Stop** starts and stops audio. Shortcut: Enter.
 - **Input source** chooses the audio interface, or the demo room.
-- **Generator on/off** turns the test signal on and off. Shortcut: Space.
+- **Generator on/off** turns the test signal on and off. Shortcut: Space. For safety, audio always starts with the generator off, and stopping audio turns it off: nothing plays until you turn it on. **On** then brings back the signal you used last.
 - **Signal type** chooses pink noise, white noise, sine, periodic sweep or music.
 - **Level slider** sets the test signal level.
 - **Outputs** chooses which outputs play the signal (for example Out 1+2).
@@ -467,7 +467,7 @@ Walk around the venue with a phone or tablet while the computer and audio interf
 **Control the computer from the phone:** with *Allow remote control* on (on the computer, in the Remote access card), the phone can change the setup like the computer itself. Open the settings sheet (the sliders button at the top on a phone, or the top bar on a tablet):
 
 - **Measurement host** lists the computer's audio sources: the demo room, its inputs and, in the desktop app, its ASIO drivers. Choosing one switches the computer to it.
-- **Start host audio** / **Stop host audio** starts or stops the computer's audio. The top-left button only connects or disconnects the phone.
+- **Start host audio** / **Stop host audio** starts or stops the computer's audio. The top-left button only connects or disconnects the phone. Connecting, reconnecting after a dropout or reloading the page never starts the computer's audio or its generator: only **Start host audio** does, and the generator then stays off until someone turns it on.
 - The generator, measurements, mics and calibration, sweeps, target curves and the music player are shared as before. In the desktop app, **Tools → Setup → Audio interface on the host** sets the computer's ASIO sample rate, buffer and safety margin.
 
 ### If it doesn't connect

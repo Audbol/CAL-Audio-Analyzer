@@ -21,6 +21,7 @@ On first launch, choose **Explore with the demo room** to try every feature with
 
 ## What's new in 2.0.2
 
+- **Safety: no sound without a deliberate action.** A remote device that loses and regains its connection (or reloads the page) no longer starts the measurement computer's audio; only **Start host audio** does. Starting audio (on the computer or from a remote) always starts with the generator off, and stopping audio turns it off, so pink noise can never come back on by itself. **On** (or Space) brings back the last signal. A restart while a signal plays, such as switching the input, keeps it playing.
 - **System presets:** save the setup of a rig or venue (named measurements with their inputs, references, mics, delays and weights; analysis and target settings; the EQ console and crossover) and load it in one step. Export a preset to use it on another computer. *Tools → Session & presets*, or **System presets…** in the menu.
 - **Your own target curves:** make a target from any existing one or from scratch (a level at each frequency), import or export it as text, and use it in every target list. Sessions and presets carry it.
 - **Check the EQ:** after entering the filters on the console, measure again and **Compare**. The EQ tab draws the measured result beside the prediction and says where they differ.

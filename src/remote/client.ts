@@ -108,12 +108,9 @@ export class RemoteEngine extends AudioEngine {
       };
       ws.onerror = () => undefined;
     });
-    // Wait for the first status; ask the host to start its audio if it is stopped
+    // Wait for the first status. Connecting (or reconnecting after a dropout) never starts the host's audio:
+    // only the Start host audio button does, so a device finding its way back can't make a sound
     await this.waitFor(() => !!this.status, 4000);
-    if (this.status && !this.status.running && this.allowControl) {
-      this.send({ t: 'cmd', cmd: 'start' });
-      await this.waitFor(() => !!this.status?.running, 10000);
-    }
   }
 
   private async waitFor(cond: () => boolean, ms: number): Promise<void> {

@@ -8,7 +8,7 @@ import fs from 'node:fs';
 const out = process.argv[2] ?? 'test-results';
 fs.mkdirSync(out, { recursive: true });
 const server = await preview({ preview: { port: 4192, strictPort: true } });
-const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
+const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required', '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] });
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });
 const page = await ctx.newPage();
 const errors = [];
@@ -198,6 +198,35 @@ if (want('presets')) {
   await page.locator('[data-options="app"]').click();
   await page.locator('.app-menu [data-menu="presets"]').click();
   check(await page.locator('.presets-card').isVisible(), 'the menu opens System presets');
+}
+
+// --- 6. Safety: starting audio never starts the generator by itself (a real input, not the demo room)
+if (want('safety')) {
+  await page.evaluate(() => window.calApp.selectSource('__default'));
+  await page.waitForFunction(() => window.calApp.engine.running && !window.calApp.settings.simulate, null, { timeout: 10000 });
+  await page.evaluate(() => window.calApp.setGenerator({ type: 'pink' }));
+  check(await page.evaluate(() => window.calApp.settings.generator.type === 'pink'), 'pink noise on (by the user)');
+  // A restart for a new input while it plays keeps it
+  await page.evaluate(() => window.calApp.selectSource('__default'));
+  await page.waitForFunction(() => window.calApp.engine.running, null, { timeout: 10000 });
+  await page.waitForTimeout(500);
+  check(await page.evaluate(() => window.calApp.settings.generator.type === 'pink'), 'switching the input while it plays keeps the signal');
+  await page.evaluate(() => window.calApp.stop());
+  check(await page.evaluate(() => window.calApp.settings.generator.type === 'off'), 'stopping audio turns the generator off');
+  // Even with a signal left in the settings (an older version, another device), Start is silent
+  await page.evaluate(() => { window.calApp.settings.generator.type = 'pink'; window.calApp.save(); });
+  await page.evaluate(() => { const e = window.calApp.engine; window.__posted = []; const orig = e.setGenerator.bind(e); e.setGenerator = (c) => { window.__posted.push(c.type); return orig(c); }; });
+  await page.evaluate(() => window.calApp.start());
+  await page.waitForFunction(() => window.calApp.engine.running, null, { timeout: 10000 });
+  check(await page.evaluate(() => window.calApp.settings.generator.type === 'off'), 'starting audio starts with the generator off');
+  // What the audio engine was told to play when audio started
+  await page.waitForTimeout(800);
+  const posted = await page.evaluate(() => window.__posted);
+  check(posted.length > 0 && posted.every((t) => t === 'off'), `the engine is only ever told “off” (${posted.join(', ')})`);
+  await page.evaluate(() => window.calApp.toggleGenerator());
+  check(await page.evaluate(() => window.calApp.settings.generator.type === 'pink'), 'On brings back the last signal');
+  await page.evaluate(() => { window.calApp.toggleGenerator(); window.calApp.selectSource('__demo'); });
+  await page.waitForTimeout(1500);
 }
 
 check(errors.length === 0, `no console errors ${errors.join(' | ')}`);
