@@ -35,11 +35,11 @@ export function sharedOf(s: Settings): SharedSettings {
 }
 
 /** Tuning display settings every device shows the same way: target curve, average curve, several-mic average, notes on graphs. */
-export const TUNING_KEYS = ['targetCurve', 'roomTargetCurve', 'targetTolerance', 'rtaAverageCurve', 'rtaAverageSmoothing', 'micAverage', 'graphNotes'] as const;
+export const TUNING_KEYS = ['targetCurve', 'roomTargetCurve', 'targetTolerance', 'rtaAverageCurve', 'rtaAverageSmoothing', 'micAverage', 'graphNotes', 'customTargets'] as const;
 export type Tuning = Pick<Settings, (typeof TUNING_KEYS)[number]>;
 
 export function tuningOf(s: Settings): Tuning {
-  return { targetCurve: s.targetCurve, roomTargetCurve: s.roomTargetCurve, targetTolerance: s.targetTolerance, rtaAverageCurve: s.rtaAverageCurve, rtaAverageSmoothing: s.rtaAverageSmoothing, micAverage: s.micAverage, graphNotes: s.graphNotes };
+  return { targetCurve: s.targetCurve, roomTargetCurve: s.roomTargetCurve, targetTolerance: s.targetTolerance, rtaAverageCurve: s.rtaAverageCurve, rtaAverageSmoothing: s.rtaAverageSmoothing, micAverage: s.micAverage, graphNotes: s.graphNotes, customTargets: s.customTargets };
 }
 
 export interface SharedSettings {

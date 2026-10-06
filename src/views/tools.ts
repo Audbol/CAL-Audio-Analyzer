@@ -10,6 +10,7 @@ import { RoomModesCard } from './modes';
 import { ThemeCard } from './theme-card';
 import { AboutCard } from './about-card';
 import { WatermarkCard } from './watermark-card';
+import { PresetsCard } from './presets-card';
 import { modal } from '../ui/dialogs';
 import { applySession, buildSession, downloadText, parseSession, sessionFileName, type SessionFile } from '../session';
 import { replaceSettings } from '../state';
@@ -19,7 +20,7 @@ import { DEFAULT_PROFILES, resetToProfile } from '../defaults';
 export type ToolsSection = 'setup' | 'session' | 'remote' | 'display' | 'calc' | 'data';
 const SECTIONS: { id: ToolsSection; label: string; icon: Parameters<typeof icon>[0]; hint: string }[] = [
   { id: 'setup', label: 'Setup', icon: 'mic', hint: 'Reference signal, microphones and calibration, audio interface' },
-  { id: 'session', label: 'Session & report', icon: 'layers', hint: 'Save or open a job, create a report' },
+  { id: 'session', label: 'Session & presets', icon: 'layers', hint: 'Save or open a job, create a report, system presets' },
   { id: 'remote', label: 'Remote access', icon: 'wifi', hint: 'Phones, tablets and other computers' },
   { id: 'display', label: 'Display & performance', icon: 'sliders', hint: 'Theme, watermark, graph quality, battery saver, bass resolution' },
   { id: 'calc', label: 'Calculators', icon: 'clock', hint: 'Room modes; delay, distance and wavelength; weighting table' },
@@ -295,7 +296,7 @@ export class ToolsView implements View {
         : null,
     );
     this.cards.set('setup', [this.referenceCard(), this.micsCard.el, this.nativeCard.el]);
-    this.cards.set('session', [this.sessionCard()]);
+    this.cards.set('session', [this.sessionCard(), new PresetsCard(this.app).el]);
     this.cards.set('remote', [this.remoteCard.el]);
     this.cards.set('display', [this.themeCard.el, new WatermarkCard(app).el, perfCard]);
     this.cards.set('calc', [this.modesCard.el, delayCard, wCard]);

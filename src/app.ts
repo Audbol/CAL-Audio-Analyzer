@@ -18,7 +18,7 @@ import { EqView } from './views/eq';
 import { AlignView } from './views/align';
 import { SplView } from './views/spl';
 import { ToolsView, type ToolsSection } from './views/tools';
-import { showWizard, showHelp, showRemoteConnect } from './ui/dialogs';
+import { showWizard, showHelp, showRemoteConnect, modal } from './ui/dialogs';
 import { showAddMeasurement, showNewMic } from './ui/measurement-dialogs';
 import { Dock } from './ui/dock';
 import { Plot } from './ui/plot';
@@ -32,6 +32,7 @@ import { displayColor } from './ui/theme';
 import { startTour } from './ui/tour';
 import { maybeShowWhatsNew, showWhatsNew } from './ui/whats-new';
 import { optionsMenu, optHead } from './ui/popover';
+import { setCustomTargets } from './dsp/eq';
 import { setWatermark } from './ui/watermark';
 import { MARK_SVG } from './ui/brand';
 import type { UpdateState } from './views/about-card';
@@ -213,6 +214,7 @@ export class App {
 
   constructor(root: HTMLElement) {
     this.root = root;
+    setCustomTargets(this.settings.customTargets);
     const desk = desktopBridge();
     if (desk?.window) {
       const bridge = desk.window;
@@ -704,6 +706,14 @@ export class App {
     this.syncCal();
   }
 
+  /** The custom target curves changed (made, edited or deleted here): every target list and graph follows. */
+  targetsChanged(): void {
+    setCustomTargets(this.settings.customTargets);
+    this.save();
+    this.syncSettingControls();
+    for (const v of this.views) v.invalidate?.();
+  }
+
   /** Adopt the shared tuning display (target, average curve, mic average) from the host or a remote. */
   private adoptTuning(t: Tuning | undefined): void {
     if (!t) return;
@@ -714,6 +724,7 @@ export class App {
     // A different averaging time or smoothing starts the average curve again
     const restart = changed.includes('rtaAverageCurve');
     for (const k of changed) (s as unknown as Record<string, unknown>)[k] = JSON.parse(JSON.stringify(t[k]));
+    if (changed.includes('customTargets')) setCustomTargets(s.customTargets);
     if (restart) for (const m of this.measurements) m.resetAverage();
     this.syncSettingControls();
     for (const v of this.views) v.invalidate?.();
@@ -1123,6 +1134,7 @@ export class App {
         item('help', 'Help & shortcuts', () => showHelp(this), '?', 'help'),
         item('list', 'What’s new', () => showWhatsNew(this), '', 'whats-new'),
         h('div', { class: 'menu-sep' }),
+        this.remote ? null : item('layers', 'System presets…', () => this.openTools('session'), '', 'presets'),
         this.fullscreenItem(),
         item('settings', 'Settings & tools', () => this.setView('tools'), '9', 'tools'),
       ],
@@ -1756,6 +1768,24 @@ export class App {
             c.addEventListener('change', () => { cfg.invert = c.checked; this.save(); });
             return c;
           })(), 'Invert'),
+          this.measurements.length > 1 || this.settings.measurements.length > 1
+            ? h(
+                'label',
+                { class: 'meas-weight adv-only', title: 'How much this position counts in the several-mic average (Spectrum and Transfer → mic average)' },
+                'Weight',
+                select(
+                  [0, 0.5, 1, 2, 3].map((v) => ({ value: v, label: v === 0 ? 'Off' : `×${v}` })),
+                  cfg.weight ?? 1,
+                  (v) => {
+                    if (v === 1) delete cfg.weight;
+                    else cfg.weight = v;
+                    this.save();
+                    for (const vw of this.views) vw.invalidate?.();
+                  },
+                  { 'aria-label': `Weight of ${cfg.name} in the average`, dataset: { measWeight: cfg.id } },
+                ),
+              )
+            : null,
           h('div', { class: 'spacer' }),
           h('button', { class: 'btn tiny', title: 'Store the current transfer function as a trace (C)', onclick: () => m && this.captureTrace(m, 'tf'), disabled: !m }, icon('camera', 13), 'TF'),
           h('button', { class: 'btn tiny', title: 'Store the current RTA as a trace', onclick: () => m && this.captureTrace(m, 'rta'), disabled: !m }, icon('camera', 13), 'RTA'),
@@ -1813,12 +1843,37 @@ export class App {
     }
   }
 
+  /** Power-average the selected traces: a quick dialog names it and sets how much each position counts. */
   private averageSelected(): void {
     const ids = [...this.selectedTraces];
     if (ids.length < 2) return this.toast('Select two or more traces (checkboxes) to average', 'warn');
-    const t = this.traces.average(ids, `Average (${ids.length})`, (ch) => this.splOffsetFor(ch ?? this.settings.splChannel));
-    if (t) this.toast(`Created “${t.name}”`, 'ok');
-    this.selectedTraces.clear();
+    const traces = this.traces.traces.filter((t) => ids.includes(t.id));
+    const weights: Record<string, number> = {};
+    const name = h('input', { type: 'text', class: 'text', value: `Average (${ids.length})`, maxlength: '60', 'aria-label': 'Name of the average', dataset: { avg: 'name' } }) as HTMLInputElement;
+    const rows = traces.map((t) =>
+      h(
+        'div',
+        { class: 'avg-row' },
+        h('span', { class: 'avg-name' }, t.name),
+        select([0, 0.5, 1, 2, 3].map((v) => ({ value: v, label: v === 0 ? 'Leave out' : `×${v}` })), 1, (v) => (weights[t.id] = v), { 'aria-label': `Weight of ${t.name}`, dataset: { avgWeight: t.id } }),
+      ),
+    );
+    const make = () => {
+      const t = this.traces.average(ids, name.value.trim() || `Average (${ids.length})`, (ch) => this.splOffsetFor(ch ?? this.settings.splChannel), weights);
+      if (!t) return this.toast('At least two traces must count', 'warn');
+      close();
+      this.toast(`Created “${t.name}”`, 'ok');
+      this.selectedTraces.clear();
+      this.renderTraces();
+    };
+    const { el, close } = modal(
+      'Average traces',
+      h('div', { class: 'meas-dialog' }, h('p', { class: 'dim small' }, 'A power average of the positions: the spatial average to tune with. Give the positions that matter most (the mix position, the main seating area) more weight.'), h('label', { class: 'cmp-field' }, h('span', {}, 'Name'), name), h('div', { class: 'avg-rows' }, ...rows)),
+      [h('div', { class: 'spacer' }), h('button', { class: 'btn ghost', onclick: () => close() }, 'Cancel'), h('button', { class: 'btn accent', dataset: { avg: 'make' }, onclick: make }, 'Average')],
+    );
+    el.classList.add('meas-modal');
+    name.addEventListener('keydown', (e) => e.key === 'Enter' && make());
+    setTimeout(() => name.select(), 50);
   }
 
   private async importTraces(input: HTMLInputElement): Promise<void> {

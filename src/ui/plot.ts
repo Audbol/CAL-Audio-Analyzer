@@ -621,6 +621,8 @@ export class Plot {
       ctx.beginPath();
       ctx.arc(x, y, 5, 0, Math.PI * 2);
       ctx.stroke();
+      // A point without a label is just the circle
+      if (!p.label) continue;
       // Label box above the point (below it when there is no room), clear of other labels
       const tw = ctx.measureText(p.label).width + 10;
       const lx = Math.max(pad.l + 2, Math.min(w - pad.r - tw - 2, x - tw / 2));

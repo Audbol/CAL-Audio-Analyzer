@@ -9,7 +9,8 @@ import { logGrid, interp, bandCentres, gridPpo, regroupBands, sampleLogGrid } fr
 import { findDelay } from '../src/dsp/delay';
 import { logSweep, deconvolve, harmonicDistortion, linearIR } from '../src/dsp/sweep';
 import { analyseIR, roomModes } from '../src/dsp/acoustics';
-import { filterDb, autoEq, TARGETS, eqResponse } from '../src/dsp/eq';
+import { filterDb, autoEq, TARGETS, eqResponse, customCurve, setCustomTargets, findTarget, allTargets } from '../src/dsp/eq';
+import { parseTargetText } from '../src/ui/target-editor';
 import { parseMicCal, calCorrection } from '../src/dsp/calibration';
 import { SplMeter } from '../src/dsp/spl';
 import { PinkNoise } from '../src/audio/noise';
@@ -387,6 +388,43 @@ describe('EQ', () => {
     expect(t('room-1974')(400)).toBe(0);
     expect(t('room-1974')(1600)).toBeCloseTo(-2, 6);
     expect(t('cinema-small')(8000)).toBeCloseTo(-3, 6);
+  });
+
+  it('uses a high-pass where the target rolls off in the bass, without spending an EQ band', () => {
+    const grid = logGrid(20, 20000, 24);
+    // A full-range system, flat to 30 Hz, with a room peak at 250 Hz
+    const mag = Array.from(eqResponse([{ type: 'peak', f: 250, gain: 6, q: 3 }], grid));
+    const speech = TARGETS.find((t) => t.id === 'speech')!;
+    const res = autoEq(grid, mag, null, speech, { fMin: 30, fMax: 12000, maxFilters: 4, maxBoost: 3, maxCut: 12, minCoherence: 0, hpfSlopes: [12, 24] });
+    const hp = res.filters.filter((f) => f.type === 'highpass');
+    expect(hp.length).toBe(1);
+    expect(hp[0].f).toBeGreaterThan(50);
+    expect(hp[0].f).toBeLessThan(200);
+    expect(res.filters[0].type).toBe('highpass');
+    // The four bands are still there for the rest (the room peak is cut)
+    expect(res.filters.filter((f) => f.type !== 'highpass').length).toBeLessThanOrEqual(4);
+    expect(res.filters.some((f) => f.gain < -3 && Math.abs(Math.log2(f.f / 250)) < 0.3)).toBe(true);
+    // A high-pass's response: -3 dB at its corner, its slope well below
+    expect(filterDb({ type: 'highpass', f: 100, gain: 0, q: 0.707, slope: 24 }, 100)).toBeCloseTo(-3.01, 1);
+    expect(filterDb({ type: 'highpass', f: 100, gain: 0, q: 0.707, slope: 24 }, 25)).toBeCloseTo(-48, 0);
+    // Not with a flat target, and not when switched off
+    expect(autoEq(grid, mag, null, TARGETS[0], { fMin: 30, fMax: 12000, maxFilters: 4, maxBoost: 3, maxCut: 12, minCoherence: 0, hpfSlopes: [12, 24] }).filters.some((f) => f.type === 'highpass')).toBe(false);
+    expect(autoEq(grid, mag, null, speech, { fMin: 30, fMax: 12000, maxFilters: 4, maxBoost: 3, maxCut: 12, minCoherence: 0 }).filters.some((f) => f.type === 'highpass')).toBe(false);
+  });
+
+  it('custom targets join their points smoothly and hold their level beyond the ends', () => {
+    const c = customCurve({ id: 'x', name: 'Mine', points: [[100, 6], [1000, 0], [10000, -4]] });
+    expect(c.id).toBe('custom:x');
+    expect(c.at(20)).toBe(6);
+    expect(c.at(100)).toBe(6);
+    expect(c.at(Math.sqrt(100 * 1000))).toBeCloseTo(3, 6);
+    expect(c.at(20000)).toBe(-4);
+    setCustomTargets([{ id: 'x', name: 'Mine', points: [[100, 6], [1000, 0]] }]);
+    expect(findTarget('custom:x')?.label).toBe('Mine');
+    expect(allTargets().length).toBe(TARGETS.length + 1);
+    setCustomTargets([]);
+    expect(findTarget('custom:x')).toBeUndefined();
+    expect(parseTargetText('# my curve\nHz,dB\n20, 4\n1000\t0\n20000 -3\n')).toEqual([[20, 4], [1000, 0], [20000, -3]]);
   });
 
   it('still cuts a peak when a bigger dip cannot be boosted', () => {

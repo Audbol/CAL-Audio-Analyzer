@@ -1,10 +1,13 @@
 import type { App } from '../app';
 import type { Series } from '../ui/plot';
 import { h, select } from '../ui/dom';
-import { TARGETS } from '../dsp/eq';
+import { allTargets, findTarget, targetsVersion } from '../dsp/eq';
+import { showTargetEditor } from '../ui/target-editor';
 import { targetLevel, targetShape } from '../dsp/target';
 
 const TARGET_COLOR = '#ffb020';
+/** The last entry of a target list: opens the custom target editor. */
+export const EDIT_TARGETS = '__edit-targets';
 
 /** The setting that holds a view's target choice. */
 export type TargetKey = 'targetCurve' | 'roomTargetCurve';
@@ -18,6 +21,7 @@ export class TargetOverlay {
   private level: number | null = null;
   private selHost = h('span', { class: 'tb-target' });
   private tracesVersion = -1;
+  private customVersion = -1;
 
   /** `live`: the data changes continuously, so the level follows it gently; otherwise it is set at once. */
   constructor(
@@ -34,6 +38,15 @@ export class TargetOverlay {
   targetControl(): HTMLElement {
     this.renderSelect();
     return h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Target'), this.selHost);
+  }
+
+  /** Choose a target (e.g. one just made in the editor). */
+  choose(id: string): void {
+    this.app.settings[this.key] = id;
+    this.level = null;
+    this.app.save();
+    this.renderSelect();
+    this.app.syncSettingControls();
   }
 
   /** Tolerance band select (for the options panel). */
@@ -59,7 +72,7 @@ export class TargetOverlay {
 
   /** Rebuild the target list if the stored traces changed (views that don't draw the target every frame). */
   refresh(): void {
-    if (this.app.traces.version !== this.tracesVersion) this.renderSelect();
+    if (this.app.traces.version !== this.tracesVersion || targetsVersion() !== this.customVersion) this.renderSelect();
   }
 
   /** Target choices change with the stored traces: rebuild the select when they did. */
@@ -67,10 +80,12 @@ export class TargetOverlay {
     const app = this.app;
     const s = app.settings;
     this.tracesVersion = app.traces.version;
+    this.customVersion = targetsVersion();
     const opts = [
       { value: 'off', label: 'Off' },
-      ...TARGETS.map((t) => ({ value: t.id, label: t.label, title: t.note })),
+      ...allTargets().map((t) => ({ value: t.id, label: t.label, title: t.note })),
       ...app.traces.traces.map((t) => ({ value: `trace:${t.id}`, label: `Trace: ${t.name}` })),
+      { value: EDIT_TARGETS, label: 'Custom targets…', title: 'Make your own target curves, or edit them' },
     ];
     if (!opts.some((o) => o.value === s[this.key])) s[this.key] = 'off';
     this.selHost.replaceChildren(
@@ -78,6 +93,13 @@ export class TargetOverlay {
         opts,
         s[this.key],
         (v) => {
+          if (v === EDIT_TARGETS) {
+            this.renderSelect();
+            showTargetEditor(app, (id) => {
+              if (id) this.choose(id);
+            }, s[this.key]);
+            return;
+          }
           s[this.key] = v;
           this.level = null;
           app.save();
@@ -95,7 +117,7 @@ export class TargetOverlay {
   series(freqs: ArrayLike<number>, data: ArrayLike<number> | null, weight?: ArrayLike<number> | null): Series[] {
     const app = this.app;
     const s = app.settings;
-    if (app.traces.version !== this.tracesVersion) this.renderSelect();
+    if (app.traces.version !== this.tracesVersion || targetsVersion() !== this.customVersion) this.renderSelect();
     const choice = this.choice;
     const trace = choice.startsWith('trace:') ? app.traces.traces.find((t) => t.id === choice.slice(6)) : null;
     const shape = targetShape(choice, freqs, trace);
@@ -105,7 +127,7 @@ export class TargetOverlay {
     // Follow level changes smoothly (a live measurement fluctuates)
     this.level = !this.live || this.level === null || Math.abs(lvl - this.level) > 12 ? lvl : this.level + 0.15 * (lvl - this.level);
     const target = Float64Array.from(shape, (v) => v + this.level!);
-    const name = trace ? trace.name : (TARGETS.find((t) => t.id === choice)?.label ?? 'Target').replace(/ \(.*\)$/, '');
+    const name = trace ? trace.name : (findTarget(choice)?.label ?? 'Target').replace(/ \(.*\)$/, '');
     const out: Series[] = [];
     const tol = s.targetTolerance;
     if (tol > 0) out.push({ id: 'target-band', label: '', x: freqs, y: target.map((v) => v + tol), band: target.map((v) => v - tol), color: TARGET_COLOR, quiet: true });

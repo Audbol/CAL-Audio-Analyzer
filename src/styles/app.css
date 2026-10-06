@@ -4180,3 +4180,166 @@ html.ui-simple .adv-only {
   align-items: center;
   margin-top: 14px;
 }
+
+/* Custom target editor */
+.tgt-modal {
+  width: min(860px, calc(100vw - 32px));
+}
+.tgt-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tgt-editor .tgt-name {
+  flex: 1;
+  min-width: 180px;
+}
+.tgt-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 230px;
+  gap: 12px;
+  align-items: start;
+}
+.tgt-plot {
+  height: 300px;
+}
+.tgt-points {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 300px;
+  overflow: auto;
+  padding-right: 4px;
+}
+.tgt-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 26px;
+  gap: 6px;
+  align-items: center;
+}
+.tgt-head {
+  font-size: 11px;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.tgt-cell {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+.tgt-cell .num {
+  width: 100%;
+  min-width: 0;
+}
+.tgt-points > .btn {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+html.compact .tgt-body {
+  grid-template-columns: 1fr;
+}
+html.compact .tgt-plot {
+  height: 220px;
+}
+
+/* EQ: check the result against the prediction */
+.eq-verify {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.eq-verify h4 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.eq-verify p {
+  margin: 0;
+}
+.eq-verify select {
+  max-width: 170px;
+}
+.eq-verify-out:empty {
+  display: none;
+}
+.eq-verify-out {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  line-height: 1.4;
+}
+.peq-hp select {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Weighted averages */
+.avg-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow: auto;
+}
+.avg-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.avg-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.meas-weight {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.meas-weight select {
+  font-size: 12px;
+  padding: 1px 4px;
+}
+
+/* System presets */
+.preset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.preset-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.preset-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 200px;
+}
+.preset-info b,
+.preset-info span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.presets-card input[data-preset='name'] {
+  flex: 1 1 180px;
+  min-width: 0;
+}

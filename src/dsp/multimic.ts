@@ -10,8 +10,11 @@ export interface MicAverage {
   count: number;
 }
 
-/** Curves in dB on one grid. Points that are not finite (blanked, no data) are left out for that mic. */
-export function micAverage(curves: ArrayLike<number>[], weights?: (ArrayLike<number> | null)[]): MicAverage | null {
+/**
+ * Curves in dB on one grid. Points that are not finite (blanked, no data) are left out for that mic. `weights`:
+ * per frequency (e.g. coherence); `scale`: per mic (how much each position counts, 1 = equal).
+ */
+export function micAverage(curves: ArrayLike<number>[], weights?: (ArrayLike<number> | null)[], scale?: number[]): MicAverage | null {
   if (curves.length < 2) return null;
   const n = curves[0].length;
   const avg = new Float64Array(n);
@@ -25,15 +28,15 @@ export function micAverage(curves: ArrayLike<number>[], weights?: (ArrayLike<num
     curves.forEach((c, k) => {
       const v = c[i];
       if (!Number.isFinite(v) || v < -190) return;
-      const wk = weights?.[k] ? Math.max(0.02, weights[k]![i]) : 1;
+      const wk = (weights?.[k] ? Math.max(0.02, weights[k]![i]) : 1) * Math.max(0, scale?.[k] ?? 1);
       p += wk * Math.pow(10, v / 10);
       w += wk;
-      mn = Math.min(mn, v);
-      mx = Math.max(mx, v);
+      if (!(scale?.[k] === 0)) mn = Math.min(mn, v);
+      if (!(scale?.[k] === 0)) mx = Math.max(mx, v);
     });
     avg[i] = w > 0 ? 10 * Math.log10(p / w) : NaN;
     lo[i] = w > 0 ? mn : NaN;
     hi[i] = w > 0 ? mx : NaN;
   }
-  return { avg, lo, hi, count: curves.length };
+  return { avg, lo, hi, count: scale ? scale.filter((v, k) => v > 0 && k < curves.length).length : curves.length };
 }

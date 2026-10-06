@@ -1,4 +1,4 @@
-import { TARGETS } from './eq';
+import { findTarget } from './eq';
 
 /** Frequency range used to level the target to the measurement (the ear's most sensitive, least room-affected range). */
 export const LEVEL_RANGE: [number, number] = [250, 4000];
@@ -15,7 +15,7 @@ export function targetShape(id: string, freqs: ArrayLike<number>, trace?: { freq
     const ref = at(1000);
     return Float64Array.from(freqs, (f) => at(f) - ref);
   }
-  const t = TARGETS.find((x) => x.id === id);
+  const t = findTarget(id);
   if (!t) return null;
   return Float64Array.from(freqs, (f) => t.at(f));
 }

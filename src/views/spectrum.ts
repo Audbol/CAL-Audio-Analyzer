@@ -466,7 +466,8 @@ export class SpectrumView extends DockedView implements View {
       }
       // Average curves (for tuning) on top of everything: the long-term balance behind the live RTA
       const day = s.theme === 'day';
-      series.push(...micAverageSeries(app, g, app.measurements.filter((m) => m.cfg.enabled && m.hasRta).map((m) => shiftBy(m.rtaOut, offOf(m.cfg.mic)))));
+      const avgOf = app.measurements.filter((m) => m.cfg.enabled && m.hasRta);
+      series.push(...micAverageSeries(app, g, avgOf.map((m) => shiftBy(m.rtaOut, offOf(m.cfg.mic))), undefined, avgOf.map((m) => m.cfg.weight ?? 1)));
       // One average curve: white (black by day). Several (one per mic): each in its mic's colour, lightened (darkened
       // by day) so it stands apart from the live trace, and each with its own dash pattern, so they can be told
       // apart even when two colours look alike

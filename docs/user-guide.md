@@ -275,7 +275,9 @@ In the Traces list you can:
 - add a note and a photo of the microphone position,
 - export it as a CSV file, or delete it.
 
-**Spatial average:** measure at several positions, tick the traces in the list, and select **Avg**. The app power-averages them into a new trace that represents the whole listening area. The **Sweep & Room** tab can also guide you through this (see *Measure at several positions*).
+**Spatial average:** measure at several positions, tick the traces in the list, and select **Avg**. Name the average and set how much each position counts: ×0.5, ×1, ×2 or ×3, or *Leave out*. Give the positions that matter most, such as the mix position or the main seating area, more weight. The app power-averages them into a new trace that represents the whole listening area. The **Sweep & Room** tab can also guide you through this (see *Measure at several positions*).
+
+**Weighted live average:** with two or more measurements, each measurement card has a **Weight** (advanced view). It sets how much that mic counts in the live several-mic average on the Spectrum and Transfer tabs; *Off* leaves it out. The average's label says *(weighted)* when the weights differ.
 
 **Compare before and after:** select **Compare** above the Traces list. Choose the **Before** and **After** traces (the two ticked traces, or the two newest), a **Target**, and the range to score. The dialog shows both curves, the change between them, and how far each is from the target: the RMS deviation, the share within the tolerance band and the worst point. For example: "±4.1 dB → ±1.8 dB RMS from 40 Hz to 8 kHz (56 % closer to the target)". **Match levels** moves Before to the level of After, so only the change in shape counts. With **Include in the report** on, the comparison is a page of the report.
 
@@ -308,6 +310,16 @@ Hover a target in the list to see its shape. The live targets are common startin
 | X-curve (cinema) | Flat to 2 kHz, −3 dB/oct above | Cinemas (SMPTE ST 202 / ISO 2969) |
 | X-curve, small room | Flat to 2 kHz, −1.5 dB/oct above | Cinema rooms under 150 m³ |
 
+### Make your own target
+
+Choose **Custom targets…** at the end of any target list (Spectrum, Transfer, EQ).
+
+1. **Start from** any target to copy its shape, or type the points yourself: a level in dB at each frequency. The points are joined smoothly, and the level stays the same beyond the first and last point. **Add point** adds one in the widest gap.
+2. Give it a **Name** and select **Save and use**.
+3. To edit or delete it later, open the editor again and choose it at the top.
+
+**Import** reads a text file with one *frequency level* pair per line (comma, tab or space between), such as a target from another tool or a spreadsheet. **Export** saves one in the same format. Your targets appear in every target list. Sessions and presets carry them, and remote devices see them too.
+
 ### Let the app suggest EQ
 
 ![The EQ tab. The upper graph shows the response against the target as measured (dashed) and as predicted with the EQ, inside a ±3 dB band. The lower graph shows the EQ curve with its eight filters numbered. The list on the right shows each filter's frequency, gain and Q.](guide/eq.png)
@@ -319,12 +331,13 @@ Hover a target in the list to see its shape. The live targets are common startin
    Width is shown and entered **the way that console does**, so you can copy the numbers straight across: as **Q** on DiGiCo, Yamaha, Avid, Midas HD96, Behringer/Midas X32/M32, WING and SSL, and as **Width in octaves** on Allen & Heath (with fractions such as 1/3 or 1/9 where the width is one) and on the Midas PRO series. Type a width in the console's own unit and the app keeps it exactly; the graphs follow. **Copy filter text** then lists them band by band. *Any processor* has no limits. The panel above the filters says whether the ranges come from the manufacturer's documentation or are typical for that console family, in which case check them on your console.
 4. Select **Calculate EQ**.
 5. The list on the right shows the suggested filters: frequency (Fc), gain and Q. You can edit each value.
+   - **High-pass:** where the target itself rolls off in the bass (the speech target, or one of your own), the assistant suggests a **high-pass** (HP) instead of a broad cut. It is listed first with its frequency and slope (the slopes the console has). It needs no EQ band, since consoles have the high-pass separately. Under **Options**, *High-pass: Never* turns this off.
    - **Max boost** and **Max cut** (under Options) limit the whole EQ, not each filter: wherever filters overlap, together they never boost or cut more than that. Two boosts (or two cuts) are kept at least a third of an octave apart, so the filters don't pile up on one spot.
    - Where the system **rolls off** at either end of the range (more than 6 dB under the target down to the lowest frequency, or up to the highest), the assistant leaves it alone and says so: boosting a loudspeaker below or above its range only costs amplifier headroom and driver excursion. That part is shaded in the graphs. Extend the system with subs or adjust the crossover instead.
    - The **upper graph** shows the response against the target: dashed as measured, solid as predicted with the EQ. The shaded band is ±3 dB around the target.
    - The **lower graph** shows the EQ itself. Each filter is numbered where it acts, as in the list; cuts are shaded below 0 dB and boosts above.
 6. Copy the filters with **Copy filter text** or **Copy CSV**, then enter them in your processor.
-7. Measure again to check the result.
+7. **Check the result.** Measure again at the same position (or average the same positions into a new trace). Under the filter list, in **Check the result**, choose the live measurement or the new trace and select **Compare**. The upper graph adds the measured result (green) beside the prediction (blue), and the panel says how far it is from the target and where it differs most from the prediction, for example *+3.2 dB at 63 Hz*. A large difference usually means a filter was entered differently on the console, or the mic moved.
 
 **Export the EQ as an FIR filter:** some processors, convolution players and plug-ins load an impulse response instead of parametric filters. Select **Export FIR…** under the filter list, then choose:
 
@@ -522,10 +535,17 @@ The portable Windows version does not update itself. On macOS, updates need a si
 
 **Save a session.** A session holds the whole job: traces, the sweep result, EQ, alignment, the noise log, calibration and notes.
 
-1. Open **Tools** and find **Session & report**.
+1. Open **Tools** and find **Session & presets**.
 2. Type the session name, the venue and any notes.
 3. Select **Save session**. The app saves a `.calsession.json` file.
 4. To continue later, or on another computer, select **Open session…**.
+
+**System presets.** A preset saves the setup of a rig or venue so you can load it in one step: the named measurements (inputs, references, mics, delays and weights), the analysis and target settings, the EQ console and the crossover. Traces, calibration and the generator are not changed.
+
+1. Open **Tools → Session & presets** (or **System presets…** in the menu ☰).
+2. Type a name, for example *Arena rig*, and select **Save current setup**.
+3. To use it, select **Load**. The app asks before replacing the current measurements.
+4. **Update** replaces a preset with the current setup, **Rename** edits its name in place, and the download button exports it as a `.calpreset.json` file. **Import…** reads one on another computer. Mics that computer's inventory doesn't have are listed when you load, so you can choose them.
 
 **Create a report.** Select **Create report**. The report opens in a new window with the setup, the measurements against the target, the room results, the EQ filters, the alignment plan and your notes. Print it, save it as PDF from the print window, or download it as HTML.
 

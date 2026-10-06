@@ -4,7 +4,7 @@ import type { Trace } from '../traces';
 import { h, select } from '../ui/dom';
 import { modal } from '../ui/dialogs';
 import { Plot, type Series } from '../ui/plot';
-import { TARGETS } from '../dsp/eq';
+import { allTargets, findTarget } from '../dsp/eq';
 import { targetShape } from '../dsp/target';
 import { compareCurves, type CompareResult } from '../dsp/compare';
 /** Round frequencies as people say them: 40 Hz, 8 kHz, 2.5 kHz. */
@@ -45,7 +45,7 @@ export function runCompare(app: App, cfg: CompareSettings): CompareOutcome | nul
   const grid = app.grid;
   const shape = targetShape(cfg.target, grid);
   const result = compareCurves(grid, before, after, shape, { fMin: cfg.fMin, fMax: cfg.fMax, tolerance: app.settings.targetTolerance || 3, matchLevels: cfg.matchLevels });
-  return { cfg, before, after, grid, result, targetName: TARGETS.find((t) => t.id === cfg.target)?.label.replace(/ \(.*\)$/, '') ?? 'Target' };
+  return { cfg, before, after, grid, result, targetName: findTarget(cfg.target)?.label.replace(/ \(.*\)$/, '') ?? 'Target' };
 }
 
 /** One-line verdict, e.g. "±4.1 dB → ±1.8 dB RMS from 40 Hz to 8 kHz (56 % closer to the target)". */
@@ -82,7 +82,7 @@ export function showCompare(app: App, selected: string[]): void {
     app.toast('Save two traces first (for example a sweep before and after EQ), then compare them', 'warn');
     return;
   }
-  const preferredTarget = [s.roomTargetCurve, s.targetCurve].find((t) => TARGETS.some((x) => x.id === t)) ?? 'flat';
+  const preferredTarget = [s.roomTargetCurve, s.targetCurve].find((t) => !!findTarget(t)) ?? 'flat';
   const cfg: CompareSettings = prev
     ? { ...prev }
     : { before: pair[0], after: pair[1], target: preferredTarget, fMin: 40, fMax: 8000, matchLevels: true, report: true };
@@ -146,7 +146,7 @@ export function showCompare(app: App, selected: string[]): void {
     h(
       'div',
       { class: 'cmp-row' },
-      h('label', { class: 'cmp-field' }, h('span', {}, 'Target'), select(TARGETS.map((t) => ({ value: t.id, label: t.label, title: t.note })), cfg.target, (v) => { cfg.target = v; update(); }, { 'aria-label': 'Target', dataset: { compare: 'target' } })),
+      h('label', { class: 'cmp-field' }, h('span', {}, 'Target'), select(allTargets().map((t) => ({ value: t.id, label: t.label, title: t.note })), cfg.target, (v) => { cfg.target = v; update(); }, { 'aria-label': 'Target', dataset: { compare: 'target' } })),
       h(
         'label',
         { class: 'cmp-field' },

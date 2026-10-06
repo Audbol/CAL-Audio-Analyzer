@@ -3,7 +3,7 @@ import { refLabel } from './state';
 import { Plot, escapeHtml, type PlotConfig, type Series, type Marker } from './ui/plot';
 import { applyChartTheme, chartTheme, seriesColor } from './ui/theme';
 import { targetDeviation, targetLevel, targetShape } from './dsp/target';
-import { eqResponse, TARGETS } from './dsp/eq';
+import { eqResponse, findTarget } from './dsp/eq';
 import { formatFreq } from './dsp/freq';
 import { KIND_INFO, recommend, type AlignView } from './views/align';
 import type { EqView } from './views/eq';
@@ -85,7 +85,7 @@ function targetInfo(app: App, freqs: ArrayLike<number>): { name: string; shape: 
   const trace = s.targetCurve.startsWith('trace:') ? app.traces.traces.find((t) => t.id === s.targetCurve.slice(6)) : null;
   const shape = targetShape(s.targetCurve, freqs, trace);
   if (!shape) return null;
-  const name = trace ? `Trace “${trace.name}”` : (TARGETS.find((t) => t.id === s.targetCurve)?.label ?? s.targetCurve);
+  const name = trace ? `Trace “${trace.name}”` : (findTarget(s.targetCurve)?.label ?? s.targetCurve);
   return { name, shape, tol: s.targetTolerance };
 }
 

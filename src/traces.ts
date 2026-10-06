@@ -151,9 +151,13 @@ export class TraceStore {
    * Average the selected traces. Magnitudes are power-averaged (spatial average, as used for multi-position
    * system EQ); phase is vector-averaged; coherence is averaged.
    */
-  average(ids: string[], name = 'Average', splOffsetOf: (channel: number | undefined) => number = () => 0): Trace | null {
-    const src = this.traces.filter((t) => ids.includes(t.id));
+  /** Power average of traces; `weights` (by trace id, default 1) says how much each position counts. */
+  average(ids: string[], name = 'Average', splOffsetOf: (channel: number | undefined) => number = () => 0, weights: Record<string, number> = {}): Trace | null {
+    const src = this.traces.filter((t) => ids.includes(t.id) && (weights[t.id] ?? 1) > 0);
     if (src.length < 2) return null;
+    const wOf = (t: Trace) => weights[t.id] ?? 1;
+    const wSum = src.reduce((s, t) => s + wOf(t), 0);
+    const weighted = src.some((t) => wOf(t) !== 1);
     // Spectra stored in dBFS belong to the calibration of their input. From one input they stay in dBFS (with
     // that input); from inputs with different calibrations each is converted to dB SPL first, so the average is
     // physically right and needs no further calibration.
@@ -172,23 +176,24 @@ export class TraceStore {
     for (const t of src) {
       for (let i = 0; i < n; i++) {
         const m = interpAt(t.freqs, t.mag, freqs[i]) + t.offset + (toSpl ? splOffsetOf(t.channel) : 0);
-        mag[i] += Math.pow(10, m / 10);
+        const w = wOf(t);
+        mag[i] += w * Math.pow(10, m / 10);
         if (hasPhase) {
           const p = (interpAt(t.freqs, t.phase!, freqs[i]) * Math.PI) / 180;
-          re[i] += Math.cos(p);
-          im[i] += Math.sin(p);
+          re[i] += w * Math.cos(p);
+          im[i] += w * Math.sin(p);
         }
-        if (hasCoh) coh[i] += interpAt(t.freqs, t.coh!, freqs[i]);
+        if (hasCoh) coh[i] += w * interpAt(t.freqs, t.coh!, freqs[i]);
       }
     }
     return this.add({
       name,
       kind: src[0].kind,
       freqs: [...freqs],
-      mag: mag.map((v) => 10 * Math.log10(v / src.length)),
+      mag: mag.map((v) => 10 * Math.log10(v / wSum)),
       phase: hasPhase ? re.map((r, i) => (Math.atan2(im[i], r) * 180) / Math.PI) : undefined,
-      coh: hasCoh ? coh.map((c) => c / src.length) : undefined,
-      note: `Power average of ${src.length} traces`,
+      coh: hasCoh ? coh.map((c) => c / wSum) : undefined,
+      note: weighted ? `Weighted power average of ${src.length} traces (${src.map((t) => `${t.name} ×${wOf(t)}`).join(', ')})` : `Power average of ${src.length} traces`,
       dbfs: (allDbfs && !toSpl) || undefined,
       channel,
     });

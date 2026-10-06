@@ -1,3 +1,5 @@
+import type { CustomTarget } from './dsp/eq';
+import type { SystemPreset } from './presets';
 import type { Workspace } from './workspaces';
 import type { CustomTheme } from './ui/themes';
 import type { WaterfallView } from './ui/waterfall-plot';
@@ -71,6 +73,8 @@ export interface MeasurementConfig {
   delay: number;
   enabled: boolean;
   invert: boolean;
+  /** Its share in the several-mic average (1 = equal; 2 counts twice, e.g. the mix position). */
+  weight?: number;
 }
 
 /** A note the user put on a graph at a frequency (Spectrum, Transfer or the sweep's frequency response). */
@@ -181,6 +185,10 @@ export interface Settings {
   /** An image (logo) drawn faintly on the graphs. */
   watermark: WatermarkSettings;
   customThemes: CustomTheme[];
+  /** Target curves made by the user (frequency / level points), shared with remote devices. */
+  customTargets: CustomTarget[];
+  /** System presets saved on this computer (Tools → Session & presets). */
+  presets: SystemPreset[];
   /** Where the live analysis runs: a background thread (smoother drawing) or the main thread. */
   analysisThread: 'worker' | 'main';
   /** Saved sweep traces on the Spectrum too, levelled to the live curve (a sweep measures shape, not level). */
@@ -280,6 +288,8 @@ export function defaultSettings(): Settings {
     crossover: JSON.parse(JSON.stringify(DEFAULT_CROSSOVER)),
     eqConsole: 'generic',
     customThemes: [],
+    customTargets: [],
+    presets: [],
     analysisThread: 'worker',
     rtaShowSweeps: true,
     feedbackFinder: false,

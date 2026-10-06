@@ -26,13 +26,13 @@ export function micAverageControl(app: App): HTMLElement {
 }
 
 /** Average (and spread band) of the given curves, or [] when off or fewer than two mics have data. */
-export function micAverageSeries(app: App, x: ArrayLike<number>, curves: ArrayLike<number>[], weights?: (ArrayLike<number> | null)[]): Series[] {
+export function micAverageSeries(app: App, x: ArrayLike<number>, curves: ArrayLike<number>[], weights?: (ArrayLike<number> | null)[], scale?: number[]): Series[] {
   const mode = app.settings.micAverage;
   if (mode === 'off') return [];
-  const r = micAverage(curves, weights);
+  const r = micAverage(curves, weights, scale);
   if (!r) return [];
   const out: Series[] = [];
   if (mode !== 'avg') out.push({ id: 'mic-spread', label: '', x, y: r.hi, band: r.lo, color: MIC_AVG_COLOR, quiet: true });
-  out.push({ id: 'mic-avg', label: `Average of ${r.count} mics`, x, y: r.avg, color: MIC_AVG_COLOR, width: 2.4, halo: app.settings.theme === 'day' ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)' });
+  out.push({ id: 'mic-avg', label: `Average of ${r.count} mics${scale?.some((v) => v !== 1) ? ' (weighted)' : ''}`, x, y: r.avg, color: MIC_AVG_COLOR, width: 2.4, halo: app.settings.theme === 'day' ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)' });
   return out;
 }

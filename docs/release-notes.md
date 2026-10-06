@@ -21,6 +21,11 @@ On first launch, choose **Explore with the demo room** to try every feature with
 
 ## What's new in 2.0.2
 
+- **System presets:** save the setup of a rig or venue (named measurements with their inputs, references, mics, delays and weights; analysis and target settings; the EQ console and crossover) and load it in one step. Export a preset to use it on another computer. *Tools → Session & presets*, or **System presets…** in the menu.
+- **Your own target curves:** make a target from any existing one or from scratch (a level at each frequency), import or export it as text, and use it in every target list. Sessions and presets carry it.
+- **Check the EQ:** after entering the filters on the console, measure again and **Compare**. The EQ tab draws the measured result beside the prediction and says where they differ.
+- **High-pass in the EQ assistant:** where the target rolls off in the bass (e.g. speech), the assistant suggests a high-pass with a slope the console has, instead of a broad cut. It doesn't use an EQ band.
+- **Weighted averages:** give positions more or less weight in the live several-mic average (per measurement) and when averaging traces (**Avg** now asks for a name and the weights).
 - **More target curves:** live rock / pop, club / EDM, jazz / acoustic, worship, speech (theatre and conference) and outdoor / long throw, plus a preferred in-room curve from listening tests, a classic listening-room curve and the small-room X-curve. Hover one in the list to see its shape.
 - **EQ assistant no longer piles up filters:** the boost and cut limits now apply to the whole EQ, not to each filter, so overlapping filters can never add up past them (before, several boosts could stack on one spot, up to +18 dB on a loudspeaker's bass roll-off). Two boosts or two cuts stay at least a third of an octave apart, and where the system rolls off at the ends of its range the assistant leaves it alone, shades it and says so.
 - **Simple or Advanced view:** the simple view shows the essentials (Spectrum, Transfer, EQ, SPL and Tools) and hides the advanced tabs and controls; Advanced shows every tool. Choose it in the welcome dialog or any time in the menu. Nothing is changed or lost when you switch, and each device keeps its own choice.

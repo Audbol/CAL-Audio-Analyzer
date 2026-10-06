@@ -1,4 +1,4 @@
-import type { PeqFilter } from './eq';
+import { byBand, isBand, type PeqFilter } from './eq';
 
 /**
  * EQ profiles of live mixing consoles: how many parametric bands the output (or channel) EQ has, the gain and
@@ -23,6 +23,8 @@ export interface ConsoleEqProfile {
   width: 'q' | 'octaves';
   /** Octave widths are also shown as fractions where they are one (1/3, 1/6, 1/9…), as on the console. */
   fractions?: boolean;
+  /** High-pass slopes (dB/octave) the output has, in addition to the bands (empty: none). */
+  hpf: number[];
   /** The first and last band can be shelves. */
   shelves: boolean;
   /** Band names in order of frequency (fewer filters use the first names). */
@@ -45,6 +47,7 @@ export const CONSOLE_PROFILES: ConsoleEqProfile[] = [
     qMax: 10,
     width: 'q',
     shelves: true,
+    hpf: [6, 12, 18, 24, 36, 48],
     bandNames: numbered(8),
     source: 'documented',
     note: 'No console limits: the filters as the assistant finds them.',
@@ -60,6 +63,7 @@ export const CONSOLE_PROFILES: ConsoleEqProfile[] = [
     qMax: 20,
     width: 'q',
     shelves: true,
+    hpf: [12, 24],
     bandNames: ['Band 1 (Low)', 'Band 2 (Low-mid)', 'Band 3 (High-mid)', 'Band 4 (High)'],
     source: 'documented',
     note: 'Bands 1 and 4 can be shelves (shelf Q 0.10–0.85). Every band can also be made dynamic.',
@@ -75,6 +79,7 @@ export const CONSOLE_PROFILES: ConsoleEqProfile[] = [
     qMax: 20,
     width: 'q',
     shelves: true,
+    hpf: [12, 24],
     bandNames: ['Pre 1', 'Pre 2', 'Pre 3', 'Pre 4', 'Post 1', 'Post 2', 'Post 3', 'Post 4'],
     source: 'documented',
     note: 'Larger SD and Quantum consoles have four bands before and four after the output insert.',
@@ -90,6 +95,7 @@ export const CONSOLE_PROFILES: ConsoleEqProfile[] = [
     qMax: 16,
     width: 'q',
     shelves: true,
+    hpf: [12, 24],
     bandNames: ['LOW', 'LOW-MID', 'HIGH-MID', 'HIGH'],
     source: 'typical',
     note: 'LOW and HIGH can be shelves. For more bands, insert an 8-band PEQ from the rack. EQ type I (precise) matches these filters best.',
@@ -105,6 +111,7 @@ export const CONSOLE_PROFILES: ConsoleEqProfile[] = [
     qMax: 16,
     width: 'q',
     shelves: true,
+    hpf: [12, 24],
     bandNames: numbered(8),
     source: 'typical',
     note: 'Choose the Precise EQ type: its bells and shelves match these filters most closely.',
@@ -120,6 +127,7 @@ export const CONSOLE_PROFILES: ConsoleEqProfile[] = [
     qMax: 10,
     width: 'q',
     shelves: true,
+    hpf: [12, 24],
     bandNames: ['LF', 'LMF 1', 'LMF 2', 'MF', 'HMF 1', 'HMF 2', 'HF'],
     source: 'typical',
     note: 'Outputs and matrices have a 7-band parametric EQ (plus a 31-band graphic); the outer bands can be shelves.',
@@ -137,6 +145,7 @@ export const CONSOLE_PROFILES: ConsoleEqProfile[] = [
     width: 'octaves',
     fractions: true,
     shelves: true,
+    hpf: [12, 24],
     bandNames: ['LF', 'LM', 'HM', 'HF'],
     source: 'documented',
     note: 'Width is set in octaves (shown as decimals and as 1/3, 1/6, 1/9…); LF and HF can be shelves. Allen & Heath’s octave width is not quite the usual Q conversion, so a band can come out slightly wider or narrower than predicted: check it with a measurement. Mixes also have a 28-band graphic EQ.',
@@ -152,6 +161,7 @@ export const CONSOLE_PROFILES: ConsoleEqProfile[] = [
     qMax: 10,
     width: 'q',
     shelves: true,
+    hpf: [12, 24],
     bandNames: ['LOW', 'LO-MID', 'MID', 'HI-MID', 'HIGH 2', 'HIGH'],
     source: 'typical',
     note: 'Buses, matrices and mains have 6 bands; set them to PEQ (not VEQ) to match these filters. LOW and HIGH can be shelves.',
@@ -167,6 +177,7 @@ export const CONSOLE_PROFILES: ConsoleEqProfile[] = [
     qMax: 10,
     width: 'q',
     shelves: true,
+    hpf: [12, 24],
     bandNames: ['L', '1', '2', '3', '4', '5', '6', 'H'],
     source: 'typical',
     note: 'Buses, matrices and mains have 8 bands (L, 1–6, H) with the WING EQ; L and H can be shelves.',
@@ -182,6 +193,7 @@ export const CONSOLE_PROFILES: ConsoleEqProfile[] = [
     qMax: 10,
     width: 'q',
     shelves: true,
+    hpf: [12, 24],
     bandNames: ['LF', 'LMF', 'HMF', 'HF'],
     source: 'typical',
     note: 'Outputs have a 4-band parametric EQ with shelf options on the outer bands; insert a GEQ or PEQ for more.',
@@ -198,6 +210,7 @@ export const CONSOLE_PROFILES: ConsoleEqProfile[] = [
     qMax: 14.4,
     width: 'octaves',
     shelves: true,
+    hpf: [12, 24],
     bandNames: ['LF', 'LMF', 'HMF', 'HF'],
     source: 'typical',
     note: 'Width is set in octaves (0.1 to 2), not Q. The outer bands can be shelves.',
@@ -213,6 +226,7 @@ export const CONSOLE_PROFILES: ConsoleEqProfile[] = [
     qMax: 10,
     width: 'q',
     shelves: true,
+    hpf: [12, 24],
     bandNames: ['LF', 'LMF', 'HMF', 'HF'],
     source: 'typical',
     note: 'Use constant-Q mode (not SSL Legacy) to match these filters; LF and HF can be shelves. The effects rack adds a 6- or 10-band PEQ.',
@@ -235,6 +249,13 @@ export function octavesToQ(n: number): number {
 
 /** A filter brought within a console's ranges and to the precision it shows. */
 export function fitToProfile(f: PeqFilter, p: ConsoleEqProfile): PeqFilter {
+  if (f.type === 'highpass') {
+    // The nearest slope the console has, the frequency as it shows it
+    const slopes = p.hpf.length ? p.hpf : [12];
+    const slope = slopes.reduce((a, b) => (Math.abs(b - (f.slope ?? 12)) < Math.abs(a - (f.slope ?? 12)) ? b : a));
+    const fr = Math.min(1000, Math.max(20, f.f));
+    return { ...f, f: fr < 100 ? Math.round(fr) : Math.round(fr / 5) * 5, gain: 0, q: 0.707, slope };
+  }
   // Any processor: only the ranges, at full precision
   if (p.id === 'generic') return { ...f, gain: Math.min(p.gainMax, Math.max(p.gainMin, f.gain)), q: Math.min(p.qMax, Math.max(p.qMin, f.q)) };
   const gain = Math.round(Math.min(p.gainMax, Math.max(p.gainMin, f.gain)) * 10) / 10;
@@ -279,11 +300,16 @@ export function widthToQ(v: number, p: ConsoleEqProfile): number {
 }
 
 const fmtF = (f: number) => (f >= 1000 ? `${(f / 1000).toFixed(f >= 10000 ? 1 : 2)} kHz` : `${Math.round(f)} Hz`);
-const kind = (f: PeqFilter) => (f.type === 'lowshelf' ? 'low shelf' : f.type === 'highshelf' ? 'high shelf' : 'bell');
+const kind = (f: PeqFilter) => (f.type === 'lowshelf' ? 'low shelf' : f.type === 'highshelf' ? 'high shelf' : f.type === 'highpass' ? 'high-pass' : 'bell');
 
 /** The filters as a list to enter on the console, band by band. */
 export function consoleText(filters: PeqFilter[], p: ConsoleEqProfile): string {
-  const sorted = [...filters].sort((a, b) => a.f - b.f);
-  const lines = sorted.map((f, i) => `${p.bandNames[i] ?? `Band ${i + 1}`}: ${kind(f)}, ${fmtF(f.f)}, ${f.gain > 0 ? '+' : ''}${f.gain.toFixed(1)} dB, ${widthLabel(f.q, p)}`);
+  const sorted = [...filters].sort(byBand);
+  let band = 0;
+  const lines = sorted.map((f) => {
+    if (!isBand(f)) return `HPF: ${kind(f)}, ${fmtF(f.f)}, ${f.slope ?? 12} dB/oct`;
+    const i = band++;
+    return `${p.bandNames[i] ?? `Band ${i + 1}`}: ${kind(f)}, ${fmtF(f.f)}, ${f.gain > 0 ? '+' : ''}${f.gain.toFixed(1)} dB, ${widthLabel(f.q, p)}`;
+  });
   return [`${p.name} – ${p.section}`, ...lines].join('\n');
 }

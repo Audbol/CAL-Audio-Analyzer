@@ -1,14 +1,24 @@
 /** Parametric EQ modelling and automatic EQ suggestion against a target curve. */
 
 export interface PeqFilter {
-  type: 'peak' | 'lowshelf' | 'highshelf';
+  /** `highpass`: a Butterworth high-pass (gain and q unused) with `slope` dB/octave. */
+  type: 'peak' | 'lowshelf' | 'highshelf' | 'highpass';
   f: number;
   gain: number;
   q: number;
+  /** High-pass slope in dB/octave (6 per order). */
+  slope?: number;
 }
+
+/** A parametric band (bell or shelf), as opposed to a high-pass, which consoles have separately. */
+export const isBand = (f: PeqFilter) => f.type !== 'highpass';
+
+/** The order consoles list them in: the high-pass first, then the bands by frequency. */
+export const byBand = (a: PeqFilter, b: PeqFilter) => Number(isBand(a)) - Number(isBand(b)) || a.f - b.f;
 
 /** Magnitude in dB of an RBJ-cookbook biquad at frequency f (analog-prototype approximation, fs-independent). */
 export function filterDb(flt: PeqFilter, f: number): number {
+  if (flt.type === 'highpass') return -10 * Math.log10(1 + Math.pow(flt.f / f, (2 * (flt.slope ?? 12)) / 6));
   const A = Math.pow(10, flt.gain / 40);
   const w = f / flt.f;
   // Evaluate analog prototype H(s) at s = j*w (normalised)
@@ -148,6 +158,11 @@ export interface AutoEqOptions {
   maxCut: number;
   /** Minimum coherence for a point to be considered (0..1). */
   minCoherence: number;
+  /**
+   * High-pass slopes (dB/octave) the assistant may use where the target itself rolls off in the bass (e.g. a
+   * speech target): a high-pass there instead of a broad cut. Empty or absent: none.
+   */
+  hpfSlopes?: number[];
   /** Q range the filters may use (default 0.3–10), e.g. a console's limits. */
   qMin?: number;
   qMax?: number;
@@ -167,6 +182,57 @@ export interface AutoEqResult {
    * excursion. null when it doesn't.
    */
   rolloff: { low: number | null; high: number | null };
+}
+
+/** A target curve made by the user: levels (dB) at frequencies, joined smoothly on a log-frequency scale. */
+export interface CustomTarget {
+  id: string;
+  name: string;
+  /** [frequency (Hz), level (dB)] in rising frequency. */
+  points: [number, number][];
+}
+
+/** Custom targets prefix their id with this (so they never collide with built-in ones). */
+export const CUSTOM_PREFIX = 'custom:';
+
+/** A custom target as a curve: linear in dB between points on a log-frequency scale, level beyond the ends. */
+export function customCurve(c: CustomTarget): TargetCurve {
+  const pts = [...c.points].filter(([f, v]) => f > 0 && Number.isFinite(f) && Number.isFinite(v)).sort((a, b) => a[0] - b[0]);
+  const at = (f: number) => {
+    if (!pts.length) return 0;
+    if (f <= pts[0][0]) return pts[0][1];
+    const last = pts[pts.length - 1];
+    if (f >= last[0]) return last[1];
+    let i = 1;
+    while (pts[i][0] < f) i++;
+    const [f0, v0] = pts[i - 1];
+    const [f1, v1] = pts[i];
+    return v0 + ((v1 - v0) * Math.log(f / f0)) / Math.log(f1 / f0);
+  };
+  return { id: CUSTOM_PREFIX + c.id, label: c.name || 'Custom target', note: `Your target: ${pts.length} points`, at };
+}
+
+let customTargets: TargetCurve[] = [];
+let customVersion = 0;
+
+/** Use these custom targets (from the settings) alongside the built-in ones. */
+export function setCustomTargets(list: CustomTarget[]): void {
+  customTargets = list.map(customCurve);
+  customVersion++;
+}
+
+/** Changes whenever the custom targets do (lists of targets rebuild themselves then). */
+export function targetsVersion(): number {
+  return customVersion;
+}
+
+/** Built-in and custom targets, in the order the lists show them. */
+export function allTargets(): TargetCurve[] {
+  return [...TARGETS, ...customTargets];
+}
+
+export function findTarget(id: string): TargetCurve | undefined {
+  return TARGETS.find((t) => t.id === id) ?? customTargets.find((t) => t.id === id);
 }
 
 /** Filters of the same kind (both cuts or both boosts) stay at least this far apart (octaves). */
@@ -227,15 +293,16 @@ export function autoEq(
 
   /** The filters together stay within the limits at every frequency of the range. */
   const withinLimits = (fl: PeqFilter[]) => {
+    const bands = fl.filter(isBand);
     for (const i of range) {
       let e = 0;
-      for (const f of fl) e += filterDb(f, freqs[i]);
+      for (const f of bands) e += filterDb(f, freqs[i]);
       if (e > opt.maxBoost + 0.05 || e < -opt.maxCut - 0.05) return false;
     }
     return true;
   };
   /** Two cuts (or two boosts) don't sit on top of each other. */
-  const spaced = (c: PeqFilter, fl: PeqFilter[]) => fl.every((f) => Math.sign(f.gain) !== Math.sign(c.gain) || Math.abs(Math.log2(c.f / f.f)) >= MIN_SPACING_OCT);
+  const spaced = (c: PeqFilter, fl: PeqFilter[]) => fl.every((f) => !isBand(f) || Math.sign(f.gain) !== Math.sign(c.gain) || Math.abs(Math.log2(c.f / f.f)) >= MIN_SPACING_OCT);
 
   const filters: PeqFilter[] = [];
   const err = (fl: PeqFilter[]) => {
@@ -248,6 +315,22 @@ export function autoEq(
     }
     return Math.sqrt(s / idx.length);
   };
+
+  // Where the target itself rolls off in the bass (6 dB or more over the lowest two octaves of the range), a
+  // high-pass shapes it better than a broad cut, and needs no EQ band
+  if (opt.hpfSlopes?.length && target.at(opt.fMin) <= target.at(opt.fMin * 4) - 6) {
+    const base = err(filters);
+    let best: PeqFilter | null = null;
+    let bestErr = base - 0.3;
+    for (let fc = 20; fc <= Math.min(400, opt.fMax / 4); fc *= Math.pow(2, 1 / 12)) {
+      for (const slope of opt.hpfSlopes) {
+        const hp: PeqFilter = { type: 'highpass', f: fc, gain: 0, q: 0.707, slope };
+        const e = err([hp]);
+        if (e < bestErr) (bestErr = e), (best = hp);
+      }
+    }
+    if (best) filters.push({ ...best, f: Math.round(best.f) });
+  }
 
   // Frequencies where a filter didn't help (e.g. a dip when boosts are off): the fit moves on to the next problem
   const skip = new Set<number>();
@@ -320,7 +403,7 @@ export function autoEq(
     cand.q = Math.round(cand.q * 100) / 100;
     filters.push(cand);
   }
-  filters.sort((a, b) => a.f - b.f);
+  filters.sort(byBand);
   const eqr = eqResponse(filters, freqs);
   const after = new Float64Array(n);
   for (let i = 0; i < n; i++) after[i] = before[i] + eqr[i];

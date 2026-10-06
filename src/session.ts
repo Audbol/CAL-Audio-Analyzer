@@ -30,6 +30,8 @@ export interface SessionFile {
   align: AlignSnapshot | null;
   /** Noise log (SPL view), if anything was logged. */
   log?: LogFile | null;
+  /** Custom target curves (older sessions don't have them). */
+  targets?: Settings['customTargets'];
 }
 
 function view<T>(app: App, id: string): T {
@@ -54,6 +56,7 @@ export function buildSession(app: App): SessionFile {
     eq: view<EqView>(app, 'eq').snapshot(),
     align: view<AlignView>(app, 'align').snapshot(),
     log: app.logger.rows.length ? app.logger.snapshot() : null,
+    targets: JSON.parse(JSON.stringify(s.customTargets)),
   };
 }
 
@@ -92,6 +95,7 @@ export function parseSession(text: string): SessionFile {
     eq: f.eq ?? null,
     align: f.align ?? null,
     log: f.log && Array.isArray(f.log.rows) ? f.log : null,
+    targets: Array.isArray(f.targets) ? f.targets : [],
   };
 }
 
@@ -101,6 +105,11 @@ export function applySession(app: App, f: SessionFile): void {
   const ir = f.sweep ? Float64Array.from(decodeFloat32(f.sweep.ir)) : null;
   const s = app.settings;
   s.session = { ...f.session };
+  // Its custom targets join yours (one with the same id is replaced by the session's)
+  if (f.targets?.length) {
+    s.customTargets = [...s.customTargets.filter((t) => !f.targets!.some((x) => x.id === t.id)), ...f.targets];
+    app.targetsChanged();
+  }
   const rec = s as unknown as Record<string, unknown>;
   for (const k of SESSION_SETTINGS) if (f.settings[k] !== undefined) rec[k] = f.settings[k];
   if (f.shared && Array.isArray(f.shared.measurements) && f.shared.measurements.length) app.applyShared(f.shared);

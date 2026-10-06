@@ -151,7 +151,7 @@ export class TransferView extends DockedView implements View {
       if (showGd) gdS.push({ id: m.cfg.id, label: m.cfg.name, x: g, y: gdOf(m.cfg.id, g, m.phase, m.mag, m.result.coh), color: c, width: 1.6, alpha: a });
     }
     // Several mics: their coherence-weighted power average and spread
-    magS.push(...micAverageSeries(app, g, live.map((m) => m.mag), live.map((m) => m.result.coh)));
+    magS.push(...micAverageSeries(app, g, live.map((m) => m.mag), live.map((m) => m.result.coh), live.map((m) => m.cfg.weight ?? 1)));
     // Target curve, levelled (coherence-weighted) to the first shown transfer function
     const ref = app.measurements.find((m) => m.cfg.enabled && m.tfReady);
     magS.unshift(...this.target.series(g, ref ? ref.mag : null, ref ? ref.result.coh : null));
