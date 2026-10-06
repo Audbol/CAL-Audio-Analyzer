@@ -4343,3 +4343,67 @@ html.compact .tgt-plot {
   flex: 1 1 180px;
   min-width: 0;
 }
+
+/* SPL readout: each box sizes its own number to fit (cqw/cqh below are 1 % of that box, not of the panel), so
+   the numbers fill their boxes at any panel size and stay readable from a distance. Widths allow six characters
+   ("-100.0"); heights leave room for the label and the line below. */
+.spl-fit .spl-big,
+.spl-fit .stat {
+  container-type: size;
+  overflow: hidden;
+}
+.spl-fit .spl-top > .spl-big {
+  flex: 0 0 40%;
+  min-width: 0;
+}
+.spl-fit .spl-big .val {
+  font-size: clamp(26px, min(60cqh, 31cqw), 2000px);
+  line-height: 0.95;
+}
+.spl-fit .spl-big .val.long {
+  font-size: clamp(22px, min(60cqh, 26cqw), 2000px);
+}
+.spl-fit .spl-big .unit,
+.spl-fit .spl-big .small {
+  font-size: clamp(10px, min(7cqh, 4.5cqw), 56px);
+  margin-top: 0.4em;
+}
+.spl-fit .stat b {
+  font-size: clamp(13px, min(50cqh, 30cqw), 1400px);
+  line-height: 0.95;
+  margin: 0.06em 0;
+}
+.spl-fit .stat b.long {
+  font-size: clamp(12px, min(50cqh, 25cqw), 1400px);
+}
+.spl-fit .stat span,
+.spl-fit .stat em {
+  font-size: clamp(10px, min(10cqh, 6cqw), 44px);
+}
+/* Narrow: the readout above the four readings, each with a definite share of the height to size from */
+@container (max-aspect-ratio: 1.15 / 1) {
+  .spl-fit .spl-top > .spl-big {
+    flex: 0 0 38%;
+  }
+  .spl-fit .spl-stats {
+    flex: 1 1 0;
+    min-height: 0;
+  }
+}
+/* Neither wide nor narrow (most windows): the main reading across the whole width, the four below it in a row,
+   so the number read from across the room is as large as possible */
+@container (min-aspect-ratio: 1.15 / 1) and (max-aspect-ratio: 2.2 / 1) {
+  .spl-fit .spl-top {
+    flex-direction: column;
+  }
+  .spl-fit .spl-top > .spl-big {
+    flex: 0 0 56%;
+    align-items: center;
+    text-align: center;
+  }
+  .spl-fit .spl-stats {
+    flex: 1 1 0;
+    min-height: 0;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}

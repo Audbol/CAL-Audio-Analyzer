@@ -260,7 +260,10 @@ export class SplView extends DockedView implements View {
       this.shownReading = r;
       this.shownKey = shownKey;
       const unit = s.splCalibrated ? `dB(${s.splWeighting})` : `dBFS(${s.splWeighting})`;
-      this.big.innerHTML = `<div class="val">${run ? r!.level.toFixed(1) : '—'}</div><div class="unit">${unit} · ${s.splTime === 'fast' ? 'Fast' : 'Slow'}</div>${s.splCalibrated ? '' : '<div class="warn-text small">Uncalibrated</div>'}`;
+      // Numbers longer than five characters ("-100.0") get a smaller size so they still fit their box
+      const long = (t: string) => (t.length > 5 ? ' long' : '');
+      const level = run ? r!.level.toFixed(1) : '—';
+      this.big.innerHTML = `<div class="val${long(level)}">${level}</div><div class="unit">${unit} · ${s.splTime === 'fast' ? 'Fast' : 'Slow'}</div>${s.splCalibrated ? '' : '<div class="warn-text small">Uncalibrated</div>'}`;
       const fmt = (v: number | undefined) => (run && v !== undefined && Number.isFinite(v) ? v.toFixed(1) : '—');
       const dur = r ? r.duration : 0;
       this.stats.innerHTML = [
@@ -270,7 +273,7 @@ export class SplView extends DockedView implements View {
         // The other time weighting than the big readout's (one number per card, so it fits when the panel shrinks)
         s.splTime === 'fast' ? ['Slow (1 s)', fmt(r?.slow), unit] : ['Fast (125 ms)', fmt(r?.fast), unit],
       ]
-        .map(([k, v, sub]) => `<div class="stat"><span>${k}</span><b>${v}</b><em>${sub}</em></div>`)
+        .map(([k, v, sub]) => `<div class="stat"><span>${k}</span><b class="${long(v).trim()}">${v}</b><em>${sub}</em></div>`)
         .join('');
     }
     // History: recorded by the meter every 100 ms of audio; redraw when a point was added
