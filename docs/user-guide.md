@@ -86,7 +86,7 @@ The window has five areas.
 
 - **Start / Stop** starts and stops audio. Shortcut: Enter.
 - **Input source** chooses the audio interface, or the demo room.
-- **Generator on/off** turns the test signal on and off. Shortcut: Space. For safety, audio always starts with the generator off, and stopping audio turns it off: nothing plays until you turn it on. **On** then brings back the signal you used last.
+- **Generator on/off** turns the test signal on and off. Shortcut: Space. For safety, audio always starts with the generator off, and stopping audio turns it off: nothing plays until you turn it on. **On** then brings back the signal you used last. (The demo room keeps its signal, since it plays nothing through your speakers.)
 - **Signal type** chooses pink noise, white noise, sine, periodic sweep or music.
 - **Level slider** sets the test signal level.
 - **Outputs** chooses which outputs play the signal (for example Out 1+2).

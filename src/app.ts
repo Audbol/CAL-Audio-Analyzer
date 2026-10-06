@@ -413,9 +413,10 @@ export class App {
 
   async stop(): Promise<void> {
     await this.engine.stop();
-    // Stopped is silent, and starting again is too: the generator shows off until it is turned on again
+    // Stopped is silent, and starting again is too: the generator shows off until it is turned on again (the demo
+    // room plays nothing through speakers, so it keeps its signal)
     const g = this.settings.generator;
-    if (!this.remote && g.type !== 'off') {
+    if (!this.remote && !this.settings.simulate && g.type !== 'off') {
       this.lastGenType = g.type;
       g.type = 'off';
       this.save();

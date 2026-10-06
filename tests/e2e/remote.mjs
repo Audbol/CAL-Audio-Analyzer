@@ -15,7 +15,7 @@ const PIN = '482913';
 const hub = createHub({ distDir: path.resolve('dist'), pin: PIN, allowControl: true, version: 'test' });
 await hub.start(PORT);
 
-const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
+const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required', '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] });
 let failed = false;
 const check = (ok, msg) => {
   console.log(`${ok ? 'PASS' : 'FAIL'} ${msg}`);
@@ -135,19 +135,19 @@ check(await host.evaluate(() => window.calApp.engine.running), 'Start host audio
 await rem.waitForFunction(() => window.calApp.engine.running === true, null, { timeout: 15000 }).catch(() => undefined);
 await rem.waitForTimeout(2500);
 
-// --- Remote controls the host's generator (after Stop and Start host audio it is off: starting is silent)
-check((await host.evaluate(() => window.calApp.settings.generator.type)) === 'off', 'after Stop and Start host audio the generator is off');
-await rem.keyboard.press(' ');
-await host.waitForTimeout(1000);
-check((await host.evaluate(() => window.calApp.settings.generator.type)) !== 'off', 'remote switched the host generator on');
+// --- Remote controls the host's generator (the demo room keeps its signal through Stop and Start)
 await rem.keyboard.press(' ');
 await host.waitForTimeout(1000);
 check((await host.evaluate(() => window.calApp.settings.generator.type)) === 'off', 'remote switched the host generator off');
 await rem.keyboard.press(' ');
 await host.waitForTimeout(1000);
-check((await host.evaluate(() => window.calApp.settings.generator.type)) !== 'off', 'and on again');
+check((await host.evaluate(() => window.calApp.settings.generator.type)) !== 'off', 'remote switched the host generator on');
 
-// --- Safety: losing and regaining the connection (or reloading the page) never starts the host's audio or sound
+// --- Safety: losing and regaining the connection (or reloading the page) never starts the host's audio or sound.
+// The host on a real input (a test device), with pink noise playing, then stopped
+await host.evaluate(() => window.calApp.selectSource('__default'));
+await host.waitForFunction(() => window.calApp.engine.running && !window.calApp.settings.simulate, null, { timeout: 10000 });
+await host.evaluate(() => window.calApp.setGenerator({ type: 'pink' }));
 await host.evaluate(() => window.calApp.stop());
 await host.waitForFunction(() => !window.calApp.engine.running, null, { timeout: 5000 });
 check((await host.evaluate(() => window.calApp.settings.generator.type)) === 'off', 'stopping the host audio turns its generator off');
@@ -171,6 +171,11 @@ await rem.waitForFunction(() => window.calApp.engine.running === true, null, { t
 await rem.keyboard.press(' ');
 await host.waitForFunction(() => window.calApp.settings.generator.type !== 'off', null, { timeout: 5000 }).catch(() => undefined);
 check((await host.evaluate(() => window.calApp.settings.generator.type)) === 'pink', 'turning it on brings back the last signal (pink noise)');
+// Back to the demo room for the rest
+await host.evaluate(() => window.calApp.selectSource('__demo'));
+await host.waitForFunction(() => window.calApp.settings.simulate && window.calApp.engine.running, null, { timeout: 10000 });
+await rem.waitForFunction(() => window.calApp.engine.running === true, null, { timeout: 15000 }).catch(() => undefined);
+await rem.waitForTimeout(2000);
 
 // --- A second remote (phone) joins: shared session state is kept on the host
 const phoneCtx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true });
