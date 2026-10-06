@@ -18,6 +18,8 @@ export interface EqSnapshot {
   offset: number;
   rmsBefore: number;
   rmsAfter: number;
+  /** Older sessions don't have it. */
+  rolloff?: { low: number | null; high: number | null };
   filters: PeqFilter[];
   summary: string;
   /** The console profile the filters were made for. */
@@ -75,7 +77,7 @@ export class EqView implements View {
         'div',
         { class: 'toolbar' },
         h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Source'), this.srcHost),
-        h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Target'), select(TARGETS.map((t) => ({ value: t.id, label: t.label })), this.target, (v) => { this.target = v; })),
+        h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Target'), select(TARGETS.map((t) => ({ value: t.id, label: t.label, title: t.note })), this.target, (v) => { this.target = v; })),
         h(
           'div',
           { class: 'tb-group' },
@@ -149,9 +151,13 @@ export class EqView implements View {
     // As the console can set them: within its ranges, at the precision it shows
     this.filters = this.result.filters.map((f) => fitToProfile(f, p));
     this.sourceName = src.name;
+    const ro = this.result.rolloff;
+    const fmt = (f: number) => (f >= 1000 ? `${(f / 1000).toFixed(1)} kHz` : `${Math.round(f)} Hz`);
+    const ends = [ro.low ? `below ${fmt(ro.low)}` : '', ro.high ? `above ${fmt(ro.high)}` : ''].filter(Boolean).join(' and ');
+    const rollText = ends ? ` The system rolls off ${ends}: left as it is (boosting a loudspeaker past its range only costs headroom).` : '';
     this.summary.innerHTML = this.filters.length
-      ? `<b>${this.filters.length} filters</b> for “${src.name}” → ${target.label}. RMS deviation ${this.result.rmsBefore.toFixed(1)} dB → <b>${this.result.rmsAfter.toFixed(1)} dB</b>. Tip: verify with a new measurement, and prefer fixing large dips with placement/delay rather than boost.`
-      : 'The response is already within ±1 dB of the target in the selected range — no EQ needed.';
+      ? `<b>${this.filters.length} filters</b> for “${src.name}” → ${target.label}${target.note ? ` (${target.note})` : ''}. RMS deviation ${this.result.rmsBefore.toFixed(1)} dB → <b>${this.result.rmsAfter.toFixed(1)} dB</b>.${rollText} Tip: verify with a new measurement, and prefer fixing large dips with placement/delay rather than boost.`
+      : `The response is already within ±1 dB of the target in the selected range — no EQ needed.${rollText}`;
     this.renderList();
     this.dirty = true;
   }
@@ -289,6 +295,7 @@ export class EqView implements View {
       offset: r.offset,
       rmsBefore: r.rmsBefore,
       rmsAfter: r.rmsAfter,
+      rolloff: r.rolloff,
       filters: this.filters.map((f) => ({ ...f })),
       console: this.profile.id,
       summary: this.summary.textContent ?? '',
@@ -309,7 +316,7 @@ export class EqView implements View {
       Object.assign(this.opt, snap.opt);
       this.freqs = snap.freqs;
       const before = Float64Array.from(snap.before, (v) => (v === null ? NaN : v));
-      this.result = { filters: snap.filters, offset: snap.offset, before, after: before, rmsBefore: snap.rmsBefore, rmsAfter: snap.rmsAfter };
+      this.result = { filters: snap.filters, offset: snap.offset, before, after: before, rmsBefore: snap.rmsBefore, rmsAfter: snap.rmsAfter, rolloff: snap.rolloff ?? { low: null, high: null } };
       this.filters = snap.filters.map((f) => ({ ...f }));
       this.sourceName = snap.source;
       this.summary.textContent = snap.summary;
@@ -337,6 +344,15 @@ export class EqView implements View {
   }
 
   /** The EQ curve, filled towards 0 dB (cuts below, boosts above), with each filter numbered where it acts. */
+  /** Outside the range, and the system's roll-off at its ends (not EQ'd), shaded. */
+  private shades(): { x0: number; x1: number; color: string }[] {
+    const ro = this.result?.rolloff;
+    return [
+      { x0: 20, x1: Math.max(this.opt.fMin, ro?.low ?? 0), color: CHART.shade },
+      { x0: Math.min(this.opt.fMax, ro?.high ?? Infinity), x1: 20000, color: CHART.shade },
+    ];
+  }
+
   private drawEq(x: ArrayLike<number>): void {
     const eq = eqResponse(this.filters, x);
     this.fitEqPlot(eq);
@@ -347,12 +363,7 @@ export class EqView implements View {
     ];
     // A numbered point on the curve at each filter, instead of a line across the whole graph
     this.eqPlot.pins = this.filters.map((f, i) => ({ x: f.f, y: eqResponse(this.filters, [f.f])[0], label: this.bandLabel(i), color: CHART.warn }));
-    this.eqPlot.shades = this.result
-      ? [
-          { x0: 20, x1: this.opt.fMin, color: CHART.shade },
-          { x0: this.opt.fMax, x1: 20000, color: CHART.shade },
-        ]
-      : [];
+    this.eqPlot.shades = this.result ? this.shades() : [];
     this.eqPlot.draw();
   }
 
@@ -388,10 +399,7 @@ export class EqView implements View {
         { id: 'after', label: 'With EQ (predicted)', x, y: band(after), color: CHART.accent, width: 2.4, halo: day ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.75)' },
       ];
       this.plot.markers = [];
-      this.plot.shades = [
-        { x0: 20, x1: this.opt.fMin, color: CHART.shade },
-        { x0: this.opt.fMax, x1: 20000, color: CHART.shade },
-      ];
+      this.plot.shades = this.shades();
       this.drawEq(x);
       this.renderLegend([
         { label: 'As measured', color: CHART.neutral, dash: true, width: 2 },

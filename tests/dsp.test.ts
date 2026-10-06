@@ -346,6 +346,49 @@ describe('EQ', () => {
     expect(Math.abs(res.filters[0].f - 120)).toBeLessThan(15);
   });
 
+  it('leaves a loudspeaker roll-off alone and never stacks filters past the boost limit', () => {
+    const grid = logGrid(20, 20000, 24);
+    // A system that rolls off below ~50 Hz (4th-order high-pass), a room peak at 120 Hz and two dips
+    const hp = (f: number) => -10 * Math.log10(1 + Math.pow(50 / f, 8));
+    const room = eqResponse([{ type: 'peak', f: 120, gain: 7, q: 4 }, { type: 'peak', f: 250, gain: -4, q: 2 }, { type: 'peak', f: 900, gain: -4, q: 1.5 }], grid);
+    const mag = Array.from(grid, (f, i) => hp(f) + room[i]);
+    const house = TARGETS.find((t) => t.id === 'house')!;
+    const opt = { fMin: 35, fMax: 12000, maxFilters: 8, maxBoost: 6, maxCut: 12, minCoherence: 0 };
+    const res = autoEq(grid, mag, null, house, opt);
+    // The roll-off is found and nothing is placed in it
+    expect(res.rolloff.low).not.toBeNull();
+    expect(res.rolloff.low!).toBeGreaterThan(38);
+    expect(res.rolloff.low!).toBeLessThan(60);
+    for (const f of res.filters) expect(f.f).toBeGreaterThanOrEqual(res.rolloff.low! - 1);
+    // All the filters together stay within the boost and cut limits everywhere
+    const eq = eqResponse(res.filters, grid);
+    for (let i = 0; i < grid.length; i++) if (grid[i] >= 20 && grid[i] <= 20000) expect(eq[i]).toBeLessThanOrEqual(opt.maxBoost + 0.15);
+    // No two boosts (or two cuts) on top of each other
+    for (const a of res.filters) for (const b of res.filters) if (a !== b && Math.sign(a.gain) === Math.sign(b.gain)) expect(Math.abs(Math.log2(a.f / b.f))).toBeGreaterThanOrEqual(1 / 3 - 0.01);
+    // And the room peak is still cut
+    expect(res.filters.some((f) => f.gain < -3 && Math.abs(Math.log2(f.f / 120)) < 0.2)).toBe(true);
+  });
+
+  it('target curves have the shapes their names promise', () => {
+    const t = (id: string) => TARGETS.find((x) => x.id === id)!.at;
+    expect(new Set(TARGETS.map((x) => x.id)).size).toBe(TARGETS.length);
+    for (const x of TARGETS) for (const f of [20, 100, 1000, 10000, 20000]) expect(Number.isFinite(x.at(f))).toBe(true);
+    // Shelves reach their gain in the deep bass, half of it at the corner, and leave the midrange at 0 dB
+    expect(t('live-rock')(25)).toBeCloseTo(6, 0);
+    expect(t('live-rock')(100)).toBeCloseTo(3, 1);
+    expect(Math.abs(t('live-rock')(1000))).toBeLessThan(0.2);
+    expect(t('live-rock')(16000)).toBeCloseTo(-3, 1);
+    expect(t('live-club')(30)).toBeGreaterThan(9);
+    expect(t('preferred-room')(20)).toBeCloseTo(6.6, 0);
+    expect(t('preferred-room')(18000)).toBeCloseTo(-2.4, 0);
+    // Speech: rolled off in the bass, a little presence lift
+    expect(t('speech')(50)).toBeLessThan(-10);
+    expect(t('speech')(3000)).toBeCloseTo(2, 1);
+    expect(t('room-1974')(400)).toBe(0);
+    expect(t('room-1974')(1600)).toBeCloseTo(-2, 6);
+    expect(t('cinema-small')(8000)).toBeCloseTo(-3, 6);
+  });
+
   it('still cuts a peak when a bigger dip cannot be boosted', () => {
     const grid = logGrid(20, 20000, 24);
     const mag = eqResponse([{ type: 'peak', f: 200, gain: -10, q: 3 }, { type: 'peak', f: 2000, gain: 4, q: 3 }], grid);

@@ -21,6 +21,8 @@ On first launch, choose **Explore with the demo room** to try every feature with
 
 ## What's new in 2.0.2
 
+- **More target curves:** live rock / pop, club / EDM, jazz / acoustic, worship, speech (theatre and conference) and outdoor / long throw, plus a preferred in-room curve from listening tests, a classic listening-room curve and the small-room X-curve. Hover one in the list to see its shape.
+- **EQ assistant no longer piles up filters:** the boost and cut limits now apply to the whole EQ, not to each filter, so overlapping filters can never add up past them (before, several boosts could stack on one spot, up to +18 dB on a loudspeaker's bass roll-off). Two boosts or two cuts stay at least a third of an octave apart, and where the system rolls off at the ends of its range the assistant leaves it alone, shades it and says so.
 - **Simple or Advanced view:** the simple view shows the essentials (Spectrum, Transfer, EQ, SPL and Tools) and hides the advanced tabs and controls; Advanced shows every tool. Choose it in the welcome dialog or any time in the menu. Nothing is changed or lost when you switch, and each device keeps its own choice.
 - **Tidier top bar:** help, the setup assistant, the guided tour, what's new, full screen and settings are now in one menu (☰) next to the day / night button.
 - **Splash screen** with the version while the app starts.

@@ -52,19 +52,92 @@ export function eqResponse(filters: PeqFilter[], freqs: ArrayLike<number>): Floa
 export interface TargetCurve {
   id: string;
   label: string;
+  /** Its shape in numbers (shown as a tooltip). */
+  note?: string;
   /** dB offset as a function of frequency. */
   at: (f: number) => number;
 }
 
+/**
+ * A smooth low shelf: `gain` dB well below `fc`, half of it at `fc`, 0 dB well above; `width` is how many octaves
+ * the transition takes (about 80 % of it).
+ */
+const lowShelf = (f: number, fc: number, gain: number, width = 1) => gain / (1 + Math.pow(2, (2 * Math.log2(f / fc) * 2.2) / width));
+/** A smooth high shelf (as `lowShelf`, mirrored). */
+const highShelf = (f: number, fc: number, gain: number, width = 1) => lowShelf(fc * fc / f, fc, gain, width);
+/** A slope of `dbPerOct` above `fk` (0 below it). */
+const slopeAbove = (f: number, fk: number, dbPerOct: number) => (f > fk ? dbPerOct * Math.log2(f / fk) : 0);
+/** A second-order high-pass roll-off below `fc` (−3 dB at fc, −12 dB/oct below). */
+const highPass2 = (f: number, fc: number) => -10 * Math.log10(1 + Math.pow(fc / f, 4));
+/** A broad bell of `gain` dB at `fc`, `width` octaves wide at half gain. */
+const bell = (f: number, fc: number, gain: number, width = 2) => gain * Math.exp(-Math.pow(Math.log2(f / fc) / (width / 2), 2) * Math.LN2);
+
+/**
+ * Target curves: what a tuned system should measure like at the listening positions (0 dB = the midrange). The
+ * live ones are starting points from common practice; the tuning engineer, the music and the room decide the rest.
+ */
 export const TARGETS: TargetCurve[] = [
   { id: 'flat', label: 'Flat', at: () => 0 },
   {
     id: 'house',
-    label: 'House curve (−1 dB/oct above 1 kHz, +4 dB LF)',
+    label: 'House curve',
+    note: '+4 dB below 120 Hz, −1 dB/oct above 1 kHz',
     at: (f) => (f > 1000 ? -Math.log2(f / 1000) : 0) + (f < 120 ? 4 * Math.min(1, Math.log2(120 / f) / 1.5) : 0),
   },
-  { id: 'tilt3', label: 'Tilt −3 dB / decade', at: (f) => -3 * Math.log10(f / 1000) },
-  { id: 'cinema', label: 'X-curve (SMPTE ST 202)', at: (f) => (f > 2000 ? -3 * Math.log2(f / 2000) : 0) },
+  // Live sound
+  {
+    id: 'live-rock',
+    label: 'Live – rock / pop',
+    note: '+6 dB below 100 Hz, −1 dB/oct above 2 kHz',
+    at: (f) => lowShelf(f, 100, 6, 1.5) + slopeAbove(f, 2000, -1),
+  },
+  {
+    id: 'live-club',
+    label: 'Live – club / EDM',
+    note: '+10 dB subs below 80 Hz, −1 dB/oct above 3 kHz',
+    at: (f) => lowShelf(f, 80, 10, 1.3) + slopeAbove(f, 3000, -1),
+  },
+  {
+    id: 'live-acoustic',
+    label: 'Live – jazz / acoustic',
+    note: 'Jazz, acoustic and orchestral: +3 dB below 100 Hz, −1 dB/oct above 3 kHz',
+    at: (f) => lowShelf(f, 100, 3, 1.5) + slopeAbove(f, 3000, -1),
+  },
+  {
+    id: 'live-worship',
+    label: 'Live – worship',
+    note: 'Music and speech: +4 dB below 100 Hz, −1 dB/oct above 2 kHz',
+    at: (f) => lowShelf(f, 100, 4, 1.5) + slopeAbove(f, 2000, -1),
+  },
+  {
+    id: 'speech',
+    label: 'Speech – theatre / conference',
+    note: 'Rolled off below 100 Hz (−12 dB/oct), +2 dB presence around 3 kHz, −2 dB/oct above 8 kHz',
+    at: (f) => highPass2(f, 100) + bell(f, 3000, 2, 2) + slopeAbove(f, 8000, -2),
+  },
+  {
+    id: 'outdoor',
+    label: 'Outdoor / long throw',
+    note: '+6 dB below 100 Hz, flat highs (air absorption already takes some)',
+    at: (f) => lowShelf(f, 100, 6, 1.5),
+  },
+  // Rooms and studios
+  {
+    id: 'preferred-room',
+    label: 'Preferred in-room',
+    note: 'From listening tests: +6.6 dB below 105 Hz, −2.4 dB above 2.5 kHz',
+    at: (f) => lowShelf(f, 105, 6.6, 1.5) + highShelf(f, 2500, -2.4, 2),
+  },
+  {
+    id: 'room-1974',
+    label: 'Classic listening room',
+    note: 'Flat to 400 Hz, −1 dB/oct above',
+    at: (f) => slopeAbove(f, 400, -1),
+  },
+  { id: 'tilt3', label: 'Tilt −3 dB / decade', note: 'A straight tilt through 0 dB at 1 kHz', at: (f) => -3 * Math.log10(f / 1000) },
+  // Cinema
+  { id: 'cinema', label: 'X-curve (cinema)', note: 'SMPTE ST 202 / ISO 2969: flat to 2 kHz, −3 dB/oct above', at: (f) => (f > 2000 ? -3 * Math.log2(f / 2000) : 0) },
+  { id: 'cinema-small', label: 'X-curve, small room', note: 'Rooms under 150 m³: flat to 2 kHz, −1.5 dB/oct above', at: (f) => slopeAbove(f, 2000, -1.5) },
 ];
 
 export interface AutoEqOptions {
@@ -88,7 +161,18 @@ export interface AutoEqResult {
   after: Float64Array;
   rmsBefore: number;
   rmsAfter: number;
+  /**
+   * Where the system rolls off at the ends of the range (more than 6 dB under the target down to `fMin` or up to
+   * `fMax`): those ends are left alone, since boosting a loudspeaker past its range only costs headroom and
+   * excursion. null when it doesn't.
+   */
+  rolloff: { low: number | null; high: number | null };
 }
+
+/** Filters of the same kind (both cuts or both boosts) stay at least this far apart (octaves). */
+const MIN_SPACING_OCT = 1 / 3;
+/** Deeper than this under the target at the ends of the range counts as the system's roll-off (dB). */
+const ROLLOFF_DB = -6;
 
 /**
  * Greedy PEQ fit: repeatedly place a filter at the largest weighted deviation, then refine (f, gain, Q) by
@@ -111,12 +195,47 @@ export function autoEq(
   }
   const n = freqs.length;
   const before = new Float64Array(n);
-  if (idx.length < 8) return { filters: [], offset: 0, before, after: before, rmsBefore: 0, rmsAfter: 0 };
+  const none = { low: null, high: null };
+  if (idx.length < 8) return { filters: [], offset: 0, before, after: before, rmsBefore: 0, rmsAfter: 0, rolloff: none };
   // Level-align: median of deviation
   const dev = idx.map((i) => magDb[i] - target.at(freqs[i]));
   const sorted = [...dev].sort((a, b) => a - b);
   const offset = sorted[Math.floor(sorted.length / 2)];
   for (let i = 0; i < n; i++) before[i] = magDb[i] - offset - target.at(freqs[i]);
+  // Every point in the chosen range: the EQ as a whole must stay within the boost and cut limits there
+  const range: number[] = [];
+  for (let i = 0; i < n; i++) if (freqs[i] >= opt.fMin && freqs[i] <= opt.fMax) range.push(i);
+
+  // The system's roll-off at either end: not EQ'd. On a 1/3-octave average, the end of the range that is more
+  // than 6 dB under the target and keeps falling towards the end (a room dip next to it is not part of it)
+  const sm = idx.map((i) => {
+    let sum = 0;
+    let cnt = 0;
+    for (const j of idx) if (Math.abs(Math.log2(freqs[j] / freqs[i])) <= 1 / 6) (sum += before[j]), cnt++;
+    return sum / cnt;
+  });
+  let lo = 0;
+  while (lo < idx.length - 1 && sm[lo] <= ROLLOFF_DB) lo++;
+  let hi = idx.length - 1;
+  while (hi > lo + 1 && sm[hi] <= ROLLOFF_DB) hi--;
+  const rolloff = { low: lo > 0 && lo < idx.length ? freqs[idx[lo]] : null, high: hi < idx.length - 1 ? freqs[idx[hi]] : null };
+  idx.splice(hi + 1);
+  idx.splice(0, lo);
+  if (idx.length < 8) return { filters: [], offset, before, after: Float64Array.from(before), rmsBefore: 0, rmsAfter: 0, rolloff };
+  const fLo = freqs[idx[0]];
+  const fHi = freqs[idx[idx.length - 1]];
+
+  /** The filters together stay within the limits at every frequency of the range. */
+  const withinLimits = (fl: PeqFilter[]) => {
+    for (const i of range) {
+      let e = 0;
+      for (const f of fl) e += filterDb(f, freqs[i]);
+      if (e > opt.maxBoost + 0.05 || e < -opt.maxCut - 0.05) return false;
+    }
+    return true;
+  };
+  /** Two cuts (or two boosts) don't sit on top of each other. */
+  const spaced = (c: PeqFilter, fl: PeqFilter[]) => fl.every((f) => Math.sign(f.gain) !== Math.sign(c.gain) || Math.abs(Math.log2(c.f / f.f)) >= MIN_SPACING_OCT);
 
   const filters: PeqFilter[] = [];
   const err = (fl: PeqFilter[]) => {
@@ -156,6 +275,12 @@ export function autoEq(
       gain: Math.max(-opt.maxCut, Math.min(opt.maxBoost, -residual)),
       q: Math.min(opt.qMax ?? 10, Math.max(opt.qMin ?? 0.3, 2)),
     };
+    // Within what the filters so far leave of the boost / cut limits, and not on top of a filter of the same kind
+    for (let t = 0; t < 8 && Math.abs(cand.gain) >= 0.5 && !withinLimits([...filters, cand]); t++) cand.gain *= 0.7;
+    if (Math.abs(cand.gain) < 0.5 || !withinLimits([...filters, cand]) || !spaced(cand, filters)) {
+      for (const i of idx) if (Math.abs(Math.log2(freqs[i] / freqs[worst])) < 1 / 6) skip.add(i);
+      continue;
+    }
     const base = err(filters);
     // Coordinate search refinement
     let best = err([...filters, cand]);
@@ -172,7 +297,8 @@ export function autoEq(
           const trial = { ...cand, [st.key]: v } as PeqFilter;
           trial.q = Math.min(opt.qMax ?? 10, Math.max(opt.qMin ?? 0.3, trial.q));
           trial.gain = Math.max(-opt.maxCut, Math.min(opt.maxBoost, trial.gain));
-          trial.f = Math.min(opt.fMax, Math.max(opt.fMin, trial.f));
+          trial.f = Math.min(fHi, Math.max(fLo, trial.f));
+          if (!spaced(trial, filters) || !withinLimits([...filters, trial])) continue;
           const e = err([...filters, trial]);
           if (e < best - 1e-4) {
             best = e;
@@ -199,5 +325,5 @@ export function autoEq(
   const after = new Float64Array(n);
   for (let i = 0; i < n; i++) after[i] = before[i] + eqr[i];
   const rms = (arr: Float64Array) => Math.sqrt(idx.reduce((s, i) => s + arr[i] * arr[i], 0) / idx.length);
-  return { filters, offset, before, after, rmsBefore: rms(before), rmsAfter: rms(after) };
+  return { filters, offset, before, after, rmsBefore: rms(before), rmsAfter: rms(after), rolloff };
 }

@@ -69,7 +69,7 @@ export class TargetOverlay {
     this.tracesVersion = app.traces.version;
     const opts = [
       { value: 'off', label: 'Off' },
-      ...TARGETS.map((t) => ({ value: t.id, label: t.label })),
+      ...TARGETS.map((t) => ({ value: t.id, label: t.label, title: t.note })),
       ...app.traces.traces.map((t) => ({ value: `trace:${t.id}`, label: `Trace: ${t.name}` })),
     ];
     if (!opts.some((o) => o.value === s[this.key])) s[this.key] = 'off';

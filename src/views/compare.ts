@@ -146,7 +146,7 @@ export function showCompare(app: App, selected: string[]): void {
     h(
       'div',
       { class: 'cmp-row' },
-      h('label', { class: 'cmp-field' }, h('span', {}, 'Target'), select(TARGETS.map((t) => ({ value: t.id, label: t.label })), cfg.target, (v) => { cfg.target = v; update(); }, { 'aria-label': 'Target', dataset: { compare: 'target' } })),
+      h('label', { class: 'cmp-field' }, h('span', {}, 'Target'), select(TARGETS.map((t) => ({ value: t.id, label: t.label, title: t.note })), cfg.target, (v) => { cfg.target = v; update(); }, { 'aria-label': 'Target', dataset: { compare: 'target' } })),
       h(
         'label',
         { class: 'cmp-field' },

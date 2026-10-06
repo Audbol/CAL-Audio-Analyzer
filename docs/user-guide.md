@@ -287,8 +287,26 @@ In the Traces list you can:
 
 A target is the response you want. The app draws it as a dashed line with a tolerance band, and levels it to your measurement automatically.
 
-1. On the **Spectrum** or **Transfer** tab, choose a **Target**: Flat, House curve, Tilt, X-curve, or any saved trace.
+1. On the **Spectrum** or **Transfer** tab, choose a **Target**, or any saved trace.
 2. Set the tolerance band under **Options**, then **Target tolerance**: ±1, 2, 3 or 6 dB.
+
+Hover a target in the list to see its shape. The live targets are common starting points, not rules: the music, the room and your ears decide the rest.
+
+| Target | Shape | Use it for |
+| --- | --- | --- |
+| Flat | 0 dB everywhere | Checking a loudspeaker, monitors, measurement |
+| House curve | +4 dB below 120 Hz, −1 dB/oct above 1 kHz | A general starting point |
+| Live – rock / pop | +6 dB below 100 Hz, −1 dB/oct above 2 kHz | Concerts with a full band |
+| Live – club / EDM | +10 dB below 80 Hz, −1 dB/oct above 3 kHz | Clubs and dance music, with subs well above the tops |
+| Live – jazz / acoustic | +3 dB below 100 Hz, −1 dB/oct above 3 kHz | Jazz, acoustic and orchestral music |
+| Live – worship | +4 dB below 100 Hz, −1 dB/oct above 2 kHz | Music and speech in one system |
+| Speech – theatre / conference | Rolled off below 100 Hz, +2 dB around 3 kHz, −2 dB/oct above 8 kHz | Spoken word, where clarity matters most |
+| Outdoor / long throw | +6 dB below 100 Hz, flat highs | Outdoor and long-throw systems, where the air already takes some highs at a distance |
+| Preferred in-room | +6.6 dB below 105 Hz, −2.4 dB above 2.5 kHz | Listening rooms and studios (from listening tests) |
+| Classic listening room | Flat to 400 Hz, −1 dB/oct above | Listening rooms |
+| Tilt −3 dB / decade | A straight tilt through 1 kHz | A gentle overall tilt |
+| X-curve (cinema) | Flat to 2 kHz, −3 dB/oct above | Cinemas (SMPTE ST 202 / ISO 2969) |
+| X-curve, small room | Flat to 2 kHz, −1.5 dB/oct above | Cinema rooms under 150 m³ |
 
 ### Let the app suggest EQ
 
@@ -301,6 +319,8 @@ A target is the response you want. The app draws it as a dashed line with a tole
    Width is shown and entered **the way that console does**, so you can copy the numbers straight across: as **Q** on DiGiCo, Yamaha, Avid, Midas HD96, Behringer/Midas X32/M32, WING and SSL, and as **Width in octaves** on Allen & Heath (with fractions such as 1/3 or 1/9 where the width is one) and on the Midas PRO series. Type a width in the console's own unit and the app keeps it exactly; the graphs follow. **Copy filter text** then lists them band by band. *Any processor* has no limits. The panel above the filters says whether the ranges come from the manufacturer's documentation or are typical for that console family, in which case check them on your console.
 4. Select **Calculate EQ**.
 5. The list on the right shows the suggested filters: frequency (Fc), gain and Q. You can edit each value.
+   - **Max boost** and **Max cut** (under Options) limit the whole EQ, not each filter: wherever filters overlap, together they never boost or cut more than that. Two boosts (or two cuts) are kept at least a third of an octave apart, so the filters don't pile up on one spot.
+   - Where the system **rolls off** at either end of the range (more than 6 dB under the target down to the lowest frequency, or up to the highest), the assistant leaves it alone and says so: boosting a loudspeaker below or above its range only costs amplifier headroom and driver excursion. That part is shaded in the graphs. Extend the system with subs or adjust the crossover instead.
    - The **upper graph** shows the response against the target: dashed as measured, solid as predicted with the EQ. The shaded band is ±3 dB around the target.
    - The **lower graph** shows the EQ itself. Each filter is numbered where it acts, as in the list; cuts are shaded below 0 dB and boosts above.
 6. Copy the filters with **Copy filter text** or **Copy CSV**, then enter them in your processor.

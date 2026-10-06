@@ -49,18 +49,25 @@ export function clear(el: Element): void {
 }
 
 export function select<T extends string | number>(
-  options: { value: T; label: string }[],
+  options: { value: T; label: string; title?: string }[],
   value: T,
   onChange: (v: T) => void,
   attrs: Attrs = {},
 ): HTMLSelectElement {
   const s = h('select', attrs);
   for (const o of options) {
-    const opt = h('option', { value: String(o.value) }, o.label);
+    const opt = h('option', { value: String(o.value), title: o.title ?? null }, o.label);
     if (o.value === value) opt.selected = true;
     s.append(opt);
   }
+  // Options with a description show it on the closed menu too
+  const titled = options.some((o) => o.title);
+  const showTitle = () => {
+    if (titled) s.title = options.find((o) => String(o.value) === s.value)?.title ?? '';
+  };
+  showTitle();
   s.addEventListener('change', () => {
+    showTitle();
     const match = options.find((o) => String(o.value) === s.value);
     if (match) onChange(match.value);
   });
