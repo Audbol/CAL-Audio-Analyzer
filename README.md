@@ -1,4 +1,11 @@
-# CAL Audio Analyzer
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/cal-logo-dark.svg">
+    <img src="docs/brand/cal-logo-light.svg" alt="CAL Audio Analyzer" width="440">
+  </picture>
+</p>
+
+<h1 align="center">CAL Audio Analyzer</h1>
 
 A professional, real-time **sound system and room acoustics analyzer** that runs entirely in the browser. It is built to be approachable: a guided setup, a live assistant that explains what the data means, and a built-in virtual room so you can learn every feature without any hardware.
 
