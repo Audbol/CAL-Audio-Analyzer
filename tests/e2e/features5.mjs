@@ -147,6 +147,8 @@ if (want('peaks')) {
 if (want('avgmulti')) {
   await page.keyboard.press('1');
   await page.getByRole('button', { name: 'Add', exact: true }).first().click();
+  // Add opens a dialog: name, input, reference and mic (the defaults are fine here)
+  await page.locator('[data-add-meas="add"]').click();
   await page.waitForTimeout(4000);
   const avgs = await page.evaluate(() => window.calApp.views.find((v) => v.id === 'spectrum').rta.series.filter((x) => x.id.endsWith('-avg')).map((x) => ({ c: x.color, d: JSON.stringify(x.dash ?? null), l: x.label })));
   check(avgs.length === 2, `two average curves (${avgs.map((a) => a.l).join(', ')})`);
