@@ -31,6 +31,7 @@ import { displayColor } from './ui/theme';
 import { startTour } from './ui/tour';
 import { maybeShowWhatsNew } from './ui/whats-new';
 import { setWatermark } from './ui/watermark';
+import { MARK_SVG } from './ui/brand';
 import type { UpdateState } from './views/about-card';
 import { AnalysisWorkerClient } from './analysis/client';
 import { SplLogger } from './logger';
@@ -1105,7 +1106,7 @@ export class App {
       'header',
       { class: 'topbar' },
       drawerBtn,
-      h('div', { class: 'brand' }, h('div', { class: 'logo' }, 'CAL'), h('div', { class: 'brand-text' }, h('b', {}, 'CAL Audio Analyzer'), h('span', {}, 'System & room measurement'))),
+      h('div', { class: 'brand' }, h('div', { class: 'logo', innerHTML: MARK_SVG }), h('div', { class: 'brand-text' }, h('b', {}, 'CAL Audio Analyzer'), h('span', {}, 'System & room measurement'))),
       this.startGroup,
       this.sourceGroup,
       this.genGroup,

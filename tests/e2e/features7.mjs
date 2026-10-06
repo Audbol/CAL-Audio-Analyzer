@@ -268,10 +268,15 @@ if (want('traces')) {
       const edge = list.getBoundingClientRect().right;
       let worst = -Infinity;
       for (const b of list.querySelectorAll('.trace button, .trace input')) worst = Math.max(worst, b.getBoundingClientRect().right - edge);
+      // The measurement cards too (the delay row's Find button)
+      for (const card of document.querySelectorAll('.meas-card')) {
+        const cardEdge = card.getBoundingClientRect().right;
+        for (const b of card.querySelectorAll('button, input, select')) worst = Math.max(worst, b.getBoundingClientRect().right - cardEdge);
+      }
       return worst;
     });
     if (res === null) check(true, `${w} px: the sidebar is a drawer here`);
-    else check(res <= 0.5, `${w} px${zoom !== 1 ? ` at ${zoom * 100} % text` : ''}: trace buttons stay inside the panel (${res.toFixed(1)} px)`);
+    else check(res <= 0.5, `${w} px${zoom !== 1 ? ` at ${zoom * 100} % text` : ''}: trace and measurement buttons stay inside the panel (${res.toFixed(1)} px)`);
   }
   await page.evaluate(() => (document.documentElement.style.fontSize = ''));
   await page.setViewportSize({ width: 1440, height: 900 });

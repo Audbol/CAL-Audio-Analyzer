@@ -48,6 +48,7 @@ On first launch, choose **Explore with the demo room** to try every feature with
 - **Lighter start:** the report and the QR code load when first used; graphs cache their grid and labels.
 
 ### Look and layout
+- **New logo and app icon.**
 - **Themes:** besides Night and Day, ready-made *High contrast*, *Stage red*, *Colour-blind safe*, *Midnight blue* and *Paper* themes, and your own from a theme editor (background, panels, text, accent, graph and grid colours, and trace colours), with a live preview. Themes can be exported and shared.
 - **Guided tour:** a one-minute walk through the essentials, offered by the Assistant at the first start and always in Help.
 - **Updates you control (desktop app):** *Tools → About & data → Check for updates* finds a new version, *Download* fetches it and *Restart to update* installs it. Nothing happens on its own, so an update can never interrupt a show; automatic checks can be turned on and only notify. *What's new* shows the highlights after an update to a new major version.
@@ -57,7 +58,7 @@ On first launch, choose **Explore with the demo room** to try every feature with
 - **SPL tab:** the level readout, history and noise log are panels you can float or detach (for example the big readout on a second screen), and the numbers scale with their panel.
 - **Tools:** split into sections (Setup, Session & report, Remote access, Display & performance, Calculators, About & data); the room-mode calculator is under *Calculators*.
 - **Tidier menus:** the Spectrum options are grouped into Analysis, Display, Average curve and Overlays; empty graphs say what to do; the Assistant can be hidden.
-- **Fixes:** level meters showed warning colours at low levels; trace buttons could run past the sidebar on narrow screens; several toolbar, axis and dialog details.
+- **Fixes:** level meters showed warning colours at low levels; trace buttons and the delay Find button could run past the sidebar on narrow screens; several toolbar, axis and dialog details.
 
 ## What's new in 1.10.1
 

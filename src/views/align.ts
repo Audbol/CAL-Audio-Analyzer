@@ -327,7 +327,7 @@ export class AlignView implements View {
   private xoverChanged(now = false): void {
     clearTimeout(this.xoverTimer);
     const go = () => {
-      if (this.elements.some((e) => e.kind === 'sub' && e.result)) this.run();
+      if (this.elements.some((e) => e.kind === 'sub' && e.result)) this.run(true);
       else this.renderSelected();
       this.dirty = true;
     };
@@ -544,7 +544,7 @@ export class AlignView implements View {
   }
 
   /** Align every part to the mains (as measured at that part's position). */
-  run(): void {
+  run(quiet = false): void {
     const app = this.app;
     if (!this.elements.length) return app.toast('Add the parts to align (Add part).', 'warn');
     let done = 0;
@@ -580,7 +580,7 @@ export class AlignView implements View {
     }
     this.renderList();
     this.renderSelected();
-    if (done > 1) app.toast(`Aligned ${done} parts to the mains`, 'ok');
+    if (done > 1 && !quiet) app.toast(`Aligned ${done} parts to the mains`, 'ok');
   }
 
   /** Human-readable recommendation for a sub result (kept for older callers). */

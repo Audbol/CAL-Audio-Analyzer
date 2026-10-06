@@ -54,6 +54,7 @@ export class EqView implements View {
   /** The console the EQ is for (its bands and ranges limit the filters). */
   private profile: ConsoleEqProfile;
   private profileInfo = h('p', { class: 'peq-profile small' });
+  private consoleSel!: HTMLSelectElement;
 
   constructor(private app: App) {
     // Start from the target chosen for the Spectrum / Transfer views, when it is a built-in one
@@ -79,12 +80,12 @@ export class EqView implements View {
           'div',
           { class: 'tb-group' },
           h('span', { class: 'tb-label' }, 'Console'),
-          select(
+          (this.consoleSel = select(
             CONSOLE_PROFILES.map((p) => ({ value: p.id, label: p.id === 'generic' ? p.name : `${p.name} – ${p.section}` })),
             this.profile.id,
             (v) => this.setProfile(v),
             { dataset: { eqConsole: '' }, title: 'The console the EQ is for: the suggestion uses only as many bands as its EQ has, within its gain and width ranges, and lists them the way it labels them' },
-          ),
+          )),
         ),
         optionsMenu(
           [
@@ -305,6 +306,7 @@ export class EqView implements View {
       this.summary.textContent = snap.summary;
       if (snap.console) {
         this.profile = profileById(snap.console);
+        this.consoleSel.value = this.profile.id;
         this.limitOpts();
       }
     }

@@ -299,15 +299,12 @@ kbd {
 .logo {
   width: 34px;
   height: 34px;
-  border-radius: 9px;
-  display: grid;
-  place-items: center;
-  font-weight: 800;
-  font-size: 12px;
-  letter-spacing: 0.5px;
-  color: var(--accent);
-  background: var(--bg);
-  border: 1.5px solid var(--accent);
+  flex: none;
+  line-height: 0;
+}
+.logo svg {
+  width: 100%;
+  height: 100%;
 }
 .brand-text {
   display: flex;
@@ -525,8 +522,17 @@ input.name:hover {
   padding-bottom: 2px;
   font-size: 12px;
 }
+/* On a narrow sidebar the Find button moves under the delay instead of running past the edge */
+.delay-row {
+  flex-wrap: wrap;
+  row-gap: 4px;
+  min-width: 0;
+}
+.delay-row .btn {
+  flex-shrink: 0;
+}
 .delay-row input.num {
-  width: 64px;
+  width: 60px;
   min-height: 24px;
   padding: 2px 5px;
 }
