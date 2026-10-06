@@ -344,7 +344,7 @@ A sweep is a tone that glides from low to high frequencies. It measures the room
 
 ![The Sweep & Room frequency response with a dashed house curve target and a shaded tolerance band.](guide/sweep.png)
 
-![The Waterfall view: a 3-D plot of the room modes. Ridges that reach far back are frequencies that keep ringing.](guide/waterfall.png)
+![The Waterfall view: a 3-D plot of the room modes that can be turned with the mouse. Ridges that reach far back are frequencies that keep ringing.](guide/waterfall.png)
 
 ### Measure at several positions
 
