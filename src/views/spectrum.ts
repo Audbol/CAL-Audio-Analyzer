@@ -249,6 +249,23 @@ export class SpectrumView extends DockedView implements View {
         optRow('Trace', colourChoice(s.rtaTraceColor, (v) => { s.rtaTraceColor = v; app.save(); }, { auto: 'Measurement colour', label: 'Spectrum trace colour' })),
         optRow('Fill', colourChoice(s.rtaFillColor, (v) => { s.rtaFillColor = v; app.save(); }, { auto: 'Same as the trace', none: true, label: 'Spectrum fill colour' })),
         optRow(
+          'Fill style',
+          select(
+            [
+              { value: 'solid' as const, label: 'Solid' },
+              { value: 'fade' as const, label: 'Fade (gradient downwards)' },
+              { value: 'level' as const, label: 'By level (green → red)' },
+              { value: 'frequency' as const, label: 'By frequency (rainbow)' },
+            ],
+            s.rtaFillGradient,
+            (v) => {
+              s.rtaFillGradient = v;
+              app.save();
+            },
+            { title: 'How the area under the line, or the bars, is painted', dataset: { setting: 'rtaFillGradient' } },
+          ),
+        ),
+        optRow(
           'Fill opacity',
           select(
             [{ value: 0, label: 'Default' }, ...[10, 20, 35, 50, 75, 100].map((v) => ({ value: v, label: `${v} %` }))],
@@ -401,7 +418,7 @@ export class SpectrumView extends DockedView implements View {
     if (this.tickFeedback()) this.lastKey = '';
     if (this.visible('rta')) {
       // Redraw only when what is shown changed (new analysis data arrives ~6–12 times a second)
-      const key = `${app.traces.version}|${s.rtaStyle}|${s.rtaSmoothing}|${s.peakHold}|${s.rtaAverageCurve}|${s.rtaAverageSmoothing}|${s.avgCurveShow}|${s.rtaPeakMarks}|${s.rtaShowSweeps}|${s.rtaTraceColor}|${s.rtaFillColor}|${s.rtaFillOpacity}|${s.avgCurveColor}|${s.avgCurveWidth}|${s.micAverage}|${s.targetCurve}|${s.targetTolerance}|${s.theme}|${s.splCalibrated}|${s.splOffset}|${JSON.stringify(s.mics.map((mc) => [mc.channel, mc.splCalibrated && mc.splOffset]))}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.rtaShown}`).join(',')}`;
+      const key = `${app.traces.version}|${s.rtaStyle}|${s.rtaSmoothing}|${s.peakHold}|${s.rtaAverageCurve}|${s.rtaAverageSmoothing}|${s.avgCurveShow}|${s.rtaPeakMarks}|${s.rtaShowSweeps}|${s.rtaTraceColor}|${s.rtaFillColor}|${s.rtaFillOpacity}|${s.rtaFillGradient}|${s.avgCurveColor}|${s.avgCurveWidth}|${s.micAverage}|${s.targetCurve}|${s.targetTolerance}|${s.theme}|${s.splCalibrated}|${s.splOffset}|${JSON.stringify(s.mics.map((mc) => [mc.channel, mc.splCalibrated && mc.splOffset]))}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.rtaShown}`).join(',')}`;
       if (key === this.lastKey) return this.tickMeters();
       this.lastKey = key;
       const g = app.grid;
@@ -433,8 +450,8 @@ export class SpectrumView extends DockedView implements View {
       const atBands = (y: Float64Array, off: number) => this.bands.map((f) => sampleLogGrid(g, y, f) + off);
       // Chosen colours (Options → Colours): the trace, and the fill under the line / of the bars
       const traceOf = (c: string) => (s.rtaTraceColor === 'auto' ? c : s.rtaTraceColor);
-      const fillStyle: Pick<Series, 'fillColor' | 'fillAlpha'> =
-        s.rtaFillColor === 'none' ? { fillAlpha: 0 } : { fillColor: s.rtaFillColor === 'auto' ? undefined : s.rtaFillColor, fillAlpha: s.rtaFillOpacity ? s.rtaFillOpacity / 100 : undefined };
+      const fillStyle: Pick<Series, 'fillColor' | 'fillAlpha' | 'fillGradient'> =
+        s.rtaFillColor === 'none' ? { fillAlpha: 0 } : { fillColor: s.rtaFillColor === 'auto' ? undefined : s.rtaFillColor, fillAlpha: s.rtaFillOpacity ? s.rtaFillOpacity / 100 : undefined, fillGradient: s.rtaFillGradient };
       const only = s.micAverage === 'only' && app.measurements.filter((m) => m.cfg.enabled).length > 1;
       for (const m of app.measurements) {
         if (!m.cfg.enabled || only || !m.hasRta) continue;

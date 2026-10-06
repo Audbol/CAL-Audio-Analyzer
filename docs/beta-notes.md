@@ -52,7 +52,7 @@ On first launch, choose **Explore with the demo room** to try every feature with
 - **Updates you control (desktop app):** *Tools → About & data → Check for updates* finds a new version, *Download* fetches it and *Restart to update* installs it. Nothing happens on its own, so an update can never interrupt a show; automatic checks can be turned on and only notify. *What's new* shows the highlights after an update to a new major version.
 - **Watermark:** *Tools → Display & performance → Watermark* puts your logo faintly on every graph, and so on screenshots and reports.
 - **Level meters for what's in use:** the status bar shows meters only for the inputs the app uses, and the generator while it plays or serves as the reference.
-- **Colours:** choose the Spectrum's trace and fill colours and the fill opacity.
+- **Colours and gradients:** choose the Spectrum's trace and fill colours, the fill opacity and a fill style for the line and the bars: solid, fading downwards, coloured by level (green to red) or by frequency (a rainbow from bass to treble).
 - **SPL tab:** the level readout, history and noise log are panels you can float or detach (for example the big readout on a second screen), and the numbers scale with their panel.
 - **Tools:** split into sections (Setup, Session & report, Remote access, Display & performance, Calculators, About & data); the room-mode calculator is under *Calculators*.
 - **Tidier menus:** the Spectrum options are grouped into Analysis, Display, Average curve and Overlays; empty graphs say what to do; the Assistant can be hidden.

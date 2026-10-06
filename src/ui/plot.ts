@@ -2,6 +2,17 @@ import { CHART, seriesColor } from './theme';
 import { formatFreq, noteName } from '../dsp/freq';
 import { drawWatermark, onWatermarkChange, watermarkEpoch } from './watermark';
 
+export type FillGradient = 'solid' | 'fade' | 'level' | 'frequency';
+
+/** Meter colours for the level gradient (low → high). */
+const LEVEL_STOPS: [number, string][] = [
+  [0, '#1fae6b'],
+  [0.45, '#3ddc97'],
+  [0.7, '#ffd60a'],
+  [0.85, '#ff9f0a'],
+  [1, '#ff4d5e'],
+];
+
 export interface Series {
   id: string;
   label: string;
@@ -18,6 +29,11 @@ export interface Series {
   fillColor?: string;
   /** Opacity of the fill (0..1); the theme's default when not set. */
   fillAlpha?: number;
+  /**
+   * How the fill (under a line, or of bars) is painted: one colour, fading out towards the bottom, coloured by
+   * level (green → yellow → red, like a meter) or by frequency (a rainbow from bass to treble).
+   */
+  fillGradient?: FillGradient;
   /** Treat as wrapped phase: break the line on ±180° jumps. */
   wrap?: number;
   /** Render as bars centred on each x (RTA bands): the bar width in 1/N octave. */
@@ -748,6 +764,33 @@ export class Plot {
     }
   }
 
+  /**
+   * The paint for a series' fill: its colour, or a gradient. `top` is the highest point of the curve or bars
+   * (the fade starts there, so a quiet spectrum still shows its colour).
+   */
+  private fillPaint(s: Series, base: string, top: number): string | CanvasGradient {
+    const g = s.fillGradient ?? 'solid';
+    if (g === 'solid') return base;
+    const ctx = this.ctx;
+    const bottom = this.hgt - this.pad.b;
+    if (g === 'fade') {
+      const gr = ctx.createLinearGradient(0, Math.min(top, bottom - 1), 0, bottom);
+      gr.addColorStop(0, base);
+      gr.addColorStop(1, withAlpha(base, 0));
+      return gr;
+    }
+    if (g === 'level') {
+      // By level: fixed to the plot's height, so a colour always means the same level
+      const gr = ctx.createLinearGradient(0, bottom, 0, this.pad.t);
+      for (const [t, c] of LEVEL_STOPS) gr.addColorStop(t, c);
+      return gr;
+    }
+    // By frequency: red in the bass through to violet in the treble
+    const gr = ctx.createLinearGradient(this.pad.l, 0, this.w - this.pad.r, 0);
+    for (let i = 0; i <= 6; i++) gr.addColorStop(i / 6, `hsl(${i * 45}, 88%, ${CHART.bg === '#ffffff' ? 45 : 56}%)`);
+    return gr;
+  }
+
   private drawSeries(s: Series): void {
     const ctx = this.ctx;
     const n = Math.min(s.x.length, s.y.length);
@@ -786,6 +829,7 @@ export class Plot {
       const cap = Math.max(1.5, 2 * COLORS.lineScale);
       const fill = new Path2D();
       const tops = new Path2D();
+      let top = bottom;
       for (let i = 0; i < n; i++) {
         const x = s.x[i];
         if (x < xMin / 2 || x > xMax * 2 || !Number.isFinite(s.y[i])) continue;
@@ -793,12 +837,13 @@ export class Plot {
         const x1 = this.xToPx(x * half);
         const gap = Math.min(2, (x1 - x0) * 0.12);
         const y = Math.max(this.pad.t - cap, this.yToPx(s.y[i], s.secondary));
+        if (y < top) top = y;
         if (!s.cap && y < bottom) fill.rect(x0 + gap, y, Math.max(1, x1 - x0 - 2 * gap), bottom - y);
         tops.rect(x0 + gap, y - cap / 2, Math.max(1, x1 - x0 - 2 * gap), cap);
       }
       if (!s.cap && s.fillAlpha !== 0) {
-        ctx.fillStyle = s.fillColor ? seriesColor(s.fillColor) : color;
-        ctx.globalAlpha = s.fillAlpha ?? 0.45;
+        ctx.fillStyle = this.fillPaint(s, s.fillColor ? seriesColor(s.fillColor) : color, top);
+        ctx.globalAlpha = s.fillAlpha ?? (s.fillGradient === 'level' || s.fillGradient === 'frequency' ? 0.8 : s.fillGradient === 'fade' ? 0.7 : 0.45);
         ctx.fill(fill);
         ctx.fillStyle = color;
       }
@@ -839,6 +884,7 @@ export class Plot {
     let pen = false;
     let firstX = 0;
     let lastX = 0;
+    let top = Infinity;
     // Only the visible x range (plus one point either side, so lines run to the edges)
     let i0 = 0;
     let i1 = n - 1;
@@ -876,6 +922,7 @@ export class Plot {
       }
       const px = pxs ? pxs[i] : this.xToPx(x);
       const py = this.yToPx(y, s.secondary);
+      if (py < top) top = py;
       if (dense) {
         const c = Math.round(px);
         if (c !== col) {
@@ -911,8 +958,8 @@ export class Plot {
       ctx.lineTo(lastX, bottom);
       ctx.lineTo(firstX, bottom);
       ctx.closePath();
-      if (s.fillColor) ctx.fillStyle = seriesColor(s.fillColor);
-      ctx.globalAlpha = s.fillAlpha ?? COLORS.fillAlpha;
+      ctx.fillStyle = this.fillPaint(s, s.fillColor ? seriesColor(s.fillColor) : color, top);
+      ctx.globalAlpha = s.fillAlpha ?? (s.fillGradient === 'level' || s.fillGradient === 'frequency' ? 0.45 : s.fillGradient === 'fade' ? 0.5 : COLORS.fillAlpha);
       ctx.fill();
       ctx.globalAlpha = 1;
     }
@@ -996,4 +1043,21 @@ function barAt(s: Series, x: number): number | null {
     if (x >= s.x[i] / half && x < s.x[i] * half) return Number.isFinite(s.y[i]) ? s.y[i] : null;
   }
   return null;
+}
+
+/** A CSS colour (#rgb, #rrggbb, #rrggbbaa or rgb/rgba) with its alpha set. */
+function withAlpha(c: string, a: number): string {
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})([0-9a-f]{2})?$/i.exec(c);
+  if (hex) {
+    let h = hex[1];
+    if (h.length === 3) h = [...h].map((x) => x + x).join('');
+    const n = parseInt(h, 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+  }
+  const m = /^rgba?\(([^)]+)\)$/.exec(c);
+  if (m) {
+    const [r, g, b] = m[1].split(',').map((x) => x.trim());
+    return `rgba(${r},${g},${b},${a})`;
+  }
+  return c;
 }

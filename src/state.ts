@@ -1,6 +1,7 @@
 import type { Workspace } from './workspaces';
 import type { CustomTheme } from './ui/themes';
 import type { WaterfallView } from './ui/waterfall-plot';
+import type { FillGradient } from './ui/plot';
 import { DEFAULT_CROSSOVER, type CrossoverDesign } from './dsp/crossover';
 import { DEFAULT_WATERMARK, type WatermarkSettings } from './ui/watermark';
 import type { PlaylistPrefs } from './audio/playlist';
@@ -146,6 +147,8 @@ export interface Settings {
   rtaTraceColor: string;
   rtaFillColor: string;
   rtaFillOpacity: number;
+  /** How the spectrum's fill is painted: one colour, fading downwards, by level or by frequency. */
+  rtaFillGradient: FillGradient;
   /** Highlight the highest peak in the low, mid and high ranges of the spectrum. */
   rtaPeakMarks: boolean;
   /** Spectrum motion: 'smooth' glides the curve from one spectrum to the next, 'stepped' jumps. */
@@ -251,6 +254,7 @@ export function defaultSettings(): Settings {
     rtaTraceColor: 'auto',
     rtaFillColor: 'auto',
     rtaFillOpacity: 0,
+    rtaFillGradient: 'fade',
     rtaPeakMarks: true,
     rtaMotion: 'smooth',
     rtaUpdates: 25,

@@ -215,6 +215,13 @@ The spectrum, also called a real-time analyzer (RTA), shows how loud each freque
 
 **Smooth or stepped:** under **Options**, *Motion* lets the curve glide from one spectrum to the next (the default) or jump, and *Updates* sets 25 or 50 new spectra per second.
 
+**Colours and fill:** under **Options → Display**, choose the trace and fill colours, the fill opacity and the **Fill style**, for the area under the line and for the bars:
+
+- *Solid:* one colour.
+- *Fade* (the default): the colour fades out towards the bottom.
+- *By level:* green for low levels through yellow to red for high ones, like a level meter.
+- *By frequency:* a rainbow from red in the bass to violet in the treble.
+
 ### The average curve
 
 The average curve is a smooth line showing the long-term tonal balance. It is useful for tuning to music.

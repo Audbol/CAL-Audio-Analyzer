@@ -194,6 +194,41 @@ if (want('watermark')) {
   check(Math.abs(gone[0] - before[0]) < 30, 'removing it clears the graphs');
 }
 
+// --- 7. Gradient fills on the Spectrum (line and bars)
+if (want('gradient')) {
+  await page.evaluate(() => window.calApp.setView('spectrum'));
+  await page.evaluate(async () => { if (!window.calApp.engine.running) await window.calApp.start(); });
+  await page.waitForTimeout(1500);
+  check((await page.evaluate(() => window.calApp.settings.rtaFillGradient)) === 'fade', 'the spectrum fill fades by default');
+  await page.locator('.view:visible [data-options]').click();
+  check(await page.locator('select[data-setting="rtaFillGradient"]').isVisible(), 'Options → Display has the fill style');
+  for (const style of ['line', 'bars']) {
+    await page.evaluate((st) => (window.calApp.settings.rtaStyle = st), style);
+    await page.locator('select[data-setting="rtaFillGradient"]').selectOption('frequency');
+    await page.waitForTimeout(600);
+    // Bars have gaps: look for the reddest and the bluest pixel along a row low in the plot
+    const row = await page.evaluate(() => {
+      const c = window.calApp.views.find((v) => v.id === 'spectrum').rta.canvas;
+      const d = c.getContext('2d').getImageData(0, Math.round(c.height * 0.85), c.width, 1).data;
+      const third = Math.floor(c.width / 3);
+      let red = 0;
+      let blue = 0;
+      for (let x = 0; x < c.width; x++) {
+        const [r, g, b] = [d[x * 4], d[x * 4 + 1], d[x * 4 + 2]];
+        if (x < third) red = Math.max(red, r - b);
+        else if (x > 2 * third) blue = Math.max(blue, b - r);
+      }
+      return { red, blue };
+    });
+    check(row.red > 40 && row.blue > 40, `${style}: by frequency, the bass is red and the treble blue/violet (${row.red}, ${row.blue})`);
+    await page.locator('select[data-setting="rtaFillGradient"]').selectOption('solid');
+    await page.waitForTimeout(400);
+  }
+  await page.locator('select[data-setting="rtaFillGradient"]').selectOption('fade');
+  await page.evaluate(() => (window.calApp.settings.rtaStyle = 'line'));
+  await page.keyboard.press('Escape');
+}
+
 // --- 6. Trace rows stay inside the sidebar on narrow screens and with larger text
 if (want('traces')) {
   await page.evaluate(() => {
