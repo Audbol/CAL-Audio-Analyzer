@@ -28,7 +28,7 @@ export class NativeCard {
         { class: 'dim small' },
         app.remote
           ? 'The measurement host’s native audio settings. Choose its driver in the source menu (Measurement host). Changes reopen the host’s audio stream.'
-          : 'Choose your interface’s native driver as the input source (top left): ASIO on Windows, Core Audio on macOS, JACK / PipeWire or ALSA on Linux. You get every input and output channel and the lowest latency, and the generator’s own signal stays sample-aligned with the inputs as the internal reference.',
+          : 'Choose your interface’s native driver as the input source (top left): ASIO on Windows, Core Audio on macOS, JACK / PipeWire or ALSA on Linux. You get every input and output channel and the lowest latency, and the generator’s own signal stays sample-aligned with the inputs as the internal reference. The menu next to it plays the generator through another device if you like (e.g. a USB microphone in, the built-in speakers out): two devices run on their own clocks, and the reference follows their drift to within about a sample. For the steadiest phase use one interface, or on macOS an Aggregate Device with drift correction.',
       ),
       this.controls,
       this.status,
@@ -118,8 +118,9 @@ export class NativeCard {
     if (!info) text = this.app.nativeSelection() ? 'Stopped. Press Start to open the driver.' : 'Not in use: the browser audio path is active.';
     else {
       const ms = (n: number) => `${((n / info.sampleRate) * 1000).toFixed(1)} ms`;
-      text = `${info.name} · ${info.sampleRate / 1000} kHz · buffer ${info.bufferFrames} (${ms(info.bufferFrames)}) · ${info.inputs} in / ${info.outputs} out · driver latency ${ms(info.latency)}`;
+      text = `${info.name}${info.split && info.outputName ? ` → ${info.outputName}` : ''} · ${info.sampleRate / 1000} kHz · buffer ${info.bufferFrames} (${ms(info.bufferFrames)}) · ${info.inputs} in / ${info.outputs} out · driver latency ${ms(info.latency)}`;
       if (st) text += ` · generator ready ${st.queuedMs.toFixed(0)} ms · dropouts ${st.underruns}${st.overruns ? ` · input overruns ${st.overruns}` : ''}${st.xruns ? ` · driver xruns ${st.xruns}` : ''}`;
+      if (st?.driftPpm !== undefined) text += ` · clocks ${Math.abs(st.driftPpm) < 0.5 ? 'in step' : `${Math.abs(st.driftPpm).toFixed(0)} ppm apart (followed)`}`;
       if (st && st.underruns > this.lastUnderruns) {
         if (this.lastUnderruns === 0) this.app.toast('The generator signal had a dropout. If it repeats, raise the safety margin (Tools → Setup → Audio interface).', 'warn');
         this.lastUnderruns = st.underruns;

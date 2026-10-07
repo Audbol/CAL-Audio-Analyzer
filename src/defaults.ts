@@ -9,6 +9,7 @@ const KEEP = [
   'theme',
   'simulate',
   'deviceId',
+  'outputId',
   'generator',
   'playlist',
   'remoteProcessing',

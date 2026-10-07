@@ -104,6 +104,8 @@ export interface Settings {
   theme: Theme;
   simulate: boolean;
   deviceId: string;
+  /** Browser audio: the output device for the generator (a sink id; '' = the system default output). */
+  outputId: string;
   generator: GeneratorConfig;
   tfSmoothing: Smoothing;
   rtaSmoothing: Smoothing;
@@ -217,8 +219,11 @@ export interface Settings {
   /** Workspaces saved by the user (built-in ones live in workspaces.ts), and the last one chosen. */
   workspaces: Workspace[];
   workspace: string;
-  /** Desktop app, native audio (ASIO): stream settings. The device is chosen as the input source. */
-  nativeAudio: { sampleRate: number; bufferFrames: number; safetyMs: number };
+  /**
+   * Desktop app, native audio: stream settings. The device is chosen as the input source; `output` names another
+   * device of the same driver type for the generator ('' = the input device).
+   */
+  nativeAudio: { sampleRate: number; bufferFrames: number; safetyMs: number; output: string };
   /** Target curve on the Spectrum and Transfer views: 'off', a built-in target id or `trace:<id>`. */
   targetCurve: string;
   /** ± tolerance band around the target (dB, 0 = none). */
@@ -245,6 +250,7 @@ export function defaultSettings(): Settings {
     theme: 'night',
     simulate: true,
     deviceId: '',
+    outputId: '',
     generator: { type: 'off', level: -18, freq: 1000, outputs: [0, 1], polarity: 1 },
     tfSmoothing: 12,
     rtaSmoothing: 6,
@@ -311,7 +317,7 @@ export function defaultSettings(): Settings {
     micAverage: 'off',
     workspaces: [],
     workspace: '',
-    nativeAudio: { sampleRate: 48000, bufferFrames: 0, safetyMs: 80 },
+    nativeAudio: { sampleRate: 48000, bufferFrames: 0, safetyMs: 80, output: '' },
     targetCurve: 'off',
     targetTolerance: 3,
     roomTargetCurve: 'off',

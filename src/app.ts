@@ -125,6 +125,8 @@ export class App {
   private genBtn!: HTMLButtonElement;
   private splMini!: HTMLElement;
   private sourceSel!: HTMLSelectElement;
+  /** The generator's output device (next to the input source). */
+  private outputSel!: HTMLSelectElement;
   private genControls!: HTMLElement;
   private selectedTraces = new Set<string>();
   private lastHints = '';
@@ -348,7 +350,8 @@ export class App {
     const modeChanged = !this.remote && this.lastMode !== null && this.lastMode !== this.settings.simulate;
     try {
       const native = !this.remote && !this.settings.simulate ? await this.nativeOptions() : null;
-      await this.engine.start({ simulate: this.settings.simulate, deviceId: this.settings.deviceId || undefined, native: native ?? undefined });
+      await this.engine.start({ simulate: this.settings.simulate, deviceId: this.settings.deviceId || undefined, sinkId: this.settings.outputId || undefined, native: native ?? undefined });
+      if (this.engine.sinkError) this.toast(`The chosen output could not be used (${this.engine.sinkError}): the generator plays through the system default output.`, 'warn');
       this.lastMode = this.settings.simulate;
       if (this.remote) {
         const st = (this.engine as RemoteEngine).status;
@@ -455,8 +458,17 @@ export class App {
     const dev = list.find((d) => d.name === sel.name);
     if (!dev) throw new Error(`The audio interface “${sel.name}” was not found. Is it connected, and is its driver installed?`);
     const na = this.settings.nativeAudio;
-    const rate = !dev.sampleRates.length || dev.sampleRates.includes(na.sampleRate) ? na.sampleRate : dev.preferredRate || dev.sampleRates[0];
-    return { api: sel.api, device: dev.id, sampleRate: rate, bufferFrames: na.bufferFrames, inputs: 0, outputs: 0, safetyMs: na.safetyMs };
+    // Another device for the outputs (not with ASIO, which loads one driver)
+    let out = dev;
+    if (na.output && na.output !== dev.name && !nativeApi(sel.api).oneDevice) {
+      const o = list.find((d) => d.name === na.output && d.outputs > 0);
+      if (!o) throw new Error(`The output device “${na.output}” was not found. Is it connected? Choose another output next to the input.`);
+      out = o;
+    }
+    // A rate both devices offer
+    const both = (r: number) => (!dev.sampleRates.length || dev.sampleRates.includes(r)) && (!out.sampleRates.length || out.sampleRates.includes(r));
+    const rate = both(na.sampleRate) ? na.sampleRate : [dev.preferredRate, ...dev.sampleRates].find((r) => r && both(r)) || dev.preferredRate || dev.sampleRates[0];
+    return { api: sel.api, device: dev.id, outputDevice: out.id, sampleRate: rate, bufferFrames: na.bufferFrames, inputs: 0, outputs: 0, safetyMs: na.safetyMs };
   }
 
   async toggleEngine(): Promise<void> {
@@ -1030,7 +1042,7 @@ export class App {
       if (this.engine.running) this.rebuildMeasurements();
       this.renderMeasurements();
     }
-    const label = `${st.deviceLabel}|${st.running}|${JSON.stringify(st.source ?? null)}|${(this.engine as RemoteEngine).allowControl}`;
+    const label = `${st.deviceLabel}|${st.running}|${JSON.stringify(st.source ?? null)}|${JSON.stringify(st.output ?? null)}|${(this.engine as RemoteEngine).allowControl}`;
     if (label !== this.lastHostLabel) {
       this.lastHostLabel = label;
       this.refreshDevices();
@@ -1301,6 +1313,15 @@ export class App {
       }
       this.selectSource(v);
     });
+    this.outputSel = h('select', { class: 'output-sel', title: 'Output for the generator', dataset: { output: '' } });
+    this.outputSel.addEventListener('change', () => {
+      const v = this.outputSel.value;
+      if (this.remote) {
+        void this.sendToHost({ t: 'cmd', cmd: 'setOutput', value: v });
+        return;
+      }
+      this.selectOutput(v);
+    });
     this.genControls = h('div', { class: 'gen-controls' });
     this.splMini = h('div', { class: 'spl-mini', title: 'Sound level (click for SPL meter)', onclick: () => this.setView('spl') });
     // Native audio: a lost stream (driver removed, host ended) and status for the Tools card
@@ -1319,7 +1340,7 @@ export class App {
     };
 
     // Controls that move into the "more" sheet on small screens
-    this.sourceGroup = h('div', { class: 'group src-group' }, this.sourceSel);
+    this.sourceGroup = h('div', { class: 'group src-group' }, this.sourceSel, this.outputSel);
     if (this.remote) this.sourceGroup.append(this.hostAudioBtn);
     else void NativeAudio.available().then((ok) => (this.nativeAvailable = ok));
     this.genGroup = h('div', { class: 'group gen' }, h('span', { class: 'label' }, 'Generator'), this.genBtn, this.genControls);
@@ -1551,11 +1572,15 @@ export class App {
    */
   selectSource(v: string, by?: string): void {
     if (this.remote) return;
+    const api = this.nativeSelection()?.api;
     this.settings.simulate = v === '__demo';
     if (!this.settings.simulate) this.settings.deviceId = v === '__default' ? '' : v;
+    // A chosen output belongs to its driver type
+    if (this.nativeSelection()?.api !== api) this.settings.nativeAudio.output = '';
     this.save();
     if (this.sourceSel.value !== v) this.sourceSel.value = v;
     if (by) this.toast(`Audio source changed by ${by}`, 'info');
+    void this.renderOutputs();
     // The audio interface card follows the driver type (control panel, server-set rate and buffer)
     (this.views.find((x) => x.id === 'tools') as ToolsView | undefined)?.nativeCard.render();
     // From a remote: start it too (the remote is waiting for live data from the host)
@@ -1571,6 +1596,59 @@ export class App {
       else if (el instanceof HTMLOptionElement) options.push({ value: el.value, label: el.textContent ?? '' });
     }
     return { value: this.sourceSel.value, options };
+  }
+
+  /**
+   * Use an output for the generator: '' (the input device, or for the browser's audio the system default output),
+   * another native device of the same driver type (by name), or a browser output device id. Restarts running audio.
+   */
+  selectOutput(v: string, by?: string): void {
+    if (this.remote || this.settings.simulate) return;
+    if (this.nativeSelection()) this.settings.nativeAudio.output = v;
+    else this.settings.outputId = v;
+    this.save();
+    if (this.outputSel.value !== v) this.outputSel.value = v;
+    if (by) this.toast(`Audio output changed by ${by}`, 'info');
+    (this.views.find((x) => x.id === 'tools') as ToolsView | undefined)?.nativeCard.render();
+    if (this.engine.running) void this.start({ resumeGenerator: true });
+  }
+
+  /** The output menu as data, for remote devices. */
+  hostOutputs(): { value: string; options: SourceOption[]; disabled?: boolean; title?: string } {
+    const options = [...this.outputSel.options].map((o) => ({ value: o.value, label: o.textContent ?? '', disabled: o.disabled || undefined }));
+    return { value: this.outputSel.value, options, disabled: this.outputSel.disabled || undefined, title: this.outputSel.title };
+  }
+
+  /** Fill the output menu for the current input: the native driver's devices with outputs, or the browser's outputs. */
+  private async renderOutputs(): Promise<void> {
+    const sel = this.outputSel;
+    if (!sel) return;
+    const opt = (value: string, label: string) => h('option', { value }, label);
+    const fill = (options: HTMLElement[], value: string, disabled: boolean, title: string) => {
+      clear(sel);
+      sel.append(...options);
+      sel.value = value;
+      if (sel.value !== value) sel.value = '';
+      sel.disabled = disabled;
+      sel.title = title;
+    };
+    if (this.settings.simulate) return fill([opt('', 'Out: none (demo)')], '', true, 'The demo room plays nothing through the speakers');
+    const nat = this.nativeSelection();
+    if (nat) {
+      const info = nativeApi(nat.api);
+      const cur = this.settings.nativeAudio.output === nat.name ? '' : this.settings.nativeAudio.output;
+      if (info.oneDevice) return fill([opt('', 'Out: same device')], '', true, `${info.prefix} uses one driver for input and output`);
+      const outs = (this.nativeDevices.get(nat.api) ?? []).filter((d) => d.outputs > 0 && d.name !== nat.name);
+      const options = [opt('', 'Out: same device'), ...outs.map((d) => opt(d.name, `Out: ${d.name} · ${d.outputs} out`))];
+      if (cur && !outs.some((d) => d.name === cur)) options.push(opt(cur, `Out: ${cur} (not found)`));
+      return fill(options, cur, false, 'Output for the generator: the input device, or another device (its own clock: the app follows the drift)');
+    }
+    const outs = await AudioEngine.listOutputs().catch(() => [] as MediaDeviceInfo[]);
+    if (!AudioEngine.canChooseOutput) return fill([opt('', 'Out: system default')], '', true, 'This browser plays through the system default output (choose it in the system’s sound settings)');
+    const cur = this.settings.outputId;
+    const options = [opt('', 'Out: system default'), ...outs.map((d, i) => opt(d.deviceId, `Out: ${d.label || `Output device ${i + 1}`}`))];
+    if (cur && !outs.some((d) => d.deviceId === cur)) options.push(opt(cur, 'Out: chosen device (not found)'));
+    fill(options, cur, false, 'Output for the generator');
   }
 
   /** Native audio (ASIO, Core Audio, JACK / PipeWire, ALSA) on this desktop app: available, its settings and the stream status (for remotes). */
@@ -1637,6 +1715,16 @@ export class App {
       this.sourceSel.value = src.value;
       this.sourceSel.disabled = !eng.allowControl;
       this.sourceSel.title = eng.allowControl ? 'The host’s audio input source' : 'Remote control is turned off on the host';
+      // The host's output menu (hosts before 2.0.2 don't send one)
+      const out = st?.output;
+      clear(this.outputSel);
+      this.outputSel.style.display = out ? '' : 'none';
+      if (out) {
+        for (const o of out.options) this.outputSel.append(h('option', { value: o.value, disabled: !!o.disabled }, o.label));
+        this.outputSel.value = out.value;
+        this.outputSel.disabled = !eng.allowControl || !!out.disabled;
+        this.outputSel.title = out.title || 'The host’s output for the generator';
+      }
       return;
     }
     const devices = await AudioEngine.listDevices().catch(() => []);
@@ -1658,8 +1746,10 @@ export class App {
         }
         const info = nativeApi(api);
         const g = h('optgroup', { label: info.group });
-        for (const d of list) g.append(h('option', { value: `native:${api}:${d.name}` }, `${nativeDeviceLabel(api, d.name)} · ${d.inputs} in / ${d.outputs} out`));
-        if (!list.length) g.append(h('option', { value: '', disabled: true }, info.none));
+        // Inputs only here (output-only devices, like built-in speakers, are in the output menu)
+        const ins = list.filter((d) => d.inputs > 0);
+        for (const d of ins) g.append(h('option', { value: `native:${api}:${d.name}` }, `${nativeDeviceLabel(api, d.name)} · ${d.inputs} in / ${d.outputs} out`));
+        if (!ins.length) g.append(h('option', { value: '', disabled: true }, info.none));
         this.sourceSel.append(g);
       }
       // Keep a selected native device listed even if it is missing right now
@@ -1668,6 +1758,7 @@ export class App {
     }
     this.sourceSel.value = cur;
     if (this.sourceSel.value !== cur) this.sourceSel.value = '__default';
+    await this.renderOutputs();
   }
 
   renderTopState(): void {

@@ -13,10 +13,12 @@ export interface NativeApiInfo {
   controlPanel: boolean;
   /** The sample rate and buffer size are the audio server's (JACK / PipeWire), not the app's. */
   serverFormat: boolean;
+  /** Input and output are always the same device (ASIO loads one driver). */
+  oneDevice?: boolean;
 }
 
 const APIS: Record<string, NativeApiInfo> = {
-  asio: { prefix: 'ASIO', group: 'ASIO (low latency, all channels)', none: 'No ASIO driver installed', controlPanel: true, serverFormat: false },
+  asio: { prefix: 'ASIO', group: 'ASIO (low latency, all channels)', none: 'No ASIO driver installed', controlPanel: true, serverFormat: false, oneDevice: true },
   core: { prefix: 'Core Audio', group: 'Core Audio (all channels)', none: 'No audio devices found', controlPanel: false, serverFormat: false },
   jack: { prefix: 'JACK', group: 'JACK / PipeWire (low latency, all channels)', none: 'No JACK or PipeWire server running', controlPanel: false, serverFormat: true },
   alsa: { prefix: 'ALSA', group: 'ALSA (direct to the interface)', none: 'No ALSA devices free', controlPanel: false, serverFormat: false },

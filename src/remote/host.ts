@@ -175,6 +175,7 @@ export class HostLink {
       analysis: { rtaFft: s.rtaFft, rtaAveraging: s.rtaAveraging, tfAveraging: s.tfAveraging, lfResolution: s.lfResolution },
       playlist: this.playlistState(),
       source: a.hostSources(),
+      output: a.hostOutputs(),
       native: a.hostNative(),
     };
   }
@@ -250,6 +251,9 @@ export class HostLink {
         break;
       case 'setSource':
         app.selectSource(msg.value, remoteName(this.info, msg.from));
+        break;
+      case 'setOutput':
+        app.selectOutput(msg.value, remoteName(this.info, msg.from));
         break;
       case 'stop':
         if (app.engine.running) void app.stop();

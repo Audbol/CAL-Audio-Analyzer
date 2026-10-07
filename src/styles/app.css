@@ -378,6 +378,13 @@ kbd {
 select.source {
   max-width: 230px;
 }
+select.output-sel {
+  max-width: 190px;
+}
+.sheet-sec select.output-sel {
+  max-width: none;
+  width: 100%;
+}
 .lvl {
   width: 110px;
 }

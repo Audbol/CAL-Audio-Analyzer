@@ -92,6 +92,40 @@ await page.locator('select[data-native="buffer"]').selectOption('128');
 await page.waitForFunction(() => window.calApp.engine.nativeInfo?.bufferFrames === 128, null, { timeout: 10000 });
 check(true, 'buffer size change reopens the stream');
 
+// Two devices: the output on another device with its own clock (500 ppm apart), heard 2400 samples later
+const inputs = await page.$$eval('select.source option', (os) => os.map((o) => o.textContent));
+check(!inputs.some((t) => t.includes('Virtual speakers')), 'an output-only device is not offered as an input');
+const outs = await page.$$eval('select[data-output] option', (os) => os.map((o) => o.value));
+check(outs[0] === '' && outs.includes('Virtual speakers (separate clock)'), `output menu: same device or another (${outs.join(' | ')})`);
+await page.selectOption('select[data-output]', 'Virtual speakers (separate clock)');
+await page.waitForFunction(() => window.calApp.engine.nativeInfo?.split, null, { timeout: 10000 });
+const sp = await page.evaluate(() => ({ label: window.calApp.engine.deviceLabel, gen: window.calApp.settings.generator.type, saved: window.calApp.settings.nativeAudio.output }));
+check(sp.label === 'Virtual loopback interface → Virtual speakers (separate clock)' && sp.gen === 'pink' && sp.saved === 'Virtual speakers (separate clock)', `reopens on two devices, the signal keeps playing (${sp.label}, ${sp.gen})`);
+await page.keyboard.press('2');
+// The drift is learnt in the first two seconds
+await page.waitForTimeout(3000);
+await page.evaluate(() => window.calApp.findDelay(window.calApp.measurements[0]));
+await page.waitForTimeout(4000);
+const tf2 = await page.evaluate(() => {
+  const a = window.calApp;
+  const m = a.measurements[0];
+  let c = 0, n = 0;
+  a.grid.forEach((f, i) => { if (f > 100 && f < 1000) { c += m.result.coh[i]; n++; } });
+  return { delay: m.cfg.delay, coh: c / n };
+});
+check(tf2.delay > 2000 && tf2.delay < 2500, `delay found across the two devices: ${tf2.delay} samples (2400 less the queue between them, plus the input buffer)`);
+check(tf2.coh > 0.97, `coherence across the two devices ${tf2.coh.toFixed(3)} (100 Hz–1 kHz)`);
+await page.evaluate(() => window.calApp.openTools('setup'));
+await page.waitForTimeout(6000);
+const card2 = await page.evaluate(() => document.querySelector('.native-status').textContent);
+check(/→ Virtual speakers/.test(card2) && /clocks \d+ ppm apart/.test(card2), `the card shows both devices and the clocks' drift (${card2})`);
+const ppm = await page.evaluate(() => window.calApp.engine.nativeLink.status?.driftPpm);
+check(ppm > 300 && ppm < 800, `drift measured: ${ppm?.toFixed(0)} ppm (simulated 500)`);
+await page.locator('.native-card').screenshot({ path: 'test-results/native-05-two-devices.png' });
+await page.selectOption('select[data-output]', '');
+await page.waitForFunction(() => window.calApp.engine.nativeInfo && !window.calApp.engine.nativeInfo.split, null, { timeout: 10000 });
+check(true, 'back to one device');
+
 // Stop and back to the browser audio path
 await page.keyboard.press('Enter');
 await page.waitForTimeout(500);

@@ -21,6 +21,9 @@ interface ReadResult {
   overruns: number;
   xruns: number;
   queued: number;
+  /** Two devices: the servo's net correction (samples dropped − repeated) and the input frames so far. */
+  drift?: number;
+  inputFrames?: number;
 }
 
 interface Addon {
@@ -82,6 +85,8 @@ class Session {
   private fill = 0;
   private safety: number;
   private last: ReadResult | null = null;
+  /** Two devices: (drift, input frames) at each status, for the clocks' drift over the last ten seconds. */
+  private driftHistory: [number, number][] = [];
   private chunk = new Float32Array(2048);
 
   constructor(
@@ -170,7 +175,17 @@ class Session {
 
   status(): NativeStatus {
     const r = this.last;
-    return { underruns: r?.underruns ?? 0, overruns: r?.overruns ?? 0, xruns: r?.xruns ?? 0, queuedMs: r ? (r.queued / this.info.sampleRate) * 1000 : 0 };
+    const st: NativeStatus = { underruns: r?.underruns ?? 0, overruns: r?.overruns ?? 0, xruns: r?.xruns ?? 0, queuedMs: r ? (r.queued / this.info.sampleRate) * 1000 : 0 };
+    // (The first two seconds are left out: the queue between the devices settles then.)
+    if (this.info.split && r?.inputFrames !== undefined && r.inputFrames > 2 * this.info.sampleRate) {
+      const h = this.driftHistory;
+      h.push([r.drift ?? 0, r.inputFrames]);
+      // Status every 0.5 s: ten seconds back
+      if (h.length > 21) h.shift();
+      const [d0, f0] = h[0];
+      if (h.length >= 6 && r.inputFrames > f0) st.driftPpm = (((r.drift ?? 0) - d0) / (r.inputFrames - f0)) * 1e6;
+    }
+    return st;
   }
 }
 
@@ -207,7 +222,10 @@ function closeSession(): void {
 function open(opts: NativeOpenOptions): NativeStreamInfo {
   if (!addon) throw new Error(loadError || 'Native audio is not available');
   closeSession();
-  const info = addon.open({ api: opts.api, device: opts.device, sampleRate: opts.sampleRate, bufferFrames: opts.bufferFrames, inputs: opts.inputs, outputs: opts.outputs }, schedulePump);
+  const info = addon.open(
+    { api: opts.api, device: opts.device, outputDevice: opts.outputDevice ?? opts.device, sampleRate: opts.sampleRate, bufferFrames: opts.bufferFrames, inputs: opts.inputs, outputs: opts.outputs },
+    schedulePump,
+  );
   const s = new Session(info, opts.safetyMs);
   session = s;
   addon.setOutputs(s.core.gen.outputs);

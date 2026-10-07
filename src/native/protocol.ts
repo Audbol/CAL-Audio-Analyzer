@@ -13,6 +13,8 @@ export interface NativeDevice {
 export interface NativeOpenOptions {
   api: string;
   device: number;
+  /** Another device for the outputs (the generator), e.g. the built-in speakers with a USB microphone. Omitted: the input device. */
+  outputDevice?: number;
   sampleRate: number;
   /** Driver buffer size (frames); 0 = the driver's own setting. */
   bufferFrames: number;
@@ -31,6 +33,10 @@ export interface NativeStreamInfo {
   outputs: number;
   /** Driver-reported latency (frames). */
   latency: number;
+  /** The output device, when it is another device than the input. */
+  outputName?: string;
+  /** Input and output are two devices on their own clocks (the reference follows their drift). */
+  split?: boolean;
 }
 
 export interface NativeStatus {
@@ -39,6 +45,8 @@ export interface NativeStatus {
   xruns: number;
   /** Generator signal ready ahead of the driver (ms). */
   queuedMs: number;
+  /** Two devices: how far apart their clocks run (ppm, over the last ten seconds; positive: the output runs faster). */
+  driftPpm?: number;
 }
 
 export type NativeRequest =

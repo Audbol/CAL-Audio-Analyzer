@@ -53,6 +53,62 @@ describe.skipIf(!built)('native audio module', () => {
     for (const i of refs) expect(rows[i + 480][0]).toBe(1);
   });
 
+  it('keeps the reference aligned with two devices on separate clocks (input and output 500 ppm apart)', async () => {
+    process.env.CAL_NATIVE_TEST = '1';
+    const a = createRequire(import.meta.url)(path) as Addon;
+    expect(a.devices('test').map((d) => d.outputs > 0 && d.inputs === 0)).toEqual([false, true]);
+    const info = a.open({ api: 'test', device: 0, outputDevice: 1, sampleRate: 48000, bufferFrames: 256 }, () => undefined) as unknown as { split: boolean; outputName: string };
+    expect(info.split).toBe(true);
+    expect(info.outputName).toMatch(/separate clock/);
+    a.setOutputs([0]);
+    let g = 0;
+    const gen = (n: number) => Float32Array.from({ length: n }, () => (g++ % 2000 === 7 ? 1 : 0));
+    a.write(gen(4800));
+    a.start();
+    const rows: [number, number][] = [];
+    type Read = ReturnType<Addon['read']> & { drift: number; inputFrames: number };
+    let last: Read | null = null;
+    let mid: Read | null = null;
+    const t0 = Date.now();
+    const t = setInterval(() => {
+      const r = a.read() as Read;
+      last = r;
+      if (!mid && Date.now() - t0 > 2500) mid = r;
+      for (let i = 0; i < r.frames; i++) rows.push([r.data[i * 3 + 1], r.data[i * 3 + 2]]);
+      if (r.queued < 4800) a.write(gen(2400));
+    }, 5);
+    await new Promise((r) => setTimeout(r, 5000));
+    clearInterval(t);
+    a.close();
+    // Each impulse in the reference arrives on the loopback input about 2400 samples later (less the queue
+    // between the devices). The clocks alone move that by 24 samples a second (60 over the test); once the
+    // servo has learnt the drift (about two seconds for this much), it holds within a few samples. (The simulated
+    // devices keep simulated hardware time, so this doesn't depend on how busy the computer is.)
+    const offsets: { at: number; off: number }[] = [];
+    rows.forEach((r, i) => {
+      if (r[1] !== 1 || i + 3000 >= rows.length) return;
+      let best = 0;
+      let at = 0;
+      for (let k = i + 1200; k < i + 3000; k++) if (rows[k][0] > best) [best, at] = [rows[k][0], k];
+      if (best > 0.4) offsets.push({ at: i, off: at - i });
+    });
+    const settled = offsets.filter((o) => o.at > 48000 * 2.5);
+    expect(settled.length).toBeGreaterThan(20);
+    const offs = settled.map((o) => o.off);
+    const med = (v: number[]) => [...v].sort((x, y) => x - y)[v.length >> 1];
+    const median = med(offs);
+    expect(offs.filter((o) => Math.abs(o - median) <= 3).length).toBeGreaterThanOrEqual(offs.length * 0.95);
+    // No trend: the first and last thirds agree (the clocks alone would part them by about 20 samples)
+    const third = Math.floor(offs.length / 3);
+    expect(Math.abs(med(offs.slice(-third)) - med(offs.slice(0, third)))).toBeLessThan(5);
+    expect(median).toBeGreaterThan(1900);
+    expect(median).toBeLessThan(2400);
+    // The servo follows the drift: about 500 ppm of the output dropped (≈ 24 samples a second)
+    const ppm = ((last!.drift - mid!.drift) / (last!.inputFrames - mid!.inputFrames)) * 1e6;
+    expect(ppm).toBeGreaterThan(250);
+    expect(ppm).toBeLessThan(1000);
+  }, 15000);
+
   it('offers the platform’s native API (ASIO, Core Audio, or JACK / PipeWire and ALSA)', () => {
     const a = createRequire(import.meta.url)(path) as Addon;
     const apis = a.apis();

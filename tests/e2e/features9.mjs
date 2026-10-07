@@ -1,5 +1,5 @@
 // End-to-end test of the 2.0.2 measurement additions: distortion from sweeps, the loudness meter (LUFS), air
-// absorption compensation and the EQ board.
+// absorption compensation, the EQ board and the output device menu.
 // Usage: npm run build && node tests/e2e/features9.mjs [outDir]   (ONLY=thd,lufs,… runs some sections)
 import { chromium } from 'playwright';
 import { preview } from 'vite';
@@ -118,6 +118,29 @@ if (want('board')) {
   check(/-1\.5 dB/.test(first.text) && !first.entered, `the board follows the EQ tab live (${first.text.replace(/\s+/g, ' ')})`);
   await pop.screenshot({ path: `${out}/feat9-04-board.png` });
   await pop.close();
+}
+
+// --- 5. Output device: its own menu next to the input; none for the demo, the system's outputs for a browser input
+if (want('output')) {
+  await page.evaluate(() => window.calApp.selectSource('__demo'));
+  await page.waitForTimeout(300);
+  const demo = await page.evaluate(() => { const s = document.querySelector('select[data-output]'); return { disabled: s.disabled, text: s.selectedOptions[0]?.textContent, inGroup: !!s.closest('.src-group') }; });
+  check(demo.disabled && demo.text === 'Out: none (demo)' && demo.inGroup, `the output menu sits next to the input, idle for the demo (${demo.text})`);
+  await page.evaluate(() => window.calApp.selectSource('__default'));
+  await page.waitForFunction(() => window.calApp.engine.running && !window.calApp.engine.simulate, null, { timeout: 10000 });
+  await page.waitForTimeout(500);
+  const br = await page.evaluate(() => { const s = document.querySelector('select[data-output]'); return { disabled: s.disabled, opts: [...s.options].map((o) => o.value), text: s.selectedOptions[0]?.textContent }; });
+  check(!br.disabled && br.opts[0] === '' && br.text === 'Out: system default', `a browser input offers the system default and the other outputs (${br.opts.length} options)`);
+  // An output that no longer exists: audio still runs, through the default, and says so
+  await page.evaluate(() => window.calApp.selectOutput('no-such-output'));
+  await page.waitForFunction(() => window.calApp.engine.running && !window.calApp.starting, null, { timeout: 10000 });
+  await page.waitForTimeout(800);
+  const gone = await page.evaluate(() => ({ err: window.calApp.engine.sinkError, saved: window.calApp.settings.outputId, toast: [...document.querySelectorAll('.toast')].map((t) => t.textContent).join(' | ') }));
+  check(gone.err && gone.saved === 'no-such-output' && /system default output/.test(gone.toast), `a missing output falls back to the default and says so (${gone.toast.slice(0, 80)}…)`);
+  await page.evaluate(() => window.calApp.selectOutput(''));
+  await page.waitForTimeout(800);
+  check(await page.evaluate(() => window.calApp.engine.running && window.calApp.settings.outputId === ''), 'back to the system default');
+  await page.screenshot({ path: `${out}/feat9-05-output.png`, clip: { x: 0, y: 0, width: 1440, height: 70 } });
 }
 
 check(errors.length === 0, `no console errors ${errors.join(' | ')}`);

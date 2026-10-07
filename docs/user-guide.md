@@ -86,6 +86,7 @@ The window has five areas.
 
 - **Start / Stop** starts and stops audio. Shortcut: Enter.
 - **Input source** chooses the audio interface, or the demo room.
+- **Out** (next to it) chooses where the generator plays: the input device itself, or another output.
 - **Generator on/off** turns the test signal on and off. Shortcut: Space. For safety, audio always starts with the generator off, and stopping audio turns it off: nothing plays until you turn it on. **On** then brings back the signal you used last. (The demo room keeps its signal, since it plays nothing through your speakers.)
 - **Signal type** chooses pink noise, white noise, sine, periodic sweep or music.
 - **Level slider** sets the test signal level.
@@ -150,15 +151,23 @@ Every feature in this guide works in the demo room. To open the welcome window a
    - **Hardware loopback on In 2:** connect an output (or the mixer output) back into In 2. Use this to measure with music or speech from a mixing console.
 6. Select **Start measuring**. Your browser or system may ask for microphone permission. Allow it.
 7. Choose your audio interface in the **input source** list in the top bar.
+8. The generator plays through the menu next to it (**Out**). Keep **Out: same device** for an interface with inputs and outputs, or choose another output, such as the computer's speakers when the microphone is a USB microphone.
 
 **Native drivers (desktop app):** the desktop app can talk to your interface directly instead of through the browser's audio. You get every input and output channel, the lowest latency, and no system mixing or resampling. Choose the driver in the **input source** list:
 
 - **Windows:** *ASIO: your interface*. **Driver control panel** opens the driver's own settings.
-- **macOS:** *Core Audio: your interface*. macOS asks once for microphone permission; allow it. An interface with inputs and outputs is one device. To use separate devices together, such as the Mac's built-in microphone and speakers, combine them as an *Aggregate Device* in Audio MIDI Setup and choose that.
+- **macOS:** *Core Audio: your interface*. macOS asks once for microphone permission; allow it. An interface with inputs and outputs is one device. The Mac's built-in microphone and speakers are two devices: choose the microphone as the input and the speakers in **Out**.
 - **Linux:** *JACK: …* for **PipeWire** or JACK, the low-latency route, or *ALSA: …* to talk to the interface directly.
   - JACK needs PipeWire's JACK support (the *pipewire-jack* package, installed by default on many distributions) or a JACK server.
   - With JACK / PipeWire, the server sets the sample rate and buffer for every program and the app uses them. For example, `pw-metadata -n settings 0 clock.force-rate 48000` sets PipeWire to 48 kHz.
   - ALSA can't open an interface that PipeWire or PulseAudio is already using; use JACK then.
+
+**Two devices:** with Core Audio, JACK / PipeWire or ALSA, the input and the output can be different devices: choose the input in the **input source** list and the output in **Out**. ASIO always uses one driver for both.
+
+- Two devices run on their own clocks, which drift apart slowly (a few to a hundred parts per million). The app follows the drift so the internal reference stays aligned to about a sample. **Tools → Setup → Audio interface** shows how far apart the clocks run.
+- Measured delays then include a few milliseconds of buffering between the devices. The delay finder takes care of it; just find the delay again after changing devices.
+- For the steadiest phase at high frequencies, use one interface, or on macOS combine the devices as an *Aggregate Device* with drift correction in Audio MIDI Setup and choose that.
+- Both devices run at the same sample rate. If one can't, the app says so.
 
 Set the sample rate, buffer size and safety margin in **Tools → Setup → Audio interface (native driver)**.
 

@@ -120,6 +120,13 @@ const srcs = await rem.evaluate(() => [...document.querySelectorAll('select.sour
 check(srcs.includes('__demo') && srcs.includes('__default') && !(await rem.locator('select.source').isDisabled()), `remote lists the host's audio sources and may change them (${srcs.length})`);
 await rem.evaluate(() => { const s = document.querySelector('select.source'); s.value = '__default'; s.dispatchEvent(new Event('change')); });
 await host.waitForFunction(() => window.calApp.settings.simulate === false, null, { timeout: 5000 }).then(() => check(true, 'the host switches to the source chosen on the remote')).catch(() => check(false, 'the host switches to the source chosen on the remote'));
+// The host's output menu follows (a browser input: the system default output and the host's other outputs)
+await rem.waitForFunction(() => document.querySelector('select[data-output] option')?.textContent === 'Out: system default', null, { timeout: 8000 }).catch(() => undefined);
+const remOut = await rem.evaluate(() => { const s = document.querySelector('select[data-output]'); return { shown: getComputedStyle(s).display !== 'none', text: s.selectedOptions[0]?.textContent, disabled: s.disabled }; });
+check(remOut.shown && remOut.text === 'Out: system default' && !remOut.disabled, `remote shows the host's output menu (${remOut.text})`);
+await rem.evaluate(() => { const s = document.querySelector('select[data-output]'); s.append(new Option('x', 'remote-pick')); s.value = 'remote-pick'; s.dispatchEvent(new Event('change')); });
+await host.waitForFunction(() => window.calApp.settings.outputId === 'remote-pick', null, { timeout: 5000 }).then(() => check(true, 'the host uses the output chosen on the remote')).catch(() => check(false, 'the host uses the output chosen on the remote'));
+await host.evaluate(() => window.calApp.selectOutput(''));
 await rem.evaluate(() => { const s = document.querySelector('select.source'); s.value = '__demo'; s.dispatchEvent(new Event('change')); });
 await host.waitForFunction(() => window.calApp.settings.simulate === true && window.calApp.engine.running, null, { timeout: 10000 }).catch(() => undefined);
 check(await host.evaluate(() => window.calApp.settings.simulate && window.calApp.engine.running), 'and back to the demo room, running');

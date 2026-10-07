@@ -71,6 +71,8 @@ export interface HostStatus {
   playlist?: PlaylistState;
   /** The host's audio sources (demo, browser devices, native drivers) and the selected one (older hosts don't send them). */
   source?: { value: string; options: SourceOption[] };
+  /** The host's audio outputs for the generator and the selected one (older hosts don't send them). */
+  output?: { value: string; options: SourceOption[]; disabled?: boolean; title?: string };
   /** The host's native audio settings and stream status, when the host is the desktop app. */
   native?: NativeHostState;
 }
@@ -87,6 +89,8 @@ export interface NativeSettings {
   sampleRate: number;
   bufferFrames: number;
   safetyMs: number;
+  /** The output device's name, when it is another device than the input ('' = the input device). */
+  output?: string;
 }
 
 export interface NativeHostState {
@@ -139,6 +143,8 @@ export type RemoteCommand =
   | { t: 'cmd'; cmd: 'playlist'; a: PlaylistAction }
   /** Choose the host's audio source (a value from its `source.options`). */
   | { t: 'cmd'; cmd: 'setSource'; value: string }
+  /** Choose the host's audio output (a value from its `output.options`). */
+  | { t: 'cmd'; cmd: 'setOutput'; value: string }
   /** Stop the host's audio. */
   | { t: 'cmd'; cmd: 'stop' }
   /** Change the host's native audio settings. */

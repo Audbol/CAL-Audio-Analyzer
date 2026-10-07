@@ -7,6 +7,8 @@ import type { NativeOpenOptions, NativeStreamInfo } from '../native/protocol';
 
 export interface EngineOptions {
   deviceId?: string;
+  /** Browser audio: the output device for the generator (a sink id; '' or omitted = the system default). */
+  sinkId?: string;
   simulate: boolean;
   sampleRate?: number;
   /** Desktop app: open a native device (ASIO, Core Audio, JACK / PipeWire, ALSA) instead of the browser's audio. */
@@ -103,6 +105,20 @@ export class AudioEngine {
     return all.filter((d) => d.kind === 'audioinput');
   }
 
+  static async listOutputs(): Promise<MediaDeviceInfo[]> {
+    if (!navigator.mediaDevices?.enumerateDevices) return [];
+    const all = await navigator.mediaDevices.enumerateDevices();
+    return all.filter((d) => d.kind === 'audiooutput' && d.deviceId && d.deviceId !== 'default');
+  }
+
+  /** Whether this browser can play through an output device other than the system default. */
+  static get canChooseOutput(): boolean {
+    return typeof AudioContext !== 'undefined' && 'setSinkId' in AudioContext.prototype;
+  }
+
+  /** Browser audio: the output device could not be used (it was disconnected, or not allowed), so the default plays. */
+  sinkError = '';
+
   async start(opts: EngineOptions): Promise<void> {
     await this.stop();
     if (opts.native) return this.startNative(opts.native);
@@ -110,6 +126,15 @@ export class AudioEngine {
     this.musicPos = null; // a new worklet starts without a song
     const ctx = new AudioContext({ latencyHint: 'interactive', sampleRate: opts.sampleRate });
     this.ctx = ctx;
+    this.sinkError = '';
+    // Another output device than the system default (before the output channels are counted: they are its own)
+    if (opts.sinkId && !opts.simulate && AudioEngine.canChooseOutput) {
+      try {
+        await (ctx as AudioContext & { setSinkId(id: string): Promise<void> }).setSinkId(opts.sinkId);
+      } catch (e) {
+        this.sinkError = (e as Error)?.message || String(e);
+      }
+    }
     await ctx.audioWorklet.addModule(processorUrl);
 
     let channels = 2;
@@ -165,7 +190,7 @@ export class AudioEngine {
     this.inputs = Array.from({ length: info.inputs }, () => new RingBuffer(RING_SIZE));
     this.levels = Array.from({ length: info.inputs }, () => ({ peak: 0, rms: 0, clipped: false }));
     this.gen.clear();
-    this.deviceLabel = nativeDeviceLabel(opts.api, info.name);
+    this.deviceLabel = nativeDeviceLabel(opts.api, info.name) + (info.split && info.outputName ? ` → ${info.outputName}` : '');
     this.nativeInfo = info;
   }
 
