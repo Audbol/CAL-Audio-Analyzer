@@ -244,7 +244,13 @@ if (want('console')) {
   check(eq.every((f) => f.gain >= -15 && f.gain <= 15 && ahW(f) >= 1 / 9 - 1e-9 && ahW(f) <= 1.5 + 1e-9), `within ±15 dB and width 1/9 to 1.5 (${eq.map((f) => ahW(f).toFixed(2)).join(', ')})`);
   const label = await page.locator('.peq label').nth(2).innerText();
   check(label.startsWith('Width') && /oct|1\//.test(label), `width shown in octaves, as on the console (${label.replace(/\s+/g, ' ')})`);
-  check((await page.locator('.peq-profile').innerText()).includes('Allen & Heath dLive'), 'the profile and its ranges are shown');
+  // The console's ranges on one line; its notes fold out and stay as left
+  const sum = await page.locator('.peq-profile summary').innerText();
+  const closedH = await page.locator('.peq-profile').evaluate((e) => e.getBoundingClientRect().height);
+  check(/4 bands · ±15 dB · width 0\.11–1\.5 oct · HPF 12\/24 dB\/oct/.test(sum) && closedH < 40 && !(await page.locator('.peq-profile-body').isVisible()), `the console’s ranges take a line or two (${sum.replace(/\s+/g, ' ')}, ${Math.round(closedH)} px)`);
+  await page.locator('.peq-profile summary').click();
+  check((await page.locator('.peq-profile-body').innerText()).includes('Allen & Heath dLive') && (await page.evaluate(() => localStorage.getItem('cal-eq-profile-open'))) === '1', 'Notes shows the console and its notes, and is remembered');
+  await page.locator('.peq-profile summary').click();
   await page.screenshot({ path: `${out}/feat7-07-console-eq.png` });
   // Typing a width in octaves keeps it (what you enter is what the console gets)
   await page.locator('.peq').first().locator('input').nth(2).fill('0.33');

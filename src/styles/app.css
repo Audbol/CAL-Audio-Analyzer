@@ -3999,6 +3999,35 @@ html.compact .cmp-arrow {
   color: var(--text-2);
   line-height: 1.45;
 }
+.peq-profile summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--text-2);
+}
+.peq-profile summary::-webkit-details-marker {
+  display: none;
+}
+.peq-profile-sum {
+  flex: 1;
+  min-width: 0;
+}
+.peq-profile-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  color: var(--dim);
+}
+.peq-profile summary:hover .peq-profile-more,
+.peq-profile[open] .peq-profile-more {
+  color: var(--accent);
+}
+.peq-profile-body {
+  margin-top: 6px;
+}
 
 /* Phones: the Align and EQ tabs scroll as one column, and every graph keeps a readable height instead of
    sharing what is left of the screen */

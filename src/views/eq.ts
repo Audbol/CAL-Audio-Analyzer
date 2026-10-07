@@ -91,7 +91,8 @@ export class EqView implements View {
   private sourceName = '';
   /** The console the EQ is for (its bands and ranges limit the filters). */
   private profile: ConsoleEqProfile;
-  private profileInfo = h('p', { class: 'peq-profile small' });
+  /** The console's ranges on one line; its notes fold out (remembered per device). */
+  private profileInfo = h('details', { class: 'peq-profile small' }) as HTMLDetailsElement;
   private consoleSel!: HTMLSelectElement;
 
   constructor(private app: App) {
@@ -436,12 +437,25 @@ export class EqView implements View {
     }
     const width = widthRangeText(p);
     const gain = -p.gainMin === p.gainMax ? `±${p.gainMax} dB` : `${p.gainMin} to +${p.gainMax} dB`;
-    this.profileInfo.replaceChildren(
-      h('b', {}, p.id === 'generic' ? p.name : `${p.name}: ${p.section}`),
-      h('br'),
-      `${p.bands} bands, ${gain}, ${width}${p.hpf.length ? `, plus a high-pass (${p.hpf.join(', ')} dB/oct${p.id === 'generic' ? '' : ': check the slopes your console offers'})` : ''}. ${p.note} `,
-      h('span', { class: p.source === 'documented' ? 'ok-text' : 'dim' }, p.source === 'documented' ? 'Ranges from the manufacturer’s documentation.' : 'Typical ranges: check them on your console.'),
+    const info = this.profileInfo;
+    info.replaceChildren(
+      h(
+        'summary',
+        { title: 'The console’s EQ: show or hide its notes' },
+        h('span', { class: 'peq-profile-sum' }, `${p.bands} bands · ${gain} · ${width.replace(/ octave$/, ' oct').replace(' to ', '–')}${p.hpf.length ? ` · HPF ${p.hpf.join('/')} dB/oct` : ''}`),
+        h('span', { class: 'peq-profile-more' }, icon('info', 12), 'Notes'),
+      ),
+      h(
+        'div',
+        { class: 'peq-profile-body' },
+        h('b', {}, p.id === 'generic' ? p.name : `${p.name}: ${p.section}`),
+        h('br'),
+        `${p.note}${p.hpf.length && p.id !== 'generic' ? ' Check the high-pass slopes your console offers.' : ''} `,
+        h('span', { class: p.source === 'documented' ? 'ok-text' : 'dim' }, p.source === 'documented' ? 'Ranges from the manufacturer’s documentation.' : 'Typical ranges: check them on your console.'),
+      ),
     );
+    info.open = readFlag('cal-eq-profile-open');
+    info.ontoggle = () => writeFlag('cal-eq-profile-open', info.open);
   }
 
   /** Add a filter from elsewhere (e.g. a notch from the feedback finder). */
@@ -596,4 +610,21 @@ export class EqView implements View {
     this.plot.draw();
   }
 
+}
+
+/** A per-device display preference (storage can be unavailable: then the default). */
+function readFlag(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeFlag(key: string, on: boolean): void {
+  try {
+    localStorage.setItem(key, on ? '1' : '0');
+  } catch {
+    /* not remembered */
+  }
 }
