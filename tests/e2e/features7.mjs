@@ -239,7 +239,9 @@ if (want('console')) {
   await page.waitForTimeout(300);
   const eq = await page.evaluate(() => window.calApp.views.find((v) => v.id === 'eq').filters.map((f) => ({ ...f })));
   check(eq.length > 0 && eq.length <= 4, `dLive: at most 4 bands (${eq.length})`);
-  check(eq.every((f) => f.gain >= -15 && f.gain <= 15 && f.q >= 0.92 && f.q <= 13), 'within ±15 dB and 1.5 to 1/9 octave');
+  // Allen & Heath's bell width: Q = (0.0008·dB² + 0.0004·|dB| + 0.45) / width
+  const ahW = (f) => (f.type === 'peak' ? (0.0008 * f.gain * f.gain + 0.0004 * Math.abs(f.gain) + 0.45) / f.q : (2 / Math.LN2) * Math.asinh(1 / (2 * f.q)));
+  check(eq.every((f) => f.gain >= -15 && f.gain <= 15 && ahW(f) >= 1 / 9 - 1e-9 && ahW(f) <= 1.5 + 1e-9), `within ±15 dB and width 1/9 to 1.5 (${eq.map((f) => ahW(f).toFixed(2)).join(', ')})`);
   const label = await page.locator('.peq label').nth(2).innerText();
   check(label.startsWith('Width') && /oct|1\//.test(label), `width shown in octaves, as on the console (${label.replace(/\s+/g, ' ')})`);
   check((await page.locator('.peq-profile').innerText()).includes('Allen & Heath dLive'), 'the profile and its ranges are shown');
@@ -247,8 +249,17 @@ if (want('console')) {
   // Typing a width in octaves keeps it (what you enter is what the console gets)
   await page.locator('.peq').first().locator('input').nth(2).fill('0.33');
   await page.locator('.peq').first().locator('input').nth(2).dispatchEvent('change');
-  const typed = await page.evaluate(() => { const v = window.calApp.views.find((x) => x.id === 'eq'); const q = v.filters[0].q; return (2 / Math.LN2) * Math.asinh(1 / (2 * q)); });
-  check(Math.abs(typed - 0.33) < 0.005 && (await page.locator('.peq').first().locator('.unit').innerText()) === '1/3', `a width typed in octaves stays as typed (${typed.toFixed(3)} oct, shown as 1/3)`);
+  const first = () => page.evaluate(() => ({ ...window.calApp.views.find((x) => x.id === 'eq').filters[0] }));
+  const typed = ahW(await first());
+  check(Math.abs(typed - 0.33) < 0.005 && (await page.locator('.peq').first().locator('.unit').innerText()) === '1/3', `a width typed in octaves stays as typed (${typed.toFixed(3)}, shown as 1/3)`);
+  // A new gain keeps the width, as on the console (on dLive the bell's Q follows the gain)
+  const before = await first();
+  if (before.type === 'peak') {
+    await page.locator('.peq').first().locator('input').nth(1).fill(String(before.gain > 0 ? 2 : -2));
+    await page.locator('.peq').first().locator('input').nth(1).dispatchEvent('change');
+    const after = await first();
+    check(Math.abs(ahW(after) - 0.33) < 0.005 && after.q < before.q && (await page.locator('.peq').first().locator('input').nth(2).inputValue()) === '0.33', `a gain change keeps width 0.33 and widens the bell (Q ${before.q.toFixed(2)} → ${after.q.toFixed(2)})`);
+  }
   await page.locator('select[data-eq-console]').selectOption('midas-pro');
   check((await page.locator('.peq label').nth(2).innerText()).startsWith('Width'), 'Midas PRO: width in octaves too');
   await page.locator('select[data-eq-console]').selectOption('x32-bus');

@@ -85,33 +85,59 @@ describe('Console EQ profiles', () => {
     expect(qToOctaves(octavesToQ(1 / 9))).toBeCloseTo(1 / 9, 4);
   });
   it('fit filters into a console’s ranges and precision', async () => {
-    const { fitToProfile, profileById, consoleText, qToOctaves } = await import('../src/dsp/console-eq');
+    const { fitToProfile, profileById, consoleText, bandWidth } = await import('../src/dsp/console-eq');
     const ah = profileById('ah-dlive');
     const f = fitToProfile({ type: 'peak', f: 63.37, gain: -21.26, q: 30 }, ah);
     expect(f.f).toBe(63);
     expect(f.gain).toBe(-15);
-    // The narrowest dLive width, 1/9 octave, rounded to what the console shows (0.11 oct)
-    expect(qToOctaves(f.q)).toBeCloseTo(0.11, 6);
+    // The narrowest dLive width, 1/9 octave (shown as 0.11 or 1/9)
+    expect(bandWidth(f, ah)).toBeCloseTo(1 / 9, 6);
     const y = profileById('yamaha-cl');
     const text = consoleText([{ type: 'peak', f: 2512, gain: -3.04, q: 4.26 }, { type: 'peak', f: 80, gain: -6, q: 2 }], y);
     expect(text.split('\n')).toEqual(['Yamaha CL / QL – Mix / matrix / stereo EQ, 4 bands', 'LOW: bell, 80 Hz, -6.0 dB, Q 2.0', 'LOW-MID: bell, 2.51 kHz, -3.0 dB, Q 4.3']);
-    expect(consoleText([{ type: 'peak', f: 1000, gain: 2, q: 1.414 }], ah)).toContain('LF: bell, 1.00 kHz, +2.0 dB, width 1.00 oct');
+    // Allen & Heath's width: Q 0.454 at +2 dB is width 1.00 (the usual octave conversion would say 2.5)
+    expect(consoleText([{ type: 'peak', f: 1000, gain: 2, q: 0.454 }], ah)).toContain('LF: bell, 1.00 kHz, +2.0 dB, width 1.00 oct');
     // dLive also shows widths as fractions of an octave
-    expect(consoleText([{ type: 'peak', f: 1000, gain: -3, q: 4.32 }], ah)).toContain('width 0.33 oct (1/3)');
+    expect(consoleText([{ type: 'peak', f: 1000, gain: -3, q: 1.4 }], ah)).toContain('width 0.33 oct (1/3)');
+    // Shelves keep the usual conversion
+    expect(consoleText([{ type: 'highshelf', f: 8000, gain: 3, q: 1.414 }], ah)).toContain('width 1.00 oct');
   });
   it('octave consoles keep their widths in octaves; Q consoles in Q', async () => {
-    const { CONSOLE_PROFILES, fitToProfile, widthName, widthToQ, qToOctaves } = await import('../src/dsp/console-eq');
+    const { CONSOLE_PROFILES, fitToProfile, widthName, widthToQ, bandWidth } = await import('../src/dsp/console-eq');
     for (const p of CONSOLE_PROFILES) {
       const f = fitToProfile({ type: 'peak', f: 500, gain: -4, q: 3.3 }, p);
       if (p.width === 'octaves') {
         expect(widthName(p)).toBe('Width');
         // What the list shows (octaves, two decimals) is exactly what the filter uses
-        const shown = +qToOctaves(f.q).toFixed(2);
-        expect(Math.abs(qToOctaves(widthToQ(shown, p)) - qToOctaves(f.q))).toBeLessThan(1e-9);
+        const shown = +bandWidth(f, p).toFixed(2);
+        expect(Math.abs(widthToQ(shown, p, f) - f.q)).toBeLessThan(1e-9);
       } else expect(widthName(p)).toBe('Q');
     }
     const ids = CONSOLE_PROFILES.filter((p) => p.width === 'octaves').map((p) => p.id);
     expect(ids).toEqual(['ah-dlive', 'midas-pro']);
+  });
+  it('Allen & Heath bell widths follow the measured dLive relation (Q depends on the gain)', async () => {
+    const { ahWidthQ, ahQWidth, profileById, fitToProfile, bandWidth, widthToQ } = await import('../src/dsp/console-eq');
+    // The forum's table at ±10.6 dB: A&H width → cookbook Q
+    const table: [number, number][] = [[0.75, 0.733], [0.7, 0.786], [0.5, 1.1], [0.4, 1.38]];
+    for (const [w, q] of table) {
+      expect(Math.abs(ahWidthQ(w, 10.6) - q) / q).toBeLessThan(0.02);
+      expect(Math.abs(ahWidthQ(w, -10.6) - q) / q).toBeLessThan(0.02);
+    }
+    // More gain, narrower bell for the same width
+    expect(ahWidthQ(0.5, 15)).toBeGreaterThan(ahWidthQ(0.5, 3));
+    expect(ahQWidth(ahWidthQ(0.33, -6), -6)).toBeCloseTo(0.33, 10);
+    // Changing the gain at a fixed width changes the Q, as on the console
+    const ah = profileById('ah-dlive');
+    const f = fitToProfile({ type: 'peak', f: 1000, gain: -9, q: 2 }, ah);
+    const w = bandWidth(f, ah);
+    const q3 = widthToQ(w, ah, { gain: -3, type: 'peak' });
+    expect(q3).toBeLessThan(f.q);
+    // The width range holds at any gain
+    for (const gain of [0, 6, -15]) {
+      expect(bandWidth(fitToProfile({ type: 'peak', f: 1000, gain, q: 0.05 }, ah), ah)).toBeCloseTo(1.5, 6);
+      expect(bandWidth(fitToProfile({ type: 'peak', f: 1000, gain, q: 50 }, ah), ah)).toBeCloseTo(1 / 9, 6);
+    }
   });
   it('the assistant keeps to a console’s bands and Q range', async () => {
     const { autoEq, TARGETS } = await import('../src/dsp/eq');

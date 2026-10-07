@@ -23,6 +23,13 @@ export interface ConsoleEqProfile {
   width: 'q' | 'octaves';
   /** Octave widths are also shown as fractions where they are one (1/3, 1/6, 1/9…), as on the console. */
   fractions?: boolean;
+  /**
+   * How the console's width maps to a filter's Q. 'octaves' (default for width 'octaves'): the usual bandwidth
+   * conversion. 'ah': Allen & Heath's bells, whose Q also depends on the gain (see ahWidthQ).
+   */
+  widthModel?: 'octaves' | 'ah';
+  /** The width control's range on octave consoles, narrowest first (e.g. [1/9, 1.5]). */
+  widthRange?: [number, number];
   /** High-pass slopes (dB/octave) the output has, in addition to the bands (empty: none). */
   hpf: number[];
   /** The first and last band can be shelves. */
@@ -139,16 +146,18 @@ export const CONSOLE_PROFILES: ConsoleEqProfile[] = [
     bands: 4,
     gainMin: -15,
     gainMax: 15,
-    // Width 1.5 to 1/9 octave
-    qMin: 0.92,
-    qMax: 13,
+    // Width 1/9 to 1.5: with Allen & Heath's width, Q 0.3 (1.5, flat) to 5.7 (1/9, ±15 dB)
+    qMin: 0.3,
+    qMax: 5.7,
     width: 'octaves',
+    widthModel: 'ah',
+    widthRange: [1 / 9, 1.5],
     fractions: true,
     shelves: true,
     hpf: [12, 24],
     bandNames: ['LF', 'LM', 'HM', 'HF'],
     source: 'documented',
-    note: 'Width is set in octaves (shown as decimals and as 1/3, 1/6, 1/9…); LF and HF can be shelves. Allen & Heath’s octave width is not quite the usual Q conversion, so a band can come out slightly wider or narrower than predicted: check it with a measurement. Mixes also have a 28-band graphic EQ.',
+    note: 'Width is set in octaves (shown as decimals and as 1/3, 1/6, 1/9…); LF and HF can be shelves. Bell widths here are Allen & Heath’s own (from measurements: the bell narrows as its gain grows), so what you enter matches the prediction. Change a gain on the console? Set the width shown here for it. Mixes also have a 28-band graphic EQ.',
   },
   {
     id: 'x32-bus',
@@ -247,6 +256,32 @@ export function octavesToQ(n: number): number {
   return Math.sqrt(p) / (p - 1);
 }
 
+/**
+ * Allen & Heath bells (dLive, Avantis, SQ): the Q of a bell with this width and gain. The console's width is not the
+ * usual octave bandwidth, and its Q changes with the boost or cut: Q = (0.0008·dB² + 0.0004·|dB| + 0.45) / width,
+ * fitted to measurements of a dLive (Allen & Heath forum, "dLive Parametric EQ Translation"). For example width
+ * 0.75 at ±10.6 dB is Q 0.73 (the usual conversion says 1.9).
+ */
+export function ahWidthQ(width: number, gainDb: number): number {
+  return ahK(gainDb) / width;
+}
+
+/** The width an Allen & Heath console shows for a bell of this Q and gain. */
+export function ahQWidth(q: number, gainDb: number): number {
+  return ahK(gainDb) / q;
+}
+
+const ahK = (g: number) => 0.0008 * g * g + 0.0004 * Math.abs(g) + 0.45;
+
+/** The console's model for this filter: Allen & Heath's for its bells, the usual conversion otherwise. */
+const usesAh = (p: ConsoleEqProfile, type: PeqFilter['type'] = 'peak') => p.widthModel === 'ah' && type === 'peak';
+
+/** The width number the console shows for a filter (Q, or width in octaves), at full precision. */
+export function bandWidth(f: Pick<PeqFilter, 'q' | 'gain' | 'type'>, p: ConsoleEqProfile): number {
+  if (p.width !== 'octaves') return f.q;
+  return usesAh(p, f.type) ? ahQWidth(f.q, f.gain) : qToOctaves(f.q);
+}
+
 /** A filter brought within a console's ranges and to the precision it shows. */
 export function fitToProfile(f: PeqFilter, p: ConsoleEqProfile): PeqFilter {
   if (f.type === 'highpass') {
@@ -261,15 +296,20 @@ export function fitToProfile(f: PeqFilter, p: ConsoleEqProfile): PeqFilter {
   const gain = Math.round(Math.min(p.gainMax, Math.max(p.gainMin, f.gain)) * 10) / 10;
   let q = Math.min(p.qMax, Math.max(p.qMin, f.q));
   // At the precision the console shows: the width in octaves (two decimals) on octave consoles, else Q
-  if (p.width === 'octaves') q = octavesToQ(Math.round(qToOctaves(q) * 100) / 100);
+  if (usesAh(p, f.type)) {
+    // Allen & Heath: the width for this gain, within the control's range, and the Q it gives
+    const [wMin, wMax] = p.widthRange ?? [1 / 9, 1.5];
+    const w = Math.min(wMax, Math.max(wMin, Math.round(ahQWidth(f.q, gain) * 100) / 100));
+    q = ahWidthQ(w, gain);
+  } else if (p.width === 'octaves') q = octavesToQ(Math.round(qToOctaves(q) * 100) / 100);
   else q = q < 1 ? Math.round(q * 100) / 100 : Math.round(q * 10) / 10;
   const fr = Math.min(20000, Math.max(20, f.f));
   return { ...f, f: fr < 1000 ? Math.round(fr) : Math.round(fr / 10) * 10, gain, q };
 }
 
 /** How the console labels a filter's width. */
-export function widthLabel(q: number, p: ConsoleEqProfile): string {
-  return p.width === 'octaves' ? `width ${octaveText(qToOctaves(q), p)}` : `Q ${formatQ(q)}`;
+export function widthLabel(f: Pick<PeqFilter, 'q' | 'gain' | 'type'>, p: ConsoleEqProfile): string {
+  return p.width === 'octaves' ? `width ${octaveText(bandWidth(f, p), p)}` : `Q ${formatQ(f.q)}`;
 }
 
 /** The console's word for the width control. */
@@ -294,9 +334,17 @@ export function octaveText(n: number, p: ConsoleEqProfile): string {
   return `${n.toFixed(2)} oct${frac ? ` (${frac})` : ''}`;
 }
 
-/** Bring a value typed in the console's own units (Q, or width in octaves) to a filter Q. */
-export function widthToQ(v: number, p: ConsoleEqProfile): number {
-  return p.width === 'octaves' ? octavesToQ(v) : v;
+/** Bring a value typed in the console's own units (Q, or width in octaves) to a filter Q (for a filter of this gain and type). */
+export function widthToQ(v: number, p: ConsoleEqProfile, f: Pick<PeqFilter, 'gain' | 'type'> = { gain: 0, type: 'peak' }): number {
+  if (p.width !== 'octaves') return v;
+  return usesAh(p, f.type) ? ahWidthQ(v, f.gain) : octavesToQ(v);
+}
+
+/** The width control's range as text: "width 0.11 to 1.5 octave", or "Q 0.3–10". */
+export function widthRangeText(p: ConsoleEqProfile): string {
+  if (p.width !== 'octaves') return `Q ${p.qMin}–${p.qMax}`;
+  const [lo, hi] = p.widthRange ?? [qToOctaves(p.qMax), qToOctaves(p.qMin)];
+  return `width ${+lo.toFixed(2)} to ${+hi.toFixed(2)} octave`;
 }
 
 const fmtF = (f: number) => (f >= 1000 ? `${(f / 1000).toFixed(f >= 10000 ? 1 : 2)} kHz` : `${Math.round(f)} Hz`);
@@ -320,7 +368,7 @@ export function consoleBands(filters: PeqFilter[], p: ConsoleEqProfile): Console
   return sorted.map((f) => {
     if (!isBand(f)) return { name: 'HPF', kind: kind(f), freq: fmtF(f.f), gain: '', width: `${f.slope ?? 12} dB/oct` };
     const i = band++;
-    return { name: p.bandNames[i] ?? `Band ${i + 1}`, kind: kind(f), freq: fmtF(f.f), gain: `${f.gain > 0 ? '+' : ''}${f.gain.toFixed(1)} dB`, width: widthLabel(f.q, p) };
+    return { name: p.bandNames[i] ?? `Band ${i + 1}`, kind: kind(f), freq: fmtF(f.f), gain: `${f.gain > 0 ? '+' : ''}${f.gain.toFixed(1)} dB`, width: widthLabel(f, p) };
   });
 }
 

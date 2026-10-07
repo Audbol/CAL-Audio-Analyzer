@@ -10,7 +10,7 @@ import { smoothCurve } from '../dsp/freq';
 import { interpLog } from '../dsp/target';
 import { optionsMenu, optRow, optHead } from '../ui/popover';
 import { showFirExport } from './fir-export';
-import { CONSOLE_PROFILES, consoleText, fitToProfile, octaveFraction, profileById, qToOctaves, widthName, widthToQ, type ConsoleEqProfile } from '../dsp/console-eq';
+import { bandWidth, CONSOLE_PROFILES, consoleText, fitToProfile, octaveFraction, profileById, widthName, widthRangeText, widthToQ, type ConsoleEqProfile } from '../dsp/console-eq';
 
 export interface EqSnapshot {
   source: string;
@@ -313,18 +313,23 @@ export class EqView implements View {
       if (f.type === 'highpass') return void this.list.append(this.hpfRow(f, i));
       const octaves = p.width === 'octaves';
       // Octave consoles: the width's unit, or its fraction of an octave where it is one (1/3, 1/6…)
-      const unitText = () => (p.fractions && octaveFraction(qToOctaves(f.q))) || 'oct';
+      const unitText = () => (p.fractions && octaveFraction(bandWidth(f, p))) || 'oct';
       const unit = h('span', { class: 'unit', title: 'Octaves (the fraction of an octave where it is one)' }, unitText());
       const inp = (key: 'f' | 'gain' | 'q', step: string) => {
-        const shown = key === 'q' && octaves ? +qToOctaves(f.q).toFixed(2) : f[key];
+        const shown = key === 'q' && octaves ? +bandWidth(f, p).toFixed(2) : f[key];
         const el = h('input', { type: 'number', class: 'num', value: String(shown), step }) as HTMLInputElement;
         el.addEventListener('change', () => {
           const v = +el.value;
           if (!Number.isFinite(v) || v <= 0 && key !== 'gain') return;
-          f[key] = key === 'q' ? widthToQ(v, p) : v;
+          if (key === 'gain' && octaves) {
+            // The width stays as set on the console (on Allen & Heath consoles its Q follows the gain)
+            const w = bandWidth(f, p);
+            f.gain = v;
+            f.q = widthToQ(w, p, f);
+          } else f[key] = key === 'q' ? widthToQ(v, p, f) : v;
           // Within the console's ranges
           Object.assign(f, fitToProfile(f, p));
-          el.value = String(key === 'q' && octaves ? +qToOctaves(f.q).toFixed(2) : f[key]);
+          el.value = String(key === 'q' && octaves ? +bandWidth(f, p).toFixed(2) : f[key]);
           unit.textContent = unitText();
           this.dirty = true;
         });
@@ -429,7 +434,7 @@ export class EqView implements View {
       const el = this.el.querySelector<HTMLInputElement>(`[data-eq-opt="${k}"]`);
       if (el) el.value = String(this.opt[k]);
     }
-    const width = p.width === 'octaves' ? `width ${+qToOctaves(p.qMin).toFixed(2)} to ${+qToOctaves(p.qMax).toFixed(2)} octave` : `Q ${p.qMin}–${p.qMax}`;
+    const width = widthRangeText(p);
     const gain = -p.gainMin === p.gainMax ? `±${p.gainMax} dB` : `${p.gainMin} to +${p.gainMax} dB`;
     this.profileInfo.replaceChildren(
       h('b', {}, p.id === 'generic' ? p.name : `${p.name}: ${p.section}`),
