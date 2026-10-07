@@ -75,6 +75,14 @@ export class TransferView extends DockedView implements View {
         optRow('Blank below', cohSlider, cohVal),
         optRow('Target tolerance', this.target.toleranceControl()),
         optRow('Several mics', micAverageControl(app)),
+        optRow('Air absorption', (() => {
+          const c = h('input', { type: 'checkbox', checked: app.settings.air.compensate, dataset: { airQuick: '' }, title: 'Add back the treble the air takes over each measurement’s distance (Tools → Setup → Air)' }) as HTMLInputElement;
+          c.addEventListener('change', () => {
+            app.settings.air.compensate = c.checked;
+            app.airChanged();
+          });
+          return h('label', { class: 'cmp-check' }, c, 'Compensate');
+        })()),
         optHead('Layout'),
         h('div', { class: 'opt-ctl' }, this.resetLayoutButton()),
       ],

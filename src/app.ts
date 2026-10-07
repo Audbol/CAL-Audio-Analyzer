@@ -3,6 +3,8 @@ import type { GeneratorType } from './audio/protocol';
 import { logGrid, SMOOTHING_OPTIONS } from './dsp/freq';
 import { calCorrection } from './dsp/calibration';
 import { SplMeter, type SplReading } from './dsp/spl';
+import { LoudnessMeter } from './dsp/loudness';
+import { airLoss } from './dsp/air';
 import { speedOfSound } from './dsp/delay';
 import { Measurement, type AnalysisNeeds } from './measurement';
 import { RTA_RATE } from './dsp/spectrum';
@@ -96,6 +98,8 @@ export class App {
   grid = logGrid(20, 20000, 48);
   measurements: Measurement[] = [];
   spl: SplMeter = new SplMeter(48000, this.settings.splWeighting);
+  /** Loudness meter (LUFS): fed only while it is switched on (SPL tab → Loudness). */
+  loudness = new LoudnessMeter(48000);
   splReading: SplReading | null = null;
   /** The reading the numbers show: refreshed 4 times per second, independent of the display's frame rate. */
   splDisplay: SplReading | null = null;
@@ -375,7 +379,10 @@ export class App {
       if (this.logger.running) this.logger.attach(this.spl);
       this.syncCal();
       this.splUnsub?.();
+      if (this.loudness.fs !== this.fs) this.loudness = new LoudnessMeter(this.fs);
       this.splUnsub = this.engine.onData((blocks) => {
+        const ld = this.settings.loudness;
+        if (ld.on && blocks[ld.left]) this.loudness.process(ld.right >= 0 && blocks[ld.right] ? [blocks[ld.left], blocks[ld.right]] : [blocks[ld.left]]);
         const b = blocks[this.settings.splChannel];
         if (b) this.spl.process(b);
       });
@@ -702,6 +709,51 @@ export class App {
     return c;
   }
 
+  /**
+   * Everything added to a measurement's magnitude: its mic's correction file and, when compensated, the air
+   * absorption over its distance (from its delay, or the distance set in Tools). Cached, so the graphs only
+   * recompute when it changes.
+   */
+  correctionFor(cfg: MeasurementConfig): Float64Array | null {
+    const cal = this.calFor(cfg.mic);
+    const air = this.settings.air;
+    if (!air.compensate) return cal;
+    const d = air.distance > 0 ? air.distance : this.measurementDistance(cfg);
+    if (!(d > 0.05)) return cal;
+    const mic = this.micOn(cfg.mic);
+    const calKey = mic?.micCal ? `${mic.id}|${mic.micCal.name}|${mic.micCal.freqs.length}` : 'none';
+    const key = `air|${calKey}|${d.toFixed(1)}|${this.settings.tempC}|${air.humidity}|${this.grid.length}`;
+    let c = this.calCache.get(key);
+    if (!c) {
+      // Distances change with each delay found: keep the cache small
+      if (this.calCache.size > 200) this.calCache.clear();
+      const loss = airLoss(this.grid, Math.round(d * 10) / 10, this.settings.tempC, air.humidity);
+      c = Float64Array.from(loss, (v, i) => v + (cal ? cal[i] : 0));
+      this.calCache.set(key, c);
+    }
+    return c;
+  }
+
+  /** Temperature, humidity or air compensation changed (here or on a remote): save, share and redraw. */
+  airChanged(): void {
+    this.save();
+    for (const v of this.views) v.invalidate?.();
+    this.syncSettingControls();
+    this.syncAirControls();
+  }
+
+  /** The air controls (Tools card, Transfer options) show the current settings. */
+  private syncAirControls(): void {
+    for (const c of document.querySelectorAll<HTMLInputElement>('input[data-air-quick], input[data-air="compensate"]')) c.checked = this.settings.air.compensate;
+    const tools = this.views.find((x) => x.id === 'tools') as ToolsView | undefined;
+    tools?.airCard?.renderTable();
+  }
+
+  /** A measurement's distance from its delay (m), at the current temperature. */
+  measurementDistance(cfg: MeasurementConfig): number {
+    return (cfg.delay / this.fs) * speedOfSound(this.settings.tempC);
+  }
+
   /** dB to add to dBFS for dB SPL on an input (0 when that input's mic isn't calibrated). */
   splOffsetFor(channel: number): number {
     const m = this.micOn(channel);
@@ -750,6 +802,10 @@ export class App {
     const restart = changed.includes('rtaAverageCurve');
     for (const k of changed) (s as unknown as Record<string, unknown>)[k] = JSON.parse(JSON.stringify(t[k]));
     if (changed.includes('customTargets')) setCustomTargets(s.customTargets);
+    if (changed.includes('air')) {
+      (this.views.find((x) => x.id === 'tools') as ToolsView | undefined)?.airCard?.render();
+      this.syncAirControls();
+    }
     if (restart) for (const m of this.measurements) m.resetAverage();
     this.syncSettingControls();
     for (const v of this.views) v.invalidate?.();
@@ -2017,7 +2073,7 @@ export class App {
         const fromHost = elsewhere && !!m.hostFrame && now - m.hostFrameAt < 1500;
         if (!this.busy) m.process(this.engine, fromHost ? { rta: false, tf: needs.tfLocal, tfWindow: 1 } : this.remote ? { rta: needs.rta, tf: needs.tf || needs.tfLocal } : { rta: true, tf: true });
         if (draw) {
-          const cal = this.calFor(m.cfg.mic);
+          const cal = this.correctionFor(m.cfg);
           if (fromHost) m.renderHost(this.settings, cal, showTf);
           else m.render(this.settings, cal);
         }

@@ -4,6 +4,7 @@ import { Plot } from '../ui/plot';
 import { h, icon, select, clear } from '../ui/dom';
 import { allTargets, autoEq, byBand, eqResponse, findTarget, isBand, TARGETS, targetsVersion, type AutoEqResult, type PeqFilter } from '../dsp/eq';
 import { showTargetEditor } from '../ui/target-editor';
+import { EqBoard } from '../ui/eq-board';
 import { EDIT_TARGETS } from './target-overlay';
 import { smoothCurve } from '../dsp/freq';
 import { interpLog } from '../dsp/target';
@@ -278,8 +279,19 @@ export class EqView implements View {
     this.dirty = true;
   }
 
+  /** The big-number window for entering the EQ on the console. */
+  private board = new EqBoard();
+  private boardInfo(): string {
+    const t = findTarget(this.target);
+    return [this.sourceName && `“${this.sourceName}”`, t && `→ ${t.label}`].filter(Boolean).join(' ');
+  }
+  openBoard(): void {
+    if (!this.board.open(this.filters, this.profile, this.boardInfo())) this.app.toast('The window was blocked. Allow pop-ups for this app and try again.', 'warn');
+  }
+
   /** Copy and export buttons: only useful once there are filters. */
   private copyBtns = [
+    h('button', { class: 'btn small accent', dataset: { eqBoard: '' }, title: 'Every band in large type in its own window, to read from the console while entering it', onclick: () => this.openBoard() }, icon('popout', 13), 'EQ board'),
     h('button', { class: 'btn small', onclick: () => this.copy('text') }, 'Copy filter text'),
     h('button', { class: 'btn small', onclick: () => this.copy('csv') }, 'Copy CSV'),
     h('button', { class: 'btn small adv-only', dataset: { firExport: '' }, title: 'The EQ as an impulse response (WAV) for convolution in a DSP or player', onclick: () => showFirExport(this.app, this.filters, this.sourceName) }, icon('download', 13), 'Export FIR…'),
@@ -540,6 +552,7 @@ export class EqView implements View {
     this.dirty = false;
     const r = this.result;
     this.verifyBox.hidden = !r;
+    this.board.update(this.filters, this.profile, this.boardInfo());
     const day = CHART.bg === '#ffffff';
     if (r) {
       const x = this.freqs;

@@ -201,6 +201,12 @@ No calibrator? Place a reference sound level meter next to the microphone, play 
 
 Without calibration, levels are shown in **dBFS** instead of **dB SPL**. That is fine for tuning, but not for sound level limits.
 
+### Air: temperature, humidity and air absorption
+
+**Tools → Setup → Air** sets the air temperature and humidity. The temperature sets the speed of sound for delays and distances. Together they set how much treble the air absorbs over distance (ISO 9613-1): little at short range, but several dB at 10 kHz over a long throw, and more in dry air.
+
+Turn on **Compensate air absorption** to add that loss back on Spectrum, Transfer, EQ and sweeps, so you see and EQ the loudspeaker's own response rather than the air's. Leave it off to see the sound as it arrives. The distance is each measurement's own, from its delay, or a **Distance** you set; the delay includes a little system latency. The table shows the loss at 4, 8 and 16 kHz for each measurement. The quick switch is also in **Transfer → Options → Air absorption**. Traces keep the compensation they were captured with.
+
 ## 7. Measure the transfer function
 
 The transfer function shows what the system does to the signal. It compares the microphone with the reference.
@@ -345,7 +351,7 @@ Choose **Custom targets…** at the end of any target list (Spectrum, Transfer, 
    - Where the system **rolls off** at either end of the range (more than 6 dB under the target down to the lowest frequency, or up to the highest), the assistant leaves it alone and says so: boosting a loudspeaker below or above its range only costs amplifier headroom and driver excursion. That part is shaded in the graphs. Extend the system with subs or adjust the crossover instead.
    - The **upper graph** shows the response against the target: dashed as measured, solid as predicted with the EQ. The shaded band is ±3 dB around the target.
    - The **lower graph** shows the EQ itself. Each filter is numbered where it acts, as in the list; cuts are shaded below 0 dB and boosts above.
-6. Copy the filters with **Copy filter text** or **Copy CSV**, then enter them in your processor.
+6. Copy the filters with **Copy filter text** or **Copy CSV**, then enter them in your processor. Or select **EQ board**: a window of its own shows each band on a row in large type (frequency, gain and width as your console shows them), easy to read from the console. Make it fullscreen on a second screen or a tablet. Tap a band when it is entered on the console: it turns green and dims. The board follows any change in the EQ tab, and a band whose values change loses its mark.
 7. **Check the result.** Measure again at the same position (or average the same positions into a new trace). Under the filter list, in **Check the result**, choose the live measurement or the new trace and select **Compare**. The upper graph adds the measured result (green) beside the prediction (blue), and the panel says how far it is from the target and where it differs most from the prediction, for example *+3.2 dB at 63 Hz*. A large difference usually means a filter was entered differently on the console, or the mic moved.
 
 **Export the EQ as an FIR filter:** some processors, convolution players and plug-ins load an impulse response instead of parametric filters. Select **Export FIR…** under the filter list, then choose:
@@ -425,6 +431,14 @@ One microphone position shows that spot only. The room's modes change a lot from
 
 This also works from a phone or tablet: the sweeps run on the measurement computer.
 
+### Distortion
+
+The **Distortion** tab shows how much of each frequency comes back as harmonics, in percent of the tone itself: **THD** (total harmonic distortion, bold) and the 2nd to 5th harmonics separately. The cards give THD at 100 Hz, 1 kHz and 10 kHz and the highest value with its frequency.
+
+- Distortion rises with level: compare measurements made at the same **Level**, and measure close to the loudspeaker so the room adds little.
+- The grey area is the **measurement floor**: what the background noise alone would show. Values in it are noise, not distortion, and the cards say *< 0.8 % (noise)*. A louder sweep, a quieter room or more repeats lower it.
+- Moving air (wind, air conditioning) has the same effect as noise. Measure outdoors when it is calm.
+
 ### Tips
 
 - A **peak-to-noise** ratio of 40 dB or more gives reliable reverberation times. If it is lower, use a longer sweep, a higher level, or more repeats (under **Sweep options**).
@@ -459,6 +473,17 @@ The noise log records the level for hours: one row per interval, with Leq, Lmax 
 7. Select **Export log CSV** to save the log as a spreadsheet file.
 
 While the log runs, the weighting and the input are locked, so every row is measured the same way.
+
+### Loudness (LUFS)
+
+The loudness meter measures a programme signal to ITU-R BS.1770 and EBU R128, for example the console's main mix fed into an input. LUFS is the level of the signal, not the sound level in the room; that is what the Sound level panel measures.
+
+1. Select **Loudness** in the SPL toolbar to show the panel.
+2. Choose the **Input**, and for a stereo programme the **Right** input; both channels count equally.
+3. Choose the **Target**: −23 LUFS (EBU R128), −24 LKFS (ATSC A/85), −16 LUFS (podcasts) or −14 LUFS (streaming).
+4. Select **Measure**.
+
+The panel shows **short-term** loudness (3 s) large, then **integrated** loudness since you started (gated as the standard describes) with how far it is above or below the target, **momentary** loudness (400 ms) with its maximum, the **loudness range** (LRA) and the highest **true peak** (dBTP, between samples too). A true peak above −1 dBTP is highlighted. **Reset** starts the integrated loudness, range and true peak again; **Pause** stops measuring.
 
 ## 14. Use a phone or tablet as a remote
 

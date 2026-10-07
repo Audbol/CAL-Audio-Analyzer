@@ -4413,3 +4413,173 @@ html.compact .tgt-plot {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
+
+/* Sweep & Room → Distortion */
+.thd-tab {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.thd-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px 14px 0;
+}
+.thd-fig {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+.thd-fig span {
+  font-size: 11px;
+  color: var(--dim);
+}
+.thd-fig b {
+  font-family: var(--mono);
+  font-size: 18px;
+}
+.thd-info p {
+  flex: 1 1 100%;
+  margin: 2px 0 0;
+}
+.thd-tab .pane.fill {
+  flex: 1;
+  min-height: 220px;
+}
+
+/* SPL tab → Loudness (LUFS): controls above a readout that scales with the panel */
+.ld-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.ld-controls {
+  padding: 8px 12px 0;
+  align-items: center;
+}
+.ld-controls > .ld-hint {
+  cursor: help;
+}
+.ld-fit {
+  position: relative;
+  flex: 1;
+  min-height: 120px;
+}
+
+/* EQ board (its own window): one band per row, its numbers as large as the row allows */
+body.eq-board-body {
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+.eq-board-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  padding: 10px 16px;
+  font-size: 15px;
+  border-bottom: 1px solid var(--border);
+}
+.eq-board-hint {
+  margin-left: auto;
+  font-size: 12px;
+}
+.eq-board {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-auto-rows: minmax(0, 1fr);
+  gap: 8px;
+  padding: 8px;
+}
+.eq-board-empty {
+  align-self: center;
+  text-align: center;
+  font-size: 20px;
+  color: var(--dim);
+}
+.eq-board-band {
+  container-type: size;
+  display: grid;
+  grid-template-columns: 13% repeat(3, minmax(0, 1fr));
+  align-items: center;
+  gap: 2cqw;
+  min-height: 56px;
+  padding: 0 2.5cqw;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: var(--panel-2);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  overflow: hidden;
+}
+.eq-board-band:focus-visible {
+  outline: 3px solid var(--accent);
+}
+.eq-board-name {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15em;
+  min-width: 0;
+  font-size: clamp(11px, min(18cqh, 2.4cqw), 48px);
+}
+.eq-board-name b {
+  color: var(--accent);
+  font-size: 1.6em;
+  line-height: 1;
+}
+.eq-board-name span {
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.eq-board-check {
+  color: #2bd67b !important;
+  font-weight: 700;
+  visibility: hidden;
+}
+.eq-board-cell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1;
+}
+.eq-board-label {
+  font-size: clamp(9px, min(13cqh, 1.6cqw), 30px);
+  color: var(--dim);
+  margin-bottom: 0.2em;
+  white-space: nowrap;
+}
+.eq-board-value {
+  font-family: var(--mono);
+  font-weight: 600;
+  white-space: nowrap;
+  font-size: clamp(14px, min(52cqh, 5.2cqw), 260px);
+  letter-spacing: -0.03em;
+}
+.eq-board-cell.cut .eq-board-value {
+  color: var(--accent);
+}
+.eq-board-cell.boost .eq-board-value {
+  color: var(--warn, #ffb020);
+}
+.eq-board-band.entered {
+  border-color: #2bd67b;
+  opacity: 0.5;
+}
+.eq-board-band.entered .eq-board-check {
+  visibility: visible;
+}

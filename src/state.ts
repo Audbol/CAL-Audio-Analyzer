@@ -127,6 +127,13 @@ export interface Settings {
   transferLayout: DockLayout | null;
   /** Panel arrangement of the SPL tab (sound level, history, noise log). */
   splLayout: DockLayout | null;
+  /**
+   * Air (ISO 9613-1): relative humidity (%) for air absorption; compensate it on Spectrum, Transfer and EQ; the
+   * distance (m) to compensate, 0 = each measurement's own distance from its delay.
+   */
+  air: { humidity: number; compensate: boolean; distance: number };
+  /** Loudness meter (SPL tab): on or off, the inputs measured (right −1: mono) and the target (LUFS). */
+  loudness: { on: boolean; left: number; right: number; target: number };
   remoteServer: RemoteServerSettings;
   peakHold: boolean;
   splWeighting: Weighting;
@@ -254,6 +261,8 @@ export function defaultSettings(): Settings {
     spectrumLayout: null,
     transferLayout: null,
     splLayout: null,
+    loudness: { on: false, left: 0, right: -1, target: -23 },
+    air: { humidity: 50, compensate: false, distance: 0 },
     remoteServer: { enabled: false, port: 8520, pin: randomPin(), allowControl: true },
     peakHold: false,
     splWeighting: 'A',
@@ -345,7 +354,7 @@ export function loadSettings(): Settings {
       const mic = s.mics.find((x) => x.channel === m.mic);
       if (mic) m.micId = mic.id;
     }
-    return { ...d, ...s, generator: { ...d.generator, ...(s.generator ?? {}) }, remoteServer: { ...d.remoteServer, ...(s.remoteServer ?? {}) }, playlist: { ...d.playlist, ...(s.playlist ?? {}) }, session: { ...d.session, ...(s.session ?? {}) }, room: { ...d.room, ...(s.room ?? {}) }, nativeAudio: { ...d.nativeAudio, ...(s.nativeAudio ?? {}) }, watermark: { ...d.watermark, ...(s.watermark ?? {}) }, waterfallView: { ...d.waterfallView, ...(s.waterfallView ?? {}) }, crossover: { ...d.crossover, ...(s.crossover ?? {}) } } as Settings;
+    return { ...d, ...s, generator: { ...d.generator, ...(s.generator ?? {}) }, remoteServer: { ...d.remoteServer, ...(s.remoteServer ?? {}) }, playlist: { ...d.playlist, ...(s.playlist ?? {}) }, session: { ...d.session, ...(s.session ?? {}) }, room: { ...d.room, ...(s.room ?? {}) }, nativeAudio: { ...d.nativeAudio, ...(s.nativeAudio ?? {}) }, watermark: { ...d.watermark, ...(s.watermark ?? {}) }, waterfallView: { ...d.waterfallView, ...(s.waterfallView ?? {}) }, crossover: { ...d.crossover, ...(s.crossover ?? {}) }, loudness: { ...d.loudness, ...(s.loudness ?? {}) }, air: { ...d.air, ...(s.air ?? {}) } } as Settings;
   } catch {
     return d;
   }

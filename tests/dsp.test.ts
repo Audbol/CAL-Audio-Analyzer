@@ -279,6 +279,24 @@ describe('log sweep', () => {
     expect(thd1k).toBeGreaterThan(3.5);
     expect(thd1k).toBeLessThan(6.5);
   });
+
+  it('reports the measurement floor: distortion below it is noise', () => {
+    const grid = logGrid(100, 5000, 12);
+    // Clean and distorted: the floor is far below the 5 % that is there
+    const rec = new Float32Array(sweep.length + FS);
+    for (let i = 0; i < sweep.length; i++) rec[i] = sweep[i] + 0.2 * sweep[i] * sweep[i];
+    const hd = harmonicDistortion(deconvolve(rec, sweep, spec), spec, grid, 3);
+    expect(interp(grid, hd.floor, 1000)).toBeLessThan(0.5);
+    // A linear system in noise: no distortion, so the THD found is the noise, at about the floor
+    const r = rng(5);
+    const noisy = new Float32Array(sweep.length + FS);
+    for (let i = 0; i < noisy.length; i++) noisy[i] = (i < sweep.length ? sweep[i] : 0) + 0.003 * r();
+    const hn = harmonicDistortion(deconvolve(noisy, sweep, spec), spec, grid, 3);
+    const f1k = interp(grid, hn.floor, 1000);
+    const t1k = interp(grid, hn.thd, 1000);
+    expect(f1k).toBeGreaterThan(0.01);
+    expect(t1k).toBeLessThan(f1k * 4);
+  });
 });
 
 describe('room acoustics', () => {

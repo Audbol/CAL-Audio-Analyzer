@@ -34,6 +34,12 @@ interface SweepResult {
   thd: Float64Array;
   h2: Float64Array;
   h3: Float64Array;
+  h4: Float64Array;
+  h5: Float64Array;
+  /** THD (%) the background noise alone would show (see harmonicDistortion). */
+  floor: Float64Array;
+  /** Fundamental level of the distortion analysis, dB (same reference as the harmonics). */
+  fund: Float64Array;
   acoustics: AcousticsResult;
   etc: Float64Array;
   peakDb: number;
@@ -75,7 +81,10 @@ export class RoomView implements View {
   private decay: Plot;
   private table = h('div', { class: 'rt-table' });
   private cards = h('div', { class: 'cards' });
-  private tab: 'fr' | 'ir' | 'rt' | 'wf' | 'dx' = 'fr';
+  private tab: 'fr' | 'thd' | 'ir' | 'rt' | 'wf' | 'dx' = 'fr';
+  /** Distortion: THD and harmonics 2–5 in percent of the fundamental, with the measurement floor. */
+  private thdPlot: Plot;
+  private thdInfo = h('div', { class: 'thd-info', 'aria-live': 'polite' });
   private wf = new WaterfallPlot('Waterfall: cumulative spectral decay');
   private wfOpts: { preset: 'bass' | 'full'; range: number } = { preset: 'bass', range: 45 };
   private wfFor: { result: unknown; preset: string } | null = null;
@@ -99,7 +108,9 @@ export class RoomView implements View {
     this.wf.view = { ...app.settings.waterfallView };
     this.wf.enableRotation();
     this.wf.onViewChange = () => this.saveWfView();
-    this.fr = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: -50, yMax: 10, yUnit: 'dB', yStep: 6, title: 'Frequency response & harmonic distortion', showNote: true, yLimits: [-200, 100] });
+    this.fr = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: -50, yMax: 10, yUnit: 'dB', yStep: 6, title: 'Frequency response', showNote: true, yLimits: [-200, 100] });
+    this.thdPlot = new Plot({ xType: 'log', xMin: 20, xMax: 20000, yMin: 0, yMax: 5, yUnit: '%', yStep: 1, title: 'Harmonic distortion (% of the fundamental, at the frequency played)', yLimits: [0, 100] });
+    this.thdPlot.placeholder = 'No sweep yet: press Measure sweep';
     this.irPlot = new Plot({ xType: 'lin', xMin: -5, xMax: 300, yMin: -90, yMax: 3, yUnit: 'dB', xUnit: 'ms', yStep: 10, title: 'Energy-time curve', yLimits: [-200, 20] });
     this.notes = new GraphNotes(app, 'room', this.fr);
     for (const p of [this.fr, this.irPlot]) p.placeholder = 'No sweep yet: press Measure sweep';
@@ -177,8 +188,9 @@ export class RoomView implements View {
 
   private renderTabs(): void {
     clear(this.tabHost);
-    const tabs: { id: 'fr' | 'ir' | 'rt' | 'wf' | 'dx'; label: string }[] = [
+    const tabs: { id: 'fr' | 'thd' | 'ir' | 'rt' | 'wf' | 'dx'; label: string }[] = [
       { id: 'fr', label: 'Frequency response' },
+      { id: 'thd', label: 'Distortion' },
       { id: 'ir', label: 'Impulse / ETC' },
       { id: 'rt', label: 'Reverberation (RT60)' },
       { id: 'wf', label: 'Waterfall' },
@@ -192,6 +204,7 @@ export class RoomView implements View {
   private showTab(): void {
     clear(this.content);
     if (this.tab === 'fr') this.content.append(h('div', { class: 'pane fill' }, this.fr.el));
+    else if (this.tab === 'thd') this.content.append(h('div', { class: 'thd-tab' }, this.thdInfo, h('div', { class: 'pane fill' }, this.thdPlot.el)));
     else if (this.tab === 'ir') this.content.append(h('div', { class: 'pane fill' }, this.irPlot.el));
     else if (this.tab === 'wf') {
       const o = this.wfOpts;
@@ -509,6 +522,10 @@ export class RoomView implements View {
       thd: hd.thd,
       h2: hd.harmonics[0],
       h3: hd.harmonics[1],
+      h4: hd.harmonics[2],
+      h5: hd.harmonics[3],
+      floor: hd.floor,
+      fund: hd.fundamental,
       acoustics,
       etc,
       peakDb: 10 * Math.log10(peak / Math.max(noise, 1e-30)),
@@ -532,7 +549,9 @@ export class RoomView implements View {
     const pow = Float64Array.from(sp.mag, (m) => m * m);
     const grid = this.app.grid;
     new LogSmoother(grid, fs / size, sp.mag.length).apply(pow, this.opts.smoothing, r.fr);
-    const cal = this.app.calFor(r.channel);
+    // The mic correction and, when compensated, the air absorption over that measurement's distance
+    const cfg = this.app.settings.measurements.find((m) => m.mic === r.channel);
+    const cal = cfg ? this.app.correctionFor(cfg) : this.app.calFor(r.channel);
     for (let i = 0; i < grid.length; i++) {
       r.fr[i] = 10 * Math.log10(Math.max(r.fr[i], 1e-30)) + (cal ? cal[i] : 0);
       if (grid[i] < r.spec.f1 || grid[i] > r.spec.f2) r.fr[i] = NaN;
@@ -556,17 +575,8 @@ export class RoomView implements View {
     mid.sort((a, b) => a - b);
     const ref = mid.length ? mid[Math.floor(mid.length / 2)] : 0;
     const fr = Float64Array.from(r.fr, (v) => v - ref);
-    // Only show distortion where the fundamental is strong enough for a meaningful ratio
-    const valid = (i: number) => grid[i] * 2 <= r.spec.f2 && Number.isFinite(fr[i]) && fr[i] > -15;
-    const hdOffset = (arr: Float64Array) => Float64Array.from(arr, (v, i) => (valid(i) ? v - ref : NaN));
-    // THD drawn as a level on the same scale as the response and harmonics
-    const thdDb = Float64Array.from(r.thd, (v, i) => fr[i] + 20 * Math.log10(Math.max(v / 100, 1e-6)));
-    this.fr.series = [
-      { id: 'fr', label: 'Response', x: grid, y: fr, color: CHART.accent, width: 2 },
-      { id: 'h2', label: 'H2', x: grid, y: smoothDb(hdOffset(r.h2)), color: CHART.warn, width: 1.2 },
-      { id: 'h3', label: 'H3', x: grid, y: smoothDb(hdOffset(r.h3)), color: '#ff5c7a', width: 1.2 },
-      { id: 'thd', label: 'THD', unit: 'dB', x: grid, y: smoothDb(Float64Array.from(thdDb, (v, i) => (valid(i) ? v : NaN))), color: '#b18cff', width: 1.2, dash: [4, 3] },
-    ];
+    this.fr.series = [{ id: 'fr', label: 'Response', x: grid, y: fr, color: CHART.accent, width: 2 }];
+    this.renderDistortion(r, fr);
     this.applyTarget();
     const t = Float64Array.from(r.etc, (_, i) => ((i - r.t0) / r.d.fs) * 1000);
     this.irPlot.series = [{ id: 'etc', label: 'ETC', x: t, y: r.etc, color: CHART.accent, width: 1.2, fill: true }];
@@ -586,6 +596,56 @@ export class RoomView implements View {
     this.renderCards(r);
     this.renderTable(ac);
     this.dirty = true;
+  }
+
+  /**
+   * The Distortion tab: THD and harmonics 2–5 in percent of the fundamental, where the fundamental is strong
+   * enough (within 15 dB of the response's midband) and the second harmonic is still inside the sweep; the
+   * measurement floor shaded below; and the main figures in words.
+   */
+  private renderDistortion(r: SweepResult, fr: Float64Array): void {
+    const grid = this.app.grid;
+    const valid = (i: number) => grid[i] * 2 <= r.spec.f2 && grid[i] >= r.spec.f1 && Number.isFinite(fr[i]) && fr[i] > -15;
+    const pct = (db: Float64Array) => smoothPct(Float64Array.from(db, (v, i) => (valid(i) ? 100 * Math.pow(10, (v - r.fund[i]) / 20) : NaN)));
+    const thd = smoothPct(Float64Array.from(r.thd, (v, i) => (valid(i) ? v : NaN)));
+    const floor = smoothPct(Float64Array.from(r.floor, (v, i) => (valid(i) ? Math.min(v, 100) : NaN)));
+    // Where THD is above the floor it is distortion; at or below it, noise
+    const measurable = (i: number) => Number.isFinite(thd[i]) && thd[i] > floor[i] * 1.4;
+    let top = 1;
+    for (let i = 0; i < grid.length; i++) if (Number.isFinite(thd[i]) && grid[i] > 40) top = Math.max(top, thd[i]);
+    const yMax = Math.min(100, top <= 2 ? 2 : top <= 5 ? 5 : top <= 10 ? 10 : top <= 20 ? 20 : top <= 50 ? 50 : 100);
+    if (this.thdPlot.cfg.yMax !== yMax) this.thdPlot.setDefaults({ yMin: 0, yMax });
+    const zero = Float64Array.from(grid, () => 0);
+    this.thdPlot.series = [
+      { id: 'floor', label: 'Measurement floor (noise)', x: grid, y: floor, band: zero, color: CHART.neutral, quiet: true },
+      { id: 'thd', label: 'THD', unit: '%', x: grid, y: thd, color: '#b18cff', width: 2.4 },
+      { id: 'h2', label: 'H2', unit: '%', x: grid, y: pct(r.h2), color: CHART.warn, width: 1.3 },
+      { id: 'h3', label: 'H3', unit: '%', x: grid, y: pct(r.h3), color: '#ff5c7a', width: 1.3 },
+      { id: 'h4', label: 'H4', unit: '%', x: grid, y: pct(r.h4), color: '#2ec4b6', width: 1, dash: [4, 3] },
+      { id: 'h5', label: 'H5', unit: '%', x: grid, y: pct(r.h5), color: '#7cff6b', width: 1, dash: [4, 3] },
+    ];
+    // The figures: THD at 100 Hz, 1 kHz and 10 kHz, and the highest measurable value
+    const at = (f: number) => {
+      const i = grid.findIndex((x) => x >= f);
+      if (i < 0 || !Number.isFinite(thd[i])) return '—';
+      return measurable(i) ? fmtPct(thd[i]) : `< ${fmtPct(floor[i])} (noise)`;
+    };
+    let worst = -1;
+    for (let i = 0; i < grid.length; i++) if (measurable(i) && (worst < 0 || thd[i] > thd[worst])) worst = i;
+    const fmtF = (f: number) => (f >= 1000 ? `${(f / 1000).toFixed(f >= 10000 ? 0 : 1)} kHz` : `${Math.round(f)} Hz`);
+    const level = 20 * Math.log10(r.spec.amplitude);
+    const fig = (label: string, value: string, hint: string) => h('div', { class: 'thd-fig', title: hint }, h('span', {}, label), h('b', {}, value));
+    this.thdInfo.replaceChildren(
+      fig('THD 100 Hz', at(100), 'Total harmonic distortion of a 100 Hz tone'),
+      fig('THD 1 kHz', at(1000), 'Total harmonic distortion of a 1 kHz tone'),
+      fig('THD 10 kHz', at(10000), 'Total harmonic distortion of a 10 kHz tone (harmonics up to the sweep’s top frequency)'),
+      fig('Highest', worst >= 0 ? `${fmtPct(thd[worst])} at ${fmtF(grid[worst])}` : '—', 'The highest THD above the measurement floor'),
+      h(
+        'p',
+        { class: 'dim small' },
+        `Sweep at ${level.toFixed(0)} dBFS. Distortion rises with level: compare measurements at the same level, and measure close to the loudspeaker so the room adds little. The grey area is the measurement floor: values in it are background noise, not distortion; a louder sweep or more repeats lower it.`,
+      ),
+    );
   }
 
   private renderCards(r: SweepResult): void {
@@ -774,6 +834,7 @@ export class RoomView implements View {
     if (!this.dirty) return;
     this.dirty = false;
     this.fr.draw();
+    this.thdPlot.draw();
     this.irPlot.draw();
     this.decay.draw();
     if (this.tab === 'wf') {
@@ -787,23 +848,27 @@ export class RoomView implements View {
   }
 }
 
-function smoothDb(y: Float64Array): Float64Array {
-  // Light 5-point moving average in dB for readability of harmonic traces
+/** Percent with sensible precision: 0.08 %, 0.8 %, 8 %. */
+function fmtPct(v: number): string {
+  return `${v < 0.1 ? v.toFixed(2) : v < 10 ? v.toFixed(1) : v.toFixed(0)} %`;
+}
+
+/** Light smoothing of a percent curve (neighbouring points; gaps stay gaps). */
+function smoothPct(y: Float64Array): Float64Array {
   const out = new Float64Array(y.length);
   for (let i = 0; i < y.length; i++) {
+    if (!Number.isFinite(y[i])) {
+      out[i] = NaN;
+      continue;
+    }
     let s = 0;
     let n = 0;
-    for (let k = -4; k <= 4; k++) {
-      const v = y[i + k];
-      if (Number.isFinite(v)) {
-        s += v;
-        n++;
-      }
-    }
-    out[i] = n ? s / n : NaN;
+    for (let k = -2; k <= 2; k++) if (Number.isFinite(y[i + k])) (s += y[i + k]), n++;
+    out[i] = s / n;
   }
   return out;
 }
+
 
 function fmtS(v: number): string {
   return Number.isFinite(v) ? `${v.toFixed(2)} s` : '—';

@@ -147,6 +147,11 @@ export interface DistortionResult {
   harmonics: Float64Array[];
   /** THD in percent. */
   thd: Float64Array;
+  /**
+   * The THD (percent) that the measurement's background noise alone would show: below it a result is noise,
+   * not distortion (raise the sweep level or lower the noise).
+   */
+  floor: Float64Array;
 }
 
 /**
@@ -160,12 +165,18 @@ export function harmonicDistortion(d: Deconvolution, spec: SweepSpec, grid: Floa
   const fundSeg = segment(d.ir, d.peak - (winLen >> 4), winLen, winLen >> 5, winLen >> 2);
   const fund = spectrumOf(fundSeg, fs, size);
   const harmSpec: Spectrum[] = [];
+  // The background noise through the same windows: 70 % of the sweep length before the linear IR, well before
+  // the harmonic IRs used here (only the ~(f2/f1)^0.7-th harmonic would arrive there) and inside the span where
+  // the recording's noise is spread by the deconvolution
+  const noiseSpec: Spectrum[] = [];
+  const noiseAt = d.peak - Math.round(0.7 * spec.duration * fs);
   for (let k = 2; k <= maxHarmonic; k++) {
     const off = Math.round(harmonicOffset(spec, k) * fs);
     const gap = Math.round((harmonicOffset(spec, k) - harmonicOffset(spec, k - 1)) * fs);
     const len = Math.min(winLen, Math.max(64, Math.round(gap * 0.9)));
     const seg = segment(d.ir, d.peak - off - (len >> 4), len, len >> 5, len >> 2);
     harmSpec.push(spectrumOf(seg, fs, size));
+    noiseSpec.push(spectrumOf(segment(d.ir, noiseAt, len, len >> 5, len >> 2), fs, size));
   }
   const df = fs / size;
   const at = (s: Spectrum, f: number) => {
@@ -179,18 +190,33 @@ export function harmonicDistortion(d: Deconvolution, spec: SweepSpec, grid: Floa
   const fundamental = new Float64Array(n);
   const harmonics = harmSpec.map(() => new Float64Array(n));
   const thd = new Float64Array(n);
+  const floor = new Float64Array(n);
+  // Smoothed noise level (1/3 octave), so the floor is a steady line rather than noise itself
+  const noiseLevel = (s: Spectrum, f: number) => {
+    let e = 0;
+    let c = 0;
+    for (let b = Math.max(1, Math.floor((f / 1.12) / df)); b <= Math.min(s.mag.length - 1, Math.ceil((f * 1.12) / df)); b++) {
+      e += s.mag[b] * s.mag[b];
+      c++;
+    }
+    return c ? Math.sqrt(e / c) : 0;
+  };
   for (let i = 0; i < n; i++) {
     const f = grid[i];
     const m1 = at(fund, f);
     fundamental[i] = 20 * Math.log10(Math.max(m1, 1e-12));
     let sum = 0;
+    let noise = 0;
     harmSpec.forEach((s, j) => {
       const fk = f * (j + 2);
-      const mk = fk < Math.min(spec.f2, fs / 2) ? at(s, fk) : 0;
+      const inBand = fk < Math.min(spec.f2, fs / 2);
+      const mk = inBand ? at(s, fk) : 0;
       harmonics[j][i] = 20 * Math.log10(Math.max(mk, 1e-12));
       sum += mk * mk;
+      if (inBand) noise += noiseLevel(noiseSpec[j], fk) ** 2;
     });
     thd[i] = m1 > 0 ? (100 * Math.sqrt(sum)) / m1 : 0;
+    floor[i] = m1 > 0 ? (100 * Math.sqrt(noise)) / m1 : 100;
   }
-  return { freqs: grid, fundamental, harmonics, thd };
+  return { freqs: grid, fundamental, harmonics, thd, floor };
 }

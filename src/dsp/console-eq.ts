@@ -302,14 +302,30 @@ export function widthToQ(v: number, p: ConsoleEqProfile): number {
 const fmtF = (f: number) => (f >= 1000 ? `${(f / 1000).toFixed(f >= 10000 ? 1 : 2)} kHz` : `${Math.round(f)} Hz`);
 const kind = (f: PeqFilter) => (f.type === 'lowshelf' ? 'low shelf' : f.type === 'highshelf' ? 'high shelf' : f.type === 'highpass' ? 'high-pass' : 'bell');
 
-/** The filters as a list to enter on the console, band by band. */
-export function consoleText(filters: PeqFilter[], p: ConsoleEqProfile): string {
+/** One band as the console shows it: its name, the filter type, and frequency, gain and width as text. */
+export interface ConsoleBand {
+  name: string;
+  kind: string;
+  freq: string;
+  /** Signed, e.g. "+3.0 dB"; empty for a high-pass. */
+  gain: string;
+  /** "Q 4.3", "0.33 oct (1/3)", or the high-pass slope "24 dB/oct". */
+  width: string;
+}
+
+/** The filters as the console shows them, in its band order (the high-pass first). */
+export function consoleBands(filters: PeqFilter[], p: ConsoleEqProfile): ConsoleBand[] {
   const sorted = [...filters].sort(byBand);
   let band = 0;
-  const lines = sorted.map((f) => {
-    if (!isBand(f)) return `HPF: ${kind(f)}, ${fmtF(f.f)}, ${f.slope ?? 12} dB/oct`;
+  return sorted.map((f) => {
+    if (!isBand(f)) return { name: 'HPF', kind: kind(f), freq: fmtF(f.f), gain: '', width: `${f.slope ?? 12} dB/oct` };
     const i = band++;
-    return `${p.bandNames[i] ?? `Band ${i + 1}`}: ${kind(f)}, ${fmtF(f.f)}, ${f.gain > 0 ? '+' : ''}${f.gain.toFixed(1)} dB, ${widthLabel(f.q, p)}`;
+    return { name: p.bandNames[i] ?? `Band ${i + 1}`, kind: kind(f), freq: fmtF(f.f), gain: `${f.gain > 0 ? '+' : ''}${f.gain.toFixed(1)} dB`, width: widthLabel(f.q, p) };
   });
+}
+
+/** The filters as a list to enter on the console, band by band. */
+export function consoleText(filters: PeqFilter[], p: ConsoleEqProfile): string {
+  const lines = consoleBands(filters, p).map((b) => (b.gain ? `${b.name}: ${b.kind}, ${b.freq}, ${b.gain}, ${b.width}` : `${b.name}: ${b.kind}, ${b.freq}, ${b.width}`));
   return [`${p.name} – ${p.section}`, ...lines].join('\n');
 }

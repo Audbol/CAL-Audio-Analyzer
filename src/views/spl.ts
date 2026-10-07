@@ -9,8 +9,16 @@ import type { Weighting } from '../dsp/weighting';
 import type { SplReading } from '../dsp/spl';
 
 export function defaultSplLayout(): DockLayout {
-  return { order: ['meter', 'history', 'log'], sizes: { meter: 0.62, history: 1, log: 1.15 }, hidden: [], floating: {} };
+  return { order: ['meter', 'loudness', 'history', 'log'], sizes: { meter: 0.62, loudness: 0.9, history: 1, log: 1.15 }, hidden: ['loudness'], floating: {} };
 }
+
+/** Loudness targets of common delivery standards (LUFS). */
+const LOUDNESS_TARGETS = [
+  { value: -23, label: '−23 LUFS (EBU R128, broadcast)' },
+  { value: -24, label: '−24 LKFS (ATSC A/85, US TV)' },
+  { value: -16, label: '−16 LUFS (podcasts)' },
+  { value: -14, label: '−14 LUFS (streaming)' },
+];
 
 /**
  * Sound level meter with Leq, Lmax, peak, a 2-minute history and the noise log. Each of the three is a panel:
@@ -31,17 +39,28 @@ export class SplView extends DockedView implements View {
   private logStatus = h('div', { class: 'log-status' });
   private logVersion = -1;
   private logSpan = 10;
+  /** Loudness (LUFS) panel: controls, and the readout (sized like the sound level one). */
+  private ldBig = h('div', { class: 'spl-big' });
+  private ldStats = h('div', { class: 'spl-stats' });
+  private ldControls = h('div', { class: 'ld-controls row gap8 wrap' });
+  private ldShown = '';
 
   constructor(app: App) {
     super(app, 'splLayout', defaultSplLayout);
     this.el.classList.add('spl');
     const s = app.settings;
+    // Layouts saved before the loudness panel existed get it hidden (show it with the Loudness chip)
+    if (s.splLayout && !s.splLayout.order.includes('loudness')) {
+      s.splLayout.order.splice(1, 0, 'loudness');
+      s.splLayout.hidden.push('loudness');
+      s.splLayout.sizes.loudness = 0.9;
+    }
     this.history = new Plot({ xType: 'lin', xMin: -120, xMax: 0, yMin: 20, yMax: 120, yUnit: 'dB', xUnit: 's', yStep: 10, title: 'History (last 2 minutes)', yLimits: [-200, 200] });
     const logToolbar = this.logToolbar();
     const options = optionsMenu(
       [
         optHead('Panels'),
-        h('div', { class: 'opt-ctl' }, this.panelChip('meter', 'Sound level', 'sound level'), this.panelChip('history', 'History', 'history'), this.panelChip('log', 'Noise log', 'noise log')),
+        h('div', { class: 'opt-ctl' }, this.panelChip('meter', 'Sound level', 'sound level'), this.panelChip('loudness', 'Loudness (LUFS)', 'loudness'), this.panelChip('history', 'History', 'history'), this.panelChip('log', 'Noise log', 'noise log')),
         optHead('Layout'),
         h('div', { class: 'opt-ctl' }, this.resetLayoutButton()),
       ],
@@ -54,6 +73,7 @@ export class SplView extends DockedView implements View {
       h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Weighting'), (this.weightSel = select([{ value: 'A' as Weighting, label: 'A' }, { value: 'C' as Weighting, label: 'C' }, { value: 'Z' as Weighting, label: 'Z (flat)' }], s.splWeighting, (v) => { s.splWeighting = v; app.spl.setWeighting(v); app.save(); }, { dataset: { setting: 'splWeighting' } }) as HTMLSelectElement)),
       h('div', { class: 'tb-group' }, h('span', { class: 'tb-label' }, 'Time'), select([{ value: 'fast' as const, label: 'Fast (125 ms)' }, { value: 'slow' as const, label: 'Slow (1 s)' }], s.splTime, (v) => { s.splTime = v; app.save(); }, { dataset: { setting: 'splTime' } })),
       h('div', { class: 'spacer' }),
+      h('button', { class: 'chip', dataset: { loudnessPanel: '' }, title: 'Show / hide the loudness meter (LUFS, EBU R128)', onclick: () => this.dock.setVisible('loudness', !this.dock.isVisible('loudness')) }, 'Loudness'),
       h('button', { class: 'btn small', onclick: () => app.spl.resetLeq() }, icon('reset', 14), 'Reset Leq / Max'),
       h('button', { class: 'btn small', onclick: () => app.openTools('setup') }, icon('settings', 14), 'Calibrate…'),
       options,
@@ -62,18 +82,72 @@ export class SplView extends DockedView implements View {
       [
         // The readout scales with its panel (CSS container units): resize, float or detach it and the text follows
         { id: 'meter', title: 'Sound level', body: h('div', { class: 'spl-fit' }, h('div', { class: 'spl-top' }, this.big, this.stats)) },
+        { id: 'loudness', title: 'Loudness (LUFS)', body: h('div', { class: 'ld-panel' }, this.ldControls, h('div', { class: 'ld-fit' }, h('div', { class: 'spl-fit' }, h('div', { class: 'spl-top' }, this.ldBig, this.ldStats)))) },
         this.plotPanel('history', 'History (2 min)', this.history),
         { id: 'log', title: 'Noise log', body: h('div', { class: 'spl-log' }, logToolbar, this.logStatus, h('div', { class: 'pane-fill' }, this.logPlot.el)), onResize: () => this.logPlot.resize() },
       ],
       toolbar,
     );
     this.renderLogButton();
+    this.renderLoudnessControls();
+  }
+
+  /** Loudness: start / stop, reset, the inputs (a mono input, or a left / right pair) and the target. */
+  private renderLoudnessControls(): void {
+    const app = this.app;
+    const ld = app.settings.loudness;
+    const inputs = app.channelOptions(false);
+    const save = () => {
+      app.save();
+      this.ldShown = '';
+    };
+    this.ldControls.replaceChildren(
+      h('button', { class: `btn small${ld.on ? '' : ' accent'}`, dataset: { loudness: 'toggle' }, onclick: () => {
+        ld.on = !ld.on;
+        if (ld.on && app.loudness.reading().duration === 0) app.loudness.reset();
+        save();
+        this.renderLoudnessControls();
+      } }, icon(ld.on ? 'pause' : 'play', 13), ld.on ? 'Pause' : 'Measure'),
+      h('button', { class: 'btn small ghost', dataset: { loudness: 'reset' }, title: 'Start the integrated loudness, range and true peak again', onclick: () => { app.loudness.reset(); save(); } }, icon('reset', 13), 'Reset'),
+      h('label', { class: 'inline' }, 'Input', select(inputs, ld.left, (v) => { ld.left = v; app.loudness.reset(); save(); }, { dataset: { loudness: 'left' } })),
+      h('label', { class: 'inline' }, 'Right', select([{ value: -1, label: 'None (mono)' }, ...inputs], ld.right, (v) => { ld.right = v; app.loudness.reset(); save(); }, { dataset: { loudness: 'right' }, title: 'For a stereo programme: the right channel (both count equally)' })),
+      h('label', { class: 'inline' }, 'Target', select(LOUDNESS_TARGETS, ld.target, (v) => { ld.target = v; save(); }, { dataset: { loudness: 'target' } })),
+      h('span', { class: 'dim small ld-hint', title: 'Loudness (ITU-R BS.1770, EBU R128) is a level of the programme signal on an input, e.g. the console’s main mix: not the sound level in the room (that is the Sound level panel).' }, 'For a programme feed ⓘ'),
+    );
+  }
+
+  /** The loudness readout: short-term large; momentary, integrated (against the target), range and true peak. */
+  private renderLoudness(): void {
+    const app = this.app;
+    const ld = app.settings.loudness;
+    const r = app.loudness.reading();
+    const f = (v: number, d = 1) => (Number.isFinite(v) ? v.toFixed(d) : '—');
+    const key = `${ld.on}|${ld.target}|${f(r.shortTerm)}|${f(r.momentary)}|${f(r.integrated)}|${f(r.range)}|${f(r.truePeak)}|${Math.floor(r.duration)}`;
+    if (key === this.ldShown) return;
+    this.ldShown = key;
+    const long = (t: string) => (t.length > 5 ? ' long' : '');
+    const st = f(r.shortTerm);
+    this.ldBig.innerHTML = `<div class="val${long(st)}">${st}</div><div class="unit">LUFS · short-term (3 s)</div>${ld.on ? '' : '<div class="small dim">Paused: press Measure</div>'}`;
+    const diff = Number.isFinite(r.integrated) ? r.integrated - ld.target : NaN;
+    const offTarget = Number.isFinite(diff) && Math.abs(diff) > 1;
+    const dur = `${Math.floor(r.duration / 60)}:${String(Math.floor(r.duration % 60)).padStart(2, '0')}`;
+    const tp = f(r.truePeak);
+    const stat = (k: string, v: string, sub: string) => `<div class="stat"><span>${k}</span><b class="${long(v).trim()}">${v}</b><em>${sub}</em></div>`;
+    this.ldStats.innerHTML = [
+      stat('Integrated', f(r.integrated), Number.isFinite(diff) ? `<span class="${offTarget ? 'warn-text' : 'ok-text'}">${Math.abs(diff) < 0.05 ? 'on target' : `${Math.abs(diff).toFixed(1)} LU ${diff > 0 ? 'above' : 'below'} target`}</span> · ${dur}` : `LUFS · ${dur}`),
+      stat('Momentary', f(r.momentary), `LUFS (400 ms) · max ${f(r.maxMomentary)}`),
+      stat('Range', f(r.range), 'LU (LRA)'),
+      stat('True peak', tp, Number.isFinite(r.truePeak) && r.truePeak > -1 ? '<span class="warn-text">dBTP · above −1</span>' : 'dBTP (max)'),
+    ].join('');
   }
 
   invalidate(): void {
     this.histDirty = true;
     this.logVersion = -1;
     this.shownKey = '';
+    this.ldShown = '';
+    // The input lists follow the device's channels
+    this.renderLoudnessControls();
   }
 
   /** Noise log controls: start / stop, interval, limit and rolling window, export. */
@@ -295,5 +369,6 @@ export class SplView extends DockedView implements View {
       this.histDirty = false;
     }
     if (this.visible('log')) this.tickLog();
+    if (this.visible('loudness')) this.renderLoudness();
   }
 }

@@ -11,6 +11,7 @@ import { ThemeCard } from './theme-card';
 import { AboutCard } from './about-card';
 import { WatermarkCard } from './watermark-card';
 import { PresetsCard } from './presets-card';
+import { AirCard } from './air-card';
 import { modal } from '../ui/dialogs';
 import { applySession, buildSession, downloadText, parseSession, sessionFileName, type SessionFile } from '../session';
 import { replaceSettings } from '../state';
@@ -43,6 +44,7 @@ export class ToolsView implements View {
   private dirty = true;
   private remoteCard: RemoteCard;
   readonly nativeCard: NativeCard;
+  airCard!: AirCard;
   private nativeTick = 0;
 
   constructor(private app: App) {
@@ -295,7 +297,8 @@ export class ToolsView implements View {
         ? h('p', { class: 'dim small' }, 'On the host: the measurement computer runs the FFTs and sends finished spectra, so every device shows the same result and slow devices only draw. Averaging and FFT size then follow the host. On this device: the full analysis runs here with its own averaging.')
         : null,
     );
-    this.cards.set('setup', [this.referenceCard(), this.micsCard.el, this.nativeCard.el]);
+    this.airCard = new AirCard(this.app);
+    this.cards.set('setup', [this.referenceCard(), this.micsCard.el, this.airCard.el, this.nativeCard.el]);
     this.cards.set('session', [this.sessionCard(), new PresetsCard(this.app).el]);
     this.cards.set('remote', [this.remoteCard.el]);
     this.cards.set('display', [this.themeCard.el, new WatermarkCard(app).el, perfCard]);
