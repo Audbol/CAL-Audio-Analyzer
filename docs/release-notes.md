@@ -44,6 +44,16 @@ On first launch, choose **Explore with the demo room** to try every feature with
 - **Microphone inventory:** set up each mic once (name, model and serial, correction file, SPL calibration) and choose it for a measurement. **Add** now asks for the measurement's name (what it measures, e.g. "FOH left"), its input and reference, and the mic; each measurement card has a Microphone menu to swap it. The mic's calibration follows the measurement's input. Export the inventory to use it on another computer. Setups from earlier versions keep their mics.
 - **Console EQ widths:** every console profile shows and takes the width the way that console does: Q, or width in octaves on Allen & Heath (with fractions such as 1/3 and 1/9) and on the Midas PRO series, which now has its own profile (width 0.1–2 octaves) separate from the HD96. A width typed in octaves stays exactly as typed.
 
+- **Fixes and speed:**
+  - **Faster graphs on desktops:** the change that pins the app to the screen for tablets made desktops repaint more with every graph frame. Desktops no longer pay for it: Spectrum and Transfer use about a tenth less of the main thread.
+  - **Loudness meter:** about twice as fast on programme material.
+  - **Native audio:** if the app falls more than two seconds behind, the interface keeps playing cleanly instead of repeating a stale buffer, and sweep timing stays right.
+  - **Damaged files:** a target curve from a damaged preset or session file can no longer stop the app from starting.
+  - **EQ assistant:** a room dip at the edge of the range is no longer mistaken for the loudspeaker's roll-off.
+  - **Distortion floor on narrow sweeps** (such as subwoofer sweeps) is measured clear of the harmonics, so real distortion is no longer reported as noise.
+  - **Add measurement:** choosing **None (uncalibrated)** now stays that way.
+  - **Smaller fixes:** the loudness lists stay open while the screen updates, and a leftover EQ board window starts afresh.
+
 ## What's new in 2.0.1
 
 - **Remote control of the setup:** a phone or tablet can now choose the measurement computer's audio source (demo room, inputs, ASIO drivers), start and stop its audio, and set its ASIO sample rate, buffer and safety margin (Tools → Setup), as on the computer itself.
