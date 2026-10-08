@@ -138,9 +138,16 @@ body {
 #app {
   display: flex;
   flex-direction: column;
-  position: fixed;
+  position: absolute;
   inset: 0;
   overflow: hidden;
+}
+/* Touch screens: fixed to the visible screen, which also holds where a browser hiding its toolbar would scroll
+   the page. (Not on desktops: a fixed full-window app repaints more of itself with every graph frame.) */
+@media (pointer: coarse) {
+  #app {
+    position: fixed;
+  }
 }
 
 button,

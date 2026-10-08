@@ -116,8 +116,17 @@ check((await page.locator('.dock-stack .dpanel[data-panel="mag"]').count()) === 
   const browser = await chromium.launch();
   const rem = await browser.newPage();
   await rem.goto(`http://127.0.0.1:${srv.port}/?pin=${srv.pin}`);
+  // It connects; the desktop app's audio starts only when asked (a connecting remote never starts it by itself)
+  await rem.waitForFunction(() => window.calApp?.engine.state === 'connected', null, { timeout: 15000 }).catch(() => undefined);
+  const hostWas = await page.evaluate(() => window.calApp.engine.running);
+  check((await rem.evaluate(() => window.calApp.engine.state)) === 'connected', 'a browser connects to the desktop app');
+  if (!hostWas) {
+    await rem.waitForTimeout(500);
+    check(!(await page.evaluate(() => window.calApp.engine.running)), 'connecting does not start the desktop app’s audio');
+    await rem.locator('[data-host-audio]').click();
+  }
   await rem.waitForFunction(() => window.calApp?.engine.running === true, null, { timeout: 15000 }).catch(() => undefined);
-  check(await rem.evaluate(() => window.calApp.engine.running), 'a browser connects to the desktop app and receives live audio');
+  check(await rem.evaluate(() => window.calApp.engine.running), 'Start host audio on the browser: it receives live audio');
   await browser.close();
   await page.waitForTimeout(500);
   await page.getByRole('button', { name: 'Turn off' }).click();

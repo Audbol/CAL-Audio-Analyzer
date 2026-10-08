@@ -246,6 +246,15 @@ if (want('viewport')) {
   check((await page.evaluate(() => window.calApp.settings.view)) === 'spl', 'in fullscreen, tapping where a tab is drawn opens it');
   await page.evaluate(() => document.exitFullscreen());
   await page.waitForTimeout(500);
+  // Desktops: pinned without position: fixed (which costs repaints every graph frame); touch screens: fixed
+  check((await page.evaluate(() => getComputedStyle(document.getElementById('app')).position)) === 'absolute', 'on a desktop the app is pinned without fixed positioning');
+  const tctx = await browser.newContext({ viewport: { width: 1024, height: 700 }, hasTouch: true, isMobile: true });
+  const tab = await tctx.newPage();
+  await tab.goto(page.url());
+  await tab.waitForSelector('#app');
+  const tpin = await tab.evaluate(() => ({ coarse: matchMedia('(pointer: coarse)').matches, pos: getComputedStyle(document.getElementById('app')).position }));
+  check(tpin.coarse && tpin.pos === 'fixed', `on a tablet it is fixed to the visible screen (${JSON.stringify(tpin)})`);
+  await tctx.close();
 }
 
 check(errors.length === 0, `no console errors ${errors.join(' | ')}`);

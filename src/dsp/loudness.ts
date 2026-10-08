@@ -106,7 +106,13 @@ export class LoudnessMeter {
   private peak = 0;
   private maxM = -Infinity;
   private readonly os: Float64Array[];
+  /** Per channel: the last inputs for the interpolator, written twice (at i and i + taps) so a window is contiguous. */
   private hist: Float64Array[] = [];
+  private histPos: number[] = [];
+  /** The interpolator's largest gain (sum of |taps| of a phase): no interpolated value exceeds this × its inputs. */
+  private readonly osGain: number;
+  /** Per channel: interpolated outputs still to evaluate (a window holds an input that could beat the peak). */
+  private hot: number[] = [];
   private samples = 0;
 
   constructor(readonly fs: number) {
@@ -114,6 +120,7 @@ export class LoudnessMeter {
     this.step = Math.round(fs / 10);
     const factor = fs < 96000 ? 4 : fs < 192000 ? 2 : 1;
     this.os = factor > 1 ? interpolator(factor) : [];
+    this.osGain = Math.max(1, ...this.os.map((p) => p.reduce((a, b) => a + Math.abs(b), 0)));
   }
 
   reset(): void {
@@ -126,6 +133,8 @@ export class LoudnessMeter {
     this.peak = 0;
     this.maxM = -Infinity;
     this.hist = [];
+    this.histPos = [];
+    this.hot = [];
     this.samples = 0;
   }
 
@@ -134,7 +143,11 @@ export class LoudnessMeter {
     const n = channels[0]?.length ?? 0;
     if (!n) return;
     while (this.state.length < channels.length) this.state.push(new Float64Array(8));
-    while (this.hist.length < channels.length) this.hist.push(new Float64Array(this.os[0]?.length ?? 1));
+    while (this.hist.length < channels.length) {
+      this.hist.push(new Float64Array(2 * (this.os[0]?.length ?? 1)));
+      this.histPos.push(0);
+      this.hot.push(0);
+    }
     const [s1, s2] = this.filters;
     for (let i = 0; i < n; i++) {
       let sq = 0;
@@ -165,16 +178,26 @@ export class LoudnessMeter {
     const a = Math.abs(x);
     if (a > this.peak) this.peak = a;
     if (!this.os.length) return;
-    // Shift the input history, then evaluate every phase (the interpolated samples between inputs)
+    // The newest input goes before the previous ones (a ring, mirrored so the window never wraps), then every
+    // phase is evaluated (the interpolated samples between inputs)
     const hst = this.hist[c];
-    hst.copyWithin(1, 0);
-    hst[0] = x;
+    const taps = hst.length >> 1;
+    const pos = (this.histPos[c] + taps - 1) % taps;
+    this.histPos[c] = pos;
+    hst[pos] = x;
+    hst[pos + taps] = x;
+    // Only windows holding an input that could make a new peak need the interpolation (the peak only grows)
+    if (a * this.osGain > this.peak) this.hot[c] = taps;
+    if (this.hot[c] === 0) return;
+    this.hot[c]--;
+    let peak = this.peak;
     for (const p of this.os) {
       let y = 0;
-      for (let k = 0; k < p.length; k++) y += p[k] * hst[k];
-      const ay = Math.abs(y);
-      if (ay > this.peak) this.peak = ay;
+      for (let k = 0; k < taps; k++) y += p[k] * hst[pos + k];
+      if (y > peak) peak = y;
+      else if (-y > peak) peak = -y;
     }
+    this.peak = peak;
   }
 
   private endStep(): void {
