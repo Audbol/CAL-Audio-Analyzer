@@ -114,7 +114,20 @@ describe('Console EQ profiles', () => {
       } else expect(widthName(p)).toBe('Q');
     }
     const ids = CONSOLE_PROFILES.filter((p) => p.width === 'octaves').map((p) => p.id);
-    expect(ids).toEqual(['ah-dlive', 'midas-pro']);
+    expect(ids).toEqual(['ah-dlive', 'ah-dlive-neq12', 'midas-pro']);
+  });
+  it('dLive NEQ12: 12 bands, with Allen & Heath widths like the mix PEQ', async () => {
+    const { profileById, consoleText, fitToProfile, bandWidth } = await import('../src/dsp/console-eq');
+    const neq = profileById('ah-dlive-neq12');
+    expect(neq.bands).toBe(12);
+    expect(neq.widthModel).toBe('ah');
+    const filters = Array.from({ length: 12 }, (_, i) => fitToProfile({ type: 'peak' as const, f: 40 * 1.6 ** i, gain: -3, q: 2 }, neq));
+    const lines = consoleText(filters, neq).split('\n');
+    expect(lines[1].startsWith('Band 1: bell')).toBe(true);
+    expect(lines[12].startsWith('Band 12: bell')).toBe(true);
+    // The same width on both A&H profiles
+    const f = { type: 'peak' as const, f: 1000, gain: -6, q: 1.5 };
+    expect(bandWidth(fitToProfile(f, neq), neq)).toBeCloseTo(bandWidth(fitToProfile(f, profileById('ah-dlive')), profileById('ah-dlive')), 9);
   });
   it('Allen & Heath bell widths follow the measured dLive relation (Q depends on the gain)', async () => {
     const { ahWidthQ, ahQWidth, profileById, fitToProfile, bandWidth, widthToQ } = await import('../src/dsp/console-eq');
