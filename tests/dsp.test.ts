@@ -297,6 +297,24 @@ describe('log sweep', () => {
     expect(f1k).toBeGreaterThan(0.01);
     expect(t1k).toBeLessThan(f1k * 4);
   });
+
+  it('measures the floor away from the harmonics on a narrow sweep (20–200 Hz: the 5th arrives at 70 %)', () => {
+    const narrow = { fs: FS, duration: 2, f1: 20, f2: 200, amplitude: 0.5 };
+    const sw = logSweep(narrow);
+    // A strongly distorting sub (5th harmonic 10 %), no noise: the floor must stay far below the distortion
+    const rec = new Float32Array(sw.length + FS);
+    for (let i = 0; i < sw.length; i++) {
+      const x = sw[i] / 0.5;
+      rec[i] = 0.5 * (x + 0.1 * (16 * x ** 5 - 20 * x ** 3 + 5 * x));
+    }
+    const grid = logGrid(20, 40, 12);
+    const hd = harmonicDistortion(deconvolve(rec, sw, narrow), narrow, grid, 5);
+    const t = interp(grid, hd.thd, 30);
+    const fl = interp(grid, hd.floor, 30);
+    expect(t).toBeGreaterThan(5);
+    // (Before: the floor read the 5th harmonic itself, 12 %; a little of a low sweep's long ringing remains)
+    expect(fl).toBeLessThan(t / 5);
+  });
 });
 
 describe('room acoustics', () => {
@@ -363,6 +381,19 @@ describe('EQ', () => {
     expect(res.filters.length).toBeGreaterThan(0);
     expect(res.rmsAfter).toBeLessThan(res.rmsBefore * 0.4);
     expect(Math.abs(res.filters[0].f - 120)).toBeLessThan(15);
+  });
+
+  it('does not take a room dip at the edge of the range for the loudspeaker’s roll-off', () => {
+    const grid = logGrid(20, 20000, 24);
+    // A full-range system with a deep dip around 50 Hz that recovers above it (e.g. a boundary cancellation)
+    const room = eqResponse([{ type: 'peak', f: 52, gain: -14, q: 1.4 }], grid);
+    const flat = TARGETS.find((t) => t.id === 'flat')!;
+    const res = autoEq(grid, Array.from(room), null, flat, { fMin: 40, fMax: 12000, maxFilters: 4, maxBoost: 6, maxCut: 12, minCoherence: 0 });
+    expect(res.rolloff.low).toBeNull();
+    // A real roll-off is still found from the same edge
+    const hp = (f: number) => -10 * Math.log10(1 + Math.pow(70 / f, 8));
+    const res2 = autoEq(grid, Array.from(grid, hp), null, flat, { fMin: 40, fMax: 12000, maxFilters: 4, maxBoost: 6, maxCut: 12, minCoherence: 0 });
+    expect(res2.rolloff.low).not.toBeNull();
   });
 
   it('leaves a loudspeaker roll-off alone and never stacks filters past the boost limit', () => {

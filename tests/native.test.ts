@@ -53,6 +53,29 @@ describe.skipIf(!built)('native audio module', () => {
     for (const i of refs) expect(rows[i + 480][0]).toBe(1);
   });
 
+  it('keeps playing and keeps count when JavaScript falls behind (capture ring full)', async () => {
+    process.env.CAL_NATIVE_TEST = '1';
+    const a = createRequire(import.meta.url)(path) as Addon;
+    a.open({ api: 'test', device: 0, sampleRate: 48000, bufferFrames: 256 }, () => undefined);
+    a.setOutputs([0]);
+    a.write(new Float32Array(48000).fill(0.1));
+    a.start();
+    // Nothing read for 2.6 s: the 2 s capture ring fills
+    await new Promise((r) => setTimeout(r, 2600));
+    type R = ReturnType<Addon['read']> & { played: number; consumed: number; overruns: number };
+    const r = a.read() as R;
+    const captured = r.frames;
+    a.close();
+    // The output went on (a whole second of signal played), and the frames lost are counted: a sample played
+    // at frame p is captured at p + shift, with shift = −(frames lost)
+    expect(r.overruns).toBeGreaterThan(0);
+    expect(r.consumed).toBe(48000);
+    const shift = r.silent - (r.played - r.consumed);
+    // (Within a driver buffer or two: one can arrive between taking the frames and reading the counts)
+    expect(Math.abs(-shift - (r.played - captured))).toBeLessThanOrEqual(512);
+    expect(-shift).toBeGreaterThan(0);
+  });
+
   it('keeps the reference aligned with two devices on separate clocks (input and output 500 ppm apart)', async () => {
     process.env.CAL_NATIVE_TEST = '1';
     const a = createRequire(import.meta.url)(path) as Addon;

@@ -192,12 +192,21 @@ export interface CustomTarget {
   points: [number, number][];
 }
 
+/** The custom targets in a list from a file or another device that can be used (each needs an id and points). */
+export function validTargets(list: unknown): CustomTarget[] {
+  return Array.isArray(list) ? list.filter((t): t is CustomTarget => !!t && typeof t === 'object' && typeof t.id === 'string' && Array.isArray(t.points)) : [];
+}
+
 /** Custom targets prefix their id with this (so they never collide with built-in ones). */
 export const CUSTOM_PREFIX = 'custom:';
 
 /** A custom target as a curve: linear in dB between points on a log-frequency scale, level beyond the ends. */
 export function customCurve(c: CustomTarget): TargetCurve {
-  const pts = [...c.points].filter(([f, v]) => f > 0 && Number.isFinite(f) && Number.isFinite(v)).sort((a, b) => a[0] - b[0]);
+  // (Targets also come from files and other devices: anything that isn't a [frequency, level] pair is left out)
+  const pts = (Array.isArray(c.points) ? c.points : [])
+    .filter((p): p is [number, number] => Array.isArray(p) && p[0] > 0 && Number.isFinite(p[0]) && Number.isFinite(p[1]))
+    .map(([f, v]) => [f, v] as [number, number])
+    .sort((a, b) => a[0] - b[0]);
   const at = (f: number) => {
     if (!pts.length) return 0;
     if (f <= pts[0][0]) return pts[0][1];
@@ -217,7 +226,7 @@ let customVersion = 0;
 
 /** Use these custom targets (from the settings) alongside the built-in ones. */
 export function setCustomTargets(list: CustomTarget[]): void {
-  customTargets = list.map(customCurve);
+  customTargets = validTargets(list).map(customCurve);
   customVersion++;
 }
 
@@ -239,6 +248,8 @@ export function findTarget(id: string): TargetCurve | undefined {
 const MIN_SPACING_OCT = 1 / 3;
 /** Deeper than this under the target at the ends of the range counts as the system's roll-off (dB). */
 const ROLLOFF_DB = -6;
+/** How much deeper than the very end a roll-off may be further in (more: a dip, not a roll-off). */
+const ROLLOFF_SLACK_DB = 1.5;
 
 /**
  * Greedy PEQ fit: repeatedly place a filter at the largest weighted deviation, then refine (f, gain, Q) by
@@ -284,6 +295,10 @@ export function autoEq(
   while (lo < idx.length - 1 && sm[lo] <= ROLLOFF_DB) lo++;
   let hi = idx.length - 1;
   while (hi > lo + 1 && sm[hi] <= ROLLOFF_DB) hi--;
+  // A roll-off is lowest at the very end; a dip that is deeper further in (and recovers towards the end) is the room's
+  const deepest = (from: number, to: number) => Math.min(...sm.slice(from, to + 1));
+  if (lo > 0 && sm[0] > deepest(0, lo - 1) + ROLLOFF_SLACK_DB) lo = 0;
+  if (hi < idx.length - 1 && sm[idx.length - 1] > deepest(hi + 1, idx.length - 1) + ROLLOFF_SLACK_DB) hi = idx.length - 1;
   const rolloff = { low: lo > 0 && lo < idx.length ? freqs[idx[lo]] : null, high: hi < idx.length - 1 ? freqs[idx[hi]] : null };
   idx.splice(hi + 1);
   idx.splice(0, lo);

@@ -143,6 +143,19 @@ if (want('output')) {
   await page.screenshot({ path: `${out}/feat9-05-output.png`, clip: { x: 0, y: 0, width: 1440, height: 70 } });
 }
 
+// --- 6. Adding a measurement with "None (uncalibrated)" keeps it uncalibrated, even on an input that had a mic
+if (want('mic')) {
+  const r = await page.evaluate(() => {
+    const a = window.calApp;
+    a.settings.mics.push({ id: 'tmic', name: 'T', channel: 1, micCal: null, splOffset: 0, splCalibrated: false });
+    a.settings.measurements = a.settings.measurements.filter((m) => m.mic !== 1);
+    const none = a.addMeasurement({ name: 'No mic', mic: 1, ref: -1, micId: '' });
+    const withMic = a.addMeasurement({ name: 'Default', mic: 0, ref: -1 });
+    return { none: none.micId ?? null, bound: a.settings.mics.find((m) => m.id === 'tmic').channel, withMic: withMic.micId ?? null };
+  });
+  check(r.none === null && r.bound === -1, `"None" stays uncalibrated and frees the input (${JSON.stringify(r)})`);
+}
+
 check(errors.length === 0, `no console errors ${errors.join(' | ')}`);
 await browser.close();
 await new Promise((r) => server.httpServer.close(r));

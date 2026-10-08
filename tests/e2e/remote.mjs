@@ -195,7 +195,9 @@ await phone.waitForFunction(() => window.calApp.engine.running === true, null, {
 await host.evaluate(() => { const a = window.calApp; a.settings.mics = [{ id: 't1', name: 'Test mic', channel: a.settings.splChannel, micCal: null, splOffset: 120, splCalibrated: true }]; a.syncCal(); a.save(); });
 // Spectrum on a remote: the data is inside the plot (not an off-scale fill) and the zoom buttons work
 await phone.keyboard.press('1');
-await phone.waitForTimeout(2500);
+// The calibration reaches the phone with the host's next settings update
+await phone.waitForFunction(() => window.calApp.views.find((v) => v.id === 'spectrum').rta.cfg.yUnit === 'dB SPL', null, { timeout: 10000 }).catch(() => undefined);
+await phone.waitForTimeout(1500);
 const inView = () => {
   const p = window.calApp.views.find((v) => v.id === 'spectrum').rta;
   const ys = Array.from(p.series.find((s) => !s.id.endsWith('-pk')).y).filter((v, i) => window.calApp.grid[i] > 100 && window.calApp.grid[i] < 10000);

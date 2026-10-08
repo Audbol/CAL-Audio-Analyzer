@@ -1,6 +1,6 @@
 import type { App } from './app';
 import type { Settings, MeasurementConfig } from './state';
-import { CUSTOM_PREFIX, type CustomTarget } from './dsp/eq';
+import { CUSTOM_PREFIX, validTargets, type CustomTarget } from './dsp/eq';
 import type { CrossoverDesign } from './dsp/crossover';
 import type { EqView } from './views/eq';
 
@@ -66,8 +66,9 @@ export function presetSummary(p: SystemPreset): string {
 export function applyPreset(app: App, p: SystemPreset): void {
   const s = app.settings;
   // Its custom targets join yours (one of the same id is replaced by the preset's)
-  if (p.targets.length) {
-    s.customTargets = [...s.customTargets.filter((t) => !p.targets.some((x) => x.id === t.id)), ...clone(p.targets)];
+  const targets = validTargets(p.targets);
+  if (targets.length) {
+    s.customTargets = [...s.customTargets.filter((t) => !targets.some((x) => x.id === t.id)), ...clone(targets)];
     app.targetsChanged();
   }
   const rec = s as unknown as Record<string, unknown>;

@@ -89,10 +89,7 @@ export function showAddMeasurement(app: App): void {
   const refSel = select(app.channelOptions(true), ref, (v) => (ref = v), { dataset: { addMeas: 'ref' }, 'aria-label': 'Reference' });
   const field = (label: string, el: HTMLElement, hint = '') => h('label', { class: 'cmp-field', title: hint }, h('span', {}, label), el);
   const add = () => {
-    const cfg = app.addMeasurement({ name: name.value, mic: input, ref, micId: micId || undefined });
-    if (!micId) delete cfg.micId;
-    app.syncCal();
-    app.save();
+    const cfg = app.addMeasurement({ name: name.value, mic: input, ref, micId: micId || '' });
     app.renderMeasurements();
     close();
     app.toast(`Measurement “${cfg.name}” added`, 'ok');

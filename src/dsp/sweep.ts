@@ -93,6 +93,28 @@ export function harmonicOffset(spec: SweepSpec, k: number): number {
   return (spec.duration * Math.log(k)) / Math.log(spec.f2 / spec.f1);
 }
 
+/**
+ * Where to measure the background noise for the distortion floor (seconds before the linear IR): in the span the
+ * deconvolution spreads the recording's noise over, as far as possible from every harmonic's IR (up to the 64th).
+ * 70 % of the sweep length suits a wide sweep; a narrow one (e.g. 20–200 Hz) has harmonics arriving there, so the
+ * middle of the widest gap between them is used instead.
+ */
+export function noiseOffset(spec: SweepSpec, maxHarmonic = 5): number {
+  const D = spec.duration;
+  const arrivals: number[] = [];
+  for (let k = 2; k <= 64; k++) {
+    const t = harmonicOffset(spec, k);
+    if (t < D) arrivals.push(t);
+  }
+  const clearance = (t: number) => arrivals.reduce((m, a) => Math.min(m, Math.abs(t - a)), Infinity);
+  const candidates = [0.7 * D];
+  for (let k = maxHarmonic; k < 64; k++) {
+    const t = (harmonicOffset(spec, k) + harmonicOffset(spec, k + 1)) / 2;
+    if (t < 0.95 * D) candidates.push(t);
+  }
+  return candidates.reduce((best, t) => (clearance(t) > clearance(best) ? t : best));
+}
+
 /** Extract a windowed segment of a circular buffer. */
 function segment(ir: Float64Array, start: number, len: number, fadeIn: number, fadeOut: number): Float64Array {
   const n = ir.length;
@@ -165,18 +187,17 @@ export function harmonicDistortion(d: Deconvolution, spec: SweepSpec, grid: Floa
   const fundSeg = segment(d.ir, d.peak - (winLen >> 4), winLen, winLen >> 5, winLen >> 2);
   const fund = spectrumOf(fundSeg, fs, size);
   const harmSpec: Spectrum[] = [];
-  // The background noise through the same windows: 70 % of the sweep length before the linear IR, well before
-  // the harmonic IRs used here (only the ~(f2/f1)^0.7-th harmonic would arrive there) and inside the span where
-  // the recording's noise is spread by the deconvolution
+  // The background noise through the same windows, away from every harmonic's IR (see noiseOffset)
   const noiseSpec: Spectrum[] = [];
-  const noiseAt = d.peak - Math.round(0.7 * spec.duration * fs);
+  const noiseAt = d.peak - Math.round(noiseOffset(spec, maxHarmonic) * fs);
   for (let k = 2; k <= maxHarmonic; k++) {
     const off = Math.round(harmonicOffset(spec, k) * fs);
     const gap = Math.round((harmonicOffset(spec, k) - harmonicOffset(spec, k - 1)) * fs);
     const len = Math.min(winLen, Math.max(64, Math.round(gap * 0.9)));
     const seg = segment(d.ir, d.peak - off - (len >> 4), len, len >> 5, len >> 2);
     harmSpec.push(spectrumOf(seg, fs, size));
-    noiseSpec.push(spectrumOf(segment(d.ir, noiseAt, len, len >> 5, len >> 2), fs, size));
+    // (centred on the chosen spot, the farthest from the harmonics' IRs either side)
+    noiseSpec.push(spectrumOf(segment(d.ir, noiseAt - (len >> 1), len, len >> 5, len >> 2), fs, size));
   }
   const df = fs / size;
   const at = (s: Spectrum, f: number) => {

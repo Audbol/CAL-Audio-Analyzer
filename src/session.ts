@@ -6,6 +6,7 @@ import type { EqView, EqSnapshot } from './views/eq';
 import type { AlignView, AlignSnapshot } from './views/align';
 import type { RoomView } from './views/room';
 import type { LogFile } from './logger';
+import { validTargets } from './dsp/eq';
 
 export const SESSION_FORMAT = 'cal-session';
 export const SESSION_VERSION = 1;
@@ -106,8 +107,9 @@ export function applySession(app: App, f: SessionFile): void {
   const s = app.settings;
   s.session = { ...f.session };
   // Its custom targets join yours (one with the same id is replaced by the session's)
-  if (f.targets?.length) {
-    s.customTargets = [...s.customTargets.filter((t) => !f.targets!.some((x) => x.id === t.id)), ...f.targets];
+  const targets = validTargets(f.targets);
+  if (targets.length) {
+    s.customTargets = [...s.customTargets.filter((t) => !targets.some((x) => x.id === t.id)), ...targets];
     app.targetsChanged();
   }
   const rec = s as unknown as Record<string, unknown>;

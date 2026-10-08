@@ -34,7 +34,7 @@ import { displayColor } from './ui/theme';
 import { startTour } from './ui/tour';
 import { maybeShowWhatsNew, showWhatsNew } from './ui/whats-new';
 import { optionsMenu, optHead } from './ui/popover';
-import { setCustomTargets } from './dsp/eq';
+import { setCustomTargets, validTargets } from './dsp/eq';
 import { setWatermark } from './ui/watermark';
 import { MARK_SVG } from './ui/brand';
 import type { UpdateState } from './views/about-card';
@@ -221,6 +221,8 @@ export class App {
 
   constructor(root: HTMLElement) {
     this.root = root;
+    // (A target saved from a damaged file is dropped rather than stopping the app)
+    this.settings.customTargets = validTargets(this.settings.customTargets);
     setCustomTargets(this.settings.customTargets);
     for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => this.settleViewport());
     window.addEventListener('orientationchange', () => this.settleViewport());
@@ -813,7 +815,10 @@ export class App {
     // A different averaging time or smoothing starts the average curve again
     const restart = changed.includes('rtaAverageCurve');
     for (const k of changed) (s as unknown as Record<string, unknown>)[k] = JSON.parse(JSON.stringify(t[k]));
-    if (changed.includes('customTargets')) setCustomTargets(s.customTargets);
+    if (changed.includes('customTargets')) {
+      s.customTargets = validTargets(s.customTargets);
+      setCustomTargets(s.customTargets);
+    }
     if (changed.includes('air')) {
       (this.views.find((x) => x.id === 'tools') as ToolsView | undefined)?.airCard?.render();
       this.syncAirControls();
@@ -1850,8 +1855,13 @@ export class App {
       invert: false,
     };
     if (cfg.mic === cfg.ref) cfg.mic = 0;
-    // The mic already on that input, unless another one is chosen
-    const micId = opts.micId ?? this.micOn(cfg.mic)?.id;
+    // The mic already on that input, unless another one is chosen ('' = none: the input becomes uncalibrated,
+    // unless other measurements on it still use its mic, as one mic serves one input)
+    const micId = opts.micId !== undefined ? opts.micId : this.micOn(cfg.mic)?.id;
+    if (micId === '') {
+      const on = this.micOn(cfg.mic);
+      if (on && !this.settings.measurements.some((o) => o.mic === cfg.mic && o.micId === on.id)) on.channel = -1;
+    }
     if (micId) {
       cfg.micId = micId;
       for (const o of this.settings.measurements) {

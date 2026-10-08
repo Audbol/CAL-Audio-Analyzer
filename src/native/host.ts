@@ -230,7 +230,13 @@ function open(opts: NativeOpenOptions): NativeStreamInfo {
   session = s;
   addon.setOutputs(s.core.gen.outputs);
   s.supply(0);
-  addon.start();
+  try {
+    addon.start();
+  } catch (e) {
+    // Not started: nothing stays open (the module has closed the streams)
+    closeSession();
+    throw e;
+  }
   // The driver wakes the pump after every buffer; the timer is a fallback
   timer = setInterval(schedulePump, 10);
   statusTimer = setInterval(() => session && send({ t: 'status', status: session.status() }), 500);

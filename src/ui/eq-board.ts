@@ -30,6 +30,9 @@ export class EqBoard {
     if (!win) return false;
     this.win = win;
     const doc = win.document;
+    // A board left open from before (e.g. the app was reloaded) is the same window: start it afresh
+    doc.head.replaceChildren();
+    doc.body.replaceChildren();
     doc.title = 'EQ board · CAL Audio Analyzer';
     // The app's styles and colour scheme, as for detached panels
     for (const node of Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))) {

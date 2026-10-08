@@ -122,7 +122,8 @@ struct Stream {
   std::atomic<uint64_t> loopPushed{0};
   std::atomic<int64_t> outTime{0};  // steady clock (ns) of the last output callback
   std::atomic<uint32_t> outSeq{0};  // seqlock for loopPushed + outTime
-  // Captured frames not paired with their own played sample: padded / repeated (+) minus dropped (−)
+  // How far the capture timeline is from the play timeline: frames padded or repeated (+), samples dropped and
+  // frames lost to a full capture ring or queue (−). One device: only the lost frames.
   std::atomic<int64_t> shift{0};
   // The servo's net correction (samples dropped − repeated) for the clocks' drift: larger steps (over 0.5 % of a
   // window) realign after a stall or dropout and aren't drift, so they aren't counted
@@ -157,7 +158,8 @@ struct Stream {
   void process(float* out, const float* in, unsigned int n, bool driverXrun) {
     const unsigned int stride = nIn + 1;
     if (frameBuf.size() < stride) frameBuf.resize(stride);
-    bool under = false;
+    bool under = false, full = false;
+    int64_t lost = 0;
     for (unsigned int i = 0; i < n; i++) {
       float g = 0.0f;
       if (output.pop1(g)) {
@@ -172,11 +174,15 @@ struct Stream {
       }
       for (unsigned int c = 0; c < nIn; c++) frameBuf[c] = in ? in[i * nIn + c] : 0.0f;
       frameBuf[nIn] = g;
-      if (!capture.push(frameBuf.data(), stride)) {
+      // A full capture ring (JavaScript fell behind): the frame is lost, but the output carries on
+      if (!full && !capture.push(frameBuf.data(), stride)) {
         overruns.fetch_add(1, std::memory_order_relaxed);
-        break;
+        full = true;
       }
+      if (full) lost++;
     }
+    // Frames not captured: later generator samples are captured that much earlier
+    if (lost) shift.fetch_sub(lost, std::memory_order_relaxed);
     played.fetch_add(n, std::memory_order_relaxed);
     if (under && primed.load(std::memory_order_relaxed)) underruns.fetch_add(1, std::memory_order_relaxed);
     if (driverXrun) xruns.fetch_add(1, std::memory_order_relaxed);
@@ -219,6 +225,8 @@ struct Stream {
     bool queued = loop.push(outBuf.data(), n);
     outSeq.fetch_add(1, std::memory_order_acq_rel);
     if (queued) loopPushed.fetch_add(n, std::memory_order_relaxed);
+    // Not queued (the input stopped): these samples are never captured, so later ones are captured n earlier
+    else shift.fetch_sub(n, std::memory_order_relaxed);
     outTime.store(nowNs(), std::memory_order_relaxed);
     outSeq.fetch_add(1, std::memory_order_release);
     played.fetch_add(n, std::memory_order_relaxed);
@@ -232,7 +240,8 @@ struct Stream {
     if (frameBuf.size() < stride) frameBuf.resize(stride);
     // Start pairing once a few buffers are queued, so callback jitter never empties the queue
     if (!loopStarted && loop.size() >= 2 * static_cast<size_t>(n + outBufferFrames)) loopStarted = true;
-    int64_t added = 0;
+    int64_t added = 0, lost = 0;
+    bool full = false;
     for (unsigned int i = 0; i < n; i++) {
       float g = 0.0f;
       if (repeat) {
@@ -249,11 +258,15 @@ struct Stream {
       }
       for (unsigned int c = 0; c < nIn; c++) frameBuf[c] = in ? in[i * nIn + c] : 0.0f;
       frameBuf[nIn] = g;
-      if (!capture.push(frameBuf.data(), stride)) {
+      // A full capture ring (JavaScript fell behind): the frame is lost, but the output carries on
+      if (!full && !capture.push(frameBuf.data(), stride)) {
         overruns.fetch_add(1, std::memory_order_relaxed);
-        break;
+        full = true;
       }
+      if (full) lost++;
     }
+    // Frames not captured: later generator samples are captured that much earlier
+    if (lost) shift.fetch_sub(lost, std::memory_order_relaxed);
     if (added) shift.fetch_add(added, std::memory_order_relaxed);
     // After an output stall: as soon as it catches up, skip what it played while the input had nothing to pair
     // (the reference lines up again at once instead of at the next servo window)
@@ -752,6 +765,8 @@ Napi::Value Start(const Napi::CallbackInfo& info) {
   }
   if ((gAudioOut && gAudioOut->startStream() != RTAUDIO_NO_ERROR) || gAudio->startStream() != RTAUDIO_NO_ERROR) {
     std::string msg = takeError();
+    // Nothing half-started: an output already running stops with the rest
+    closeAll();
     Napi::Error::New(env, msg.empty() ? "Could not start the audio device" : msg).ThrowAsJavaScriptException();
   }
   return env.Undefined();
@@ -777,8 +792,8 @@ Napi::Value Read(const Napi::CallbackInfo& info) {
   r.Set("frames", static_cast<double>(frames));
   r.Set("played", static_cast<double>(s->played.load()));
   r.Set("consumed", static_cast<double>(s->consumed.load()));
-  // Two devices: a generator sample g is captured with frame g + silent + shift (the frames padded or repeated
-  // minus the samples dropped), as it is played at frame g + silent on one device
+  // A generator sample g is captured with frame g + silent + shift: played at frame g + silent, and shift for
+  // frames lost to a full ring and (two devices) padded, repeated or dropped between the devices
   r.Set("silent", static_cast<double>(static_cast<int64_t>(s->silent.load()) + s->shift.load()));
   r.Set("drift", static_cast<double>(s->drift.load()));
   r.Set("inputFrames", static_cast<double>(s->split ? s->inFrames.load() : s->played.load()));
