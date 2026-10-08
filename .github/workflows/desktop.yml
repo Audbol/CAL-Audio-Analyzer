@@ -152,6 +152,16 @@ jobs:
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT";
           else echo "tag=v$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"; fi
+      - name: Point an existing draft at this commit
+        # A draft keeps the commit it was first made from, and publishing it creates the tag there: move the
+        # draft to the commit these files were built from first (a draft has no tag yet, so nothing is rewritten)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          id=$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq ".[] | select(.draft and .tag_name == \"$TAG\") | .id" | head -1)
+          if [ -n "$id" ]; then gh api -X PATCH "repos/${GITHUB_REPOSITORY}/releases/$id" -f target_commitish="$GITHUB_SHA" --jq '.target_commitish'; fi
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
