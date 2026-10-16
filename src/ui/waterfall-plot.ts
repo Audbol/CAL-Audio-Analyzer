@@ -1,4 +1,4 @@
-import { CHART } from './theme';
+import { CHART, chartTheme } from './theme';
 import { formatFreq } from '../dsp/freq';
 import { drawWatermark, onWatermarkChange } from './watermark';
 import type { WaterfallResult } from '../dsp/waterfall';
@@ -257,7 +257,7 @@ export class WaterfallPlot {
     line(P(farX, 0, farZ), P(farX, HEIGHT, farZ));
 
     // Slices far to near: filled with the background so nearer slices hide farther ones
-    const day = CHART.bg === '#ffffff';
+    const day = chartTheme() === 'day';
     const order = Array.from({ length: n }, (_, k) => k).sort((a, b) => depthOf(0, HEIGHT / 2, wz(b)) - depthOf(0, HEIGHT / 2, wz(a)));
     const xs = Array.from(d.freqs, (f) => wx(f));
     for (const k of order) {

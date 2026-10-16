@@ -1,6 +1,7 @@
 import type { App } from '../app';
 import { h, icon, numberInput } from '../ui/dom';
 import { airAbsorption } from '../dsp/air';
+import { escapeHtml } from '../ui/plot';
 
 /**
  * Tools → Setup → Air: temperature and humidity (speed of sound and air absorption, ISO 9613-1), and air
@@ -64,8 +65,4 @@ export class AirCard {
       .map((r) => `<tr><th>${escapeHtml(r.name)}</th><td>${r.d.toFixed(1)} m</td>${freqs.map((f) => `<td>${(airAbsorption(f, s.tempC, s.air.humidity) * r.d).toFixed(1)} dB</td>`).join('')}</tr>`)
       .join('')}</table>`;
   }
-}
-
-function escapeHtml(t: string): string {
-  return t.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }

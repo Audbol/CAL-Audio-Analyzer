@@ -9,6 +9,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { randomInt } from 'node:crypto';
 
 const require = createRequire(import.meta.url);
 const { createHub } = require('../electron/hub.cjs');
@@ -20,8 +21,14 @@ const arg = (name, fallback) => {
   const i = args.indexOf(`--${name}`);
   return i >= 0 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : fallback;
 };
-const port = Number(arg('port', process.env.PORT || 8520));
-const pin = arg('pin', String(Math.floor(Math.random() * 1e6)).padStart(6, '0'));
+const portArg = arg('port', process.env.PORT || 8520);
+const port = Number(portArg);
+if (!Number.isInteger(port) || port < 1 || port > 65535) {
+  console.error(`Not a port number: ${portArg}`);
+  process.exit(1);
+}
+// The PIN is the only thing keeping strangers on the network out: from the system's secure random source
+const pin = arg('pin', String(randomInt(0, 1e6)).padStart(6, '0'));
 const allowControl = !args.includes('--no-control');
 
 if (!fs.existsSync(path.join(distDir, 'index.html'))) {

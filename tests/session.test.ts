@@ -80,3 +80,21 @@ describe('remote analysis frames', () => {
     expect(old.rtaReady).toBe(true);
   });
 });
+
+describe('reset to a profile', () => {
+  it('keeps the setup and your own things, and copes with unset optional settings', async () => {
+    const { resetToProfile } = await import('../src/defaults');
+    const { defaultSettings } = await import('../src/state');
+    const cur = defaultSettings();
+    cur.presets = [{ id: 'p1' } as never];
+    cur.customTargets = [{ id: 't', name: 'T', points: [[100, 0]] }];
+    cur.uiMode = 'simple';
+    cur.tfSmoothing = 3;
+    delete (cur as unknown as Record<string, unknown>).loopbackInput;
+    const out = resetToProfile(cur, 'dual-fft');
+    expect(out.tfSmoothing).toBe(12);
+    expect(out.presets.length).toBe(1);
+    expect(out.customTargets[0].id).toBe('t');
+    expect(out.uiMode).toBe('simple');
+  });
+});

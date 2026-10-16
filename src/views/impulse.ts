@@ -22,6 +22,8 @@ export class ImpulseView implements View {
   private measIdx = 0;
   private selHost = h('span', {});
   private lastPeakMs = 0;
+  /** The measurement the peak was found for (null: no response shown since it was last applied or changed). */
+  private peakFor: string | null = null;
   private counter = 0;
 
   constructor(private app: App) {
@@ -43,12 +45,20 @@ export class ImpulseView implements View {
 
   show(): void {
     const opts = this.app.measurements.length ? this.app.measurements.map((m, i) => ({ value: i, label: m.cfg.name })) : [{ value: 0, label: '—' }];
-    this.selHost.replaceChildren(select(opts, this.measIdx, (v) => (this.measIdx = v)));
+    this.selHost.replaceChildren(
+      select(opts, this.measIdx, (v) => {
+        this.measIdx = v;
+        this.peakFor = null;
+      }),
+    );
   }
 
   private applyPeak(): void {
     const m = this.app.measurements[this.measIdx];
     if (!m) return;
+    // Only a peak found in this measurement's own response, once (the next response shows the new one)
+    if (this.peakFor !== m.cfg.id) return void this.app.toast('Wait for this measurement’s impulse response first.', 'info');
+    this.peakFor = null;
     m.cfg.delay = Math.max(0, m.cfg.delay + Math.round((this.lastPeakMs / 1000) * m.fs));
     m.reset();
     this.app.save();
@@ -108,6 +118,7 @@ export class ImpulseView implements View {
     const norm = new Float64Array(n);
     for (let i = 0; i < n; i++) norm[i] = (sign * ir[i]) / (pk || 1);
     this.lastPeakMs = t[pkIdx];
+    this.peakFor = m.cfg.id;
     this.irVersion++;
     this.lin.series = [{ id: 'ir', label: m.cfg.name, x: t, y: norm, color: m.cfg.color, width: 1.3 }];
     this.etc.series = [{ id: 'etc', label: m.cfg.name, x: t, y: etc, color: m.cfg.color, width: 1.3, fill: true }];

@@ -158,7 +158,8 @@ export class HostLink {
     this.send({ t: 'sweepProgress', running, frac, text });
   }
 
-  private status(): HostStatus {
+  /** The status (its shared part is added as cached JSON in sendStatus). */
+  private statusWithoutShared(): HostStatus {
     const a = this.app;
     const s = a.settings;
     return {
@@ -170,7 +171,7 @@ export class HostLink {
       deviceLabel: a.engine.deviceLabel,
       simulate: a.engine.simulate,
       generator: s.generator,
-      shared: sharedOf(s),
+      shared: undefined as unknown as HostStatus['shared'],
       busy: a.busy,
       analysis: { rtaFft: s.rtaFft, rtaAveraging: s.rtaAveraging, tfAveraging: s.tfAveraging, lfResolution: s.lfResolution },
       playlist: this.playlistState(),
@@ -185,8 +186,24 @@ export class HostLink {
     return { ...p, pos: Math.round(p.pos * 2) / 2 };
   }
 
+  /**
+   * The shared settings (measurements, mics with their correction files, targets, notes: often hundreds of kB as
+   * JSON), built again only after the settings were saved, or every few seconds anyway, not with every status.
+   */
+  private sharedCache: { version: number; at: number; json: string } | null = null;
+  private sharedJson(): string {
+    const c = this.sharedCache;
+    const now = performance.now();
+    if (c && c.version === this.app.settingsVersion && now - c.at < 5000) return c.json;
+    const json = JSON.stringify(sharedOf(this.app.settings));
+    this.sharedCache = { version: this.app.settingsVersion, at: now, json };
+    return json;
+  }
+
   private sendStatus(): void {
-    const json = JSON.stringify(this.status());
+    // The status as JSON with the shared part spliced in as cached text (not serialised again every time)
+    const { shared: _shared, ...rest } = this.statusWithoutShared();
+    const json = `${JSON.stringify(rest).slice(0, -1)},"shared":${this.sharedJson()}}`;
     if (json === this.lastStatus) return;
     this.lastStatus = json;
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(json);
@@ -264,10 +281,20 @@ export class HostLink {
       case 'nativePanel':
         void app.openNativePanel();
         break;
-      case 'setAnalysis':
-        Object.assign(app.settings, { rtaFft: msg.analysis.rtaFft, rtaAveraging: msg.analysis.rtaAveraging, tfAveraging: msg.analysis.tfAveraging, lfResolution: msg.analysis.lfResolution ?? app.settings.lfResolution });
+      case 'setAnalysis': {
+        // Only values the app itself offers (from the network: an odd FFT size would break every analyzer)
+        const a = msg.analysis ?? ({} as typeof msg.analysis);
+        const s = app.settings;
+        const avg = [0, 1, 2, 4, 8, 16, 32, 64];
+        if ([4096, 8192, 16384, 32768, 65536].includes(a.rtaFft)) s.rtaFft = a.rtaFft;
+        if (avg.includes(a.rtaAveraging)) s.rtaAveraging = a.rtaAveraging;
+        if (avg.includes(a.tfAveraging)) s.tfAveraging = a.tfAveraging;
+        if (a.lfResolution && ['standard', 'high', 'max'].includes(a.lfResolution)) s.lfResolution = a.lfResolution;
         app.applyAnalysisSettings();
+        // The host's own toolbar shows what is in use now
+        app.syncSettingControls();
         break;
+      }
     }
   }
 

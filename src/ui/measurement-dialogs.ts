@@ -10,6 +10,7 @@ export function showNewMic(app: App, onCreated: (mic: MicProfile) => void, onCan
   const serial = h('input', { type: 'text', class: 'text', placeholder: 'optional', maxlength: '40', 'aria-label': 'Serial number', dataset: { newMic: 'serial' } }) as HTMLInputElement;
   let done = false;
   const create = () => {
+    if (done) return;
     const mic: MicProfile = { id: `mic${Date.now().toString(36)}`, name: name.value.trim() || `Mic ${app.settings.mics.length + 1}`, channel: -1, micCal: null, splOffset: 0, splCalibrated: false };
     if (model.value.trim()) mic.model = model.value.trim();
     if (serial.value.trim()) mic.serial = serial.value.trim();
@@ -53,6 +54,8 @@ export function showAddMeasurement(app: App): void {
   let input = firstFree;
   let ref = s.measurements[0]?.ref ?? -1;
   let micId = app.micOn(input)?.id ?? '';
+  // The mic was only suggested (the one on the input), not chosen: another input suggests its own, or none
+  let suggested = true;
   const name = h('input', { type: 'text', class: 'text', value: '', placeholder: `e.g. FOH left, Row 12, Sub (default: Mic ${n + 1})`, maxlength: '40', 'aria-label': 'Measurement name', dataset: { addMeas: 'name' } }) as HTMLInputElement;
   const micHost = h('span', { class: 'meas-mic-host' });
   const renderMic = () => {
@@ -71,24 +74,30 @@ export function showAddMeasurement(app: App): void {
             app,
             (mic) => {
               micId = mic.id;
+              suggested = false;
               renderMic();
             },
             renderMic,
           );
         micId = v;
+        suggested = false;
       }, { dataset: { addMeas: 'mic' }, 'aria-label': 'Microphone' }),
     );
   };
   renderMic();
   const inputSel = select(inputs, input, (v) => {
     input = v;
-    // Suggest the mic already on that input
-    micId = app.micOn(v)?.id ?? micId;
+    // Suggest the mic already on that input (a mic chosen here stays chosen)
+    if (suggested) micId = app.micOn(v)?.id ?? '';
     renderMic();
   }, { dataset: { addMeas: 'input' }, 'aria-label': 'Input' });
   const refSel = select(app.channelOptions(true), ref, (v) => (ref = v), { dataset: { addMeas: 'ref' }, 'aria-label': 'Reference' });
   const field = (label: string, el: HTMLElement, hint = '') => h('label', { class: 'cmp-field', title: hint }, h('span', {}, label), el);
+  let added = false;
   const add = () => {
+    // Once (Enter held down, or a double click, adds one measurement)
+    if (added) return;
+    added = true;
     const cfg = app.addMeasurement({ name: name.value, mic: input, ref, micId: micId || '' });
     app.renderMeasurements();
     close();

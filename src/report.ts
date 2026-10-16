@@ -73,7 +73,7 @@ function waterfallImage(data: WaterfallResult): string {
 }
 
 function figHtml(title: string, f: Figure, caption = ''): string {
-  const legend = f.legend.map((l) => `<span class="lg"><i style="border-top:3px ${l.dash ? 'dashed' : 'solid'} ${l.color}"></i>${escapeHtml(l.label)}</span>`).join('');
+  const legend = f.legend.map((l) => `<span class="lg"><i style="border-top:3px ${l.dash ? 'dashed' : 'solid'} ${seriesColor(l.color)}"></i>${escapeHtml(l.label)}</span>`).join('');
   return `<figure><figcaption><b>${escapeHtml(title)}</b>${caption ? ` <span class="dim">${escapeHtml(caption)}</span>` : ''}</figcaption><img src="${f.img}" alt="${escapeHtml(title)}"><div class="legend">${legend}</div></figure>`;
 }
 
@@ -349,7 +349,7 @@ function buildReportHtml(app: App): string {
   // Traces ----------------------------------------------------------------------------------------------------
   if (app.traces.traces.length) {
     const kind = { tf: 'Transfer function', rta: 'Spectrum', sweep: 'Sweep' } as const;
-    const rows = app.traces.traces.map((t) => `<tr><td><i class="sw" style="background:${seriesColor(t.color)}"></i>${escapeHtml(t.name)}</td><td>${kind[t.kind]}</td><td>${new Date(t.created).toLocaleString()}</td><td>${t.offset ? `${t.offset > 0 ? '+' : ''}${t.offset} dB` : ''}</td><td>${escapeHtml(t.note ?? '')}</td></tr>`).join('');
+    const rows = app.traces.traces.map((t) => `<tr><td><i class="sw" style="background:${seriesColor(t.color)}"></i>${escapeHtml(t.name)}</td><td>${kind[t.kind]}</td><td>${new Date(t.created).toLocaleString()}</td><td>${Number(t.offset) ? `${t.offset > 0 ? '+' : ''}${Number(t.offset)} dB` : ''}</td><td>${escapeHtml(t.note ?? '')}</td></tr>`).join('');
     // Photos of the measurement positions
     const photos = app.traces.traces
       .filter((t) => t.photo?.startsWith('data:image/'))

@@ -1,4 +1,5 @@
 import type { PeqFilter } from '../dsp/eq';
+import { prepareAppWindow } from './app-window';
 import { consoleBands, widthName, type ConsoleEqProfile } from '../dsp/console-eq';
 
 /**
@@ -30,32 +31,8 @@ export class EqBoard {
     if (!win) return false;
     this.win = win;
     const doc = win.document;
-    // A board left open from before (e.g. the app was reloaded) is the same window: start it afresh
-    doc.head.replaceChildren();
-    doc.body.replaceChildren();
-    doc.title = 'EQ board · CAL Audio Analyzer';
-    // The app's styles and colour scheme, as for detached panels
-    for (const node of Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))) {
-      if (node instanceof HTMLLinkElement) {
-        const link = doc.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = node.href;
-        doc.head.append(link);
-      } else doc.head.append(doc.importNode(node, true));
-    }
-    const syncTheme = () => {
-      const t = document.documentElement.dataset.theme;
-      if (t) doc.documentElement.dataset.theme = t;
-      else delete doc.documentElement.dataset.theme;
-      const style = document.documentElement.getAttribute('style');
-      if (style) doc.documentElement.setAttribute('style', style);
-      else doc.documentElement.removeAttribute('style');
-    };
-    syncTheme();
-    const obs = new MutationObserver(syncTheme);
-    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'style'] });
+    prepareAppWindow(win, 'EQ board · CAL Audio Analyzer');
     win.addEventListener('pagehide', () => {
-      obs.disconnect();
       this.win = null;
     });
     doc.body.className = 'eq-board-body';

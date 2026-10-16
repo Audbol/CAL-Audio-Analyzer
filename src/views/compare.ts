@@ -76,7 +76,10 @@ export function compareSeries(o: CompareOutcome): { curves: Series[]; change: Se
  */
 export function showCompare(app: App, selected: string[]): void {
   const s = app.settings;
-  const prev = s.compare && runCompare(app, s.compare) ? s.compare : null;
+  // Two traces selected: compare those (keeping the last comparison's other settings); else the last pair
+  const last = s.compare && runCompare(app, s.compare) ? s.compare : null;
+  const chosen = selected.length >= 2 ? defaultPair(app, selected) : null;
+  const prev = last && chosen ? { ...last, before: chosen[0], after: chosen[1] } : last;
   const pair = prev ? [prev.before, prev.after] : defaultPair(app, selected);
   if (!pair) {
     app.toast('Save two traces first (for example a sweep before and after EQ), then compare them', 'warn');

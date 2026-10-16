@@ -14,6 +14,8 @@
 
 namespace {
 void* gLib = nullptr;
+// Called in the JACK process callback: resolved when the library loads, not on its first (real-time) call
+void* (*gPortGetBuffer)(jack_port_t*, jack_nframes_t) = nullptr;
 
 template <typename F>
 F sym(const char* name) {
@@ -38,6 +40,7 @@ bool calJackLoad() {
       return false;
     }
   }
+  gPortGetBuffer = sym<void* (*)(jack_port_t*, jack_nframes_t)>("jack_port_get_buffer");
   return true;
 }
 
@@ -82,7 +85,7 @@ CAL_JACK_FWD(jack_nframes_t, jack_get_buffer_size, (jack_client_t * c), (c), 0)
 CAL_JACK_FWD(jack_nframes_t, jack_get_sample_rate, (jack_client_t * c), (c), 0)
 CAL_JACK_FWD(const char**, jack_get_ports, (jack_client_t * c, const char* p, const char* t, unsigned long fl), (c, p, t, fl), nullptr)
 CAL_JACK_FWD(jack_port_t*, jack_port_by_name, (jack_client_t * c, const char* n), (c, n), nullptr)
-CAL_JACK_FWD(void*, jack_port_get_buffer, (jack_port_t * p, jack_nframes_t n), (p, n), nullptr)
+void* jack_port_get_buffer(jack_port_t* p, jack_nframes_t n) { return gPortGetBuffer ? gPortGetBuffer(p, n) : nullptr; }
 CAL_JACK_FWD(const char*, jack_port_name, (const jack_port_t* p), (p), "")
 CAL_JACK_FWD(jack_port_t*, jack_port_register, (jack_client_t * c, const char* n, const char* t, unsigned long fl, unsigned long b), (c, n, t, fl, b), nullptr)
 CAL_JACK_FWD(int, jack_port_unregister, (jack_client_t * c, jack_port_t* p), (c, p), -1)

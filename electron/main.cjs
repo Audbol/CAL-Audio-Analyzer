@@ -40,9 +40,17 @@ let hub = null;
 function registerServerIpc() {
   // Only the main app window may control the server
   const fromApp = (e) => win && e.sender === win.webContents;
-  ipcMain.handle('server:start', async (e, opts = {}) => {
+  // One start or stop at a time: two quick starts would otherwise leave the first server running, unreachable
+  let serverOp = Promise.resolve();
+  const serialized = (fn) => {
+    const run = serverOp.then(fn, fn);
+    serverOp = run.catch(() => undefined);
+    return run;
+  };
+  ipcMain.handle('server:start', (e, opts = {}) => serialized(async () => {
     if (!fromApp(e)) throw new Error('Not allowed');
     if (hub) await hub.stop();
+    const port = Number(opts.port) || 8520;
     hub = createHub({
       distDir: DIST,
       pin: typeof opts.pin === 'string' ? opts.pin : '',
@@ -51,18 +59,18 @@ function registerServerIpc() {
       log: (m) => console.log(`[remote] ${m}`),
     });
     try {
-      return await hub.start(Number(opts.port) || 8520);
+      return await hub.start(port);
     } catch (err) {
       hub = null;
-      throw new Error(err && err.code === 'EADDRINUSE' ? `Port ${opts.port} is already in use. Choose another port.` : String(err && err.message ? err.message : err));
+      throw new Error(err && err.code === 'EADDRINUSE' ? `Port ${port} is already in use. Choose another port.` : String(err && err.message ? err.message : err));
     }
-  });
-  ipcMain.handle('server:stop', async (e) => {
+  }));
+  ipcMain.handle('server:stop', (e) => serialized(async () => {
     if (!fromApp(e)) throw new Error('Not allowed');
     if (hub) await hub.stop();
     hub = null;
     return true;
-  });
+  }));
   // Detached panel windows: keep on top of other windows ("pin")
   ipcMain.handle('window:pin', (e, name, on) => {
     if (!fromApp(e)) throw new Error('Not allowed');
@@ -86,10 +94,14 @@ let audioHost = null;
 function nativeAddonPath() {
   const prebuilt = path.join('native', 'prebuilt', `${process.platform}-${process.arch}`, 'cal_audio.node');
   const local = path.join('native', 'build', 'Release', 'cal_audio.node');
-  const candidates = app.isPackaged
-    ? [path.join(process.resourcesPath, 'app.asar.unpacked', prebuilt), path.join(process.resourcesPath, prebuilt)]
-    : [path.join(__dirname, '..', prebuilt), path.join(__dirname, '..', local)];
-  return candidates.find((p) => fs.existsSync(p)) || null;
+  if (app.isPackaged) {
+    const candidates = [path.join(process.resourcesPath, 'app.asar.unpacked', prebuilt), path.join(process.resourcesPath, prebuilt)];
+    return candidates.find((p) => fs.existsSync(p)) || null;
+  }
+  // Development: the newer of the staged module and a fresh build (a rebuild without staging is used at once)
+  const found = [path.join(__dirname, '..', prebuilt), path.join(__dirname, '..', local)].filter((p) => fs.existsSync(p));
+  found.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+  return found[0] || null;
 }
 
 function nativeAudioAvailable() {
@@ -124,14 +136,19 @@ function registerNativeAudioIpc() {
   // Connect the page to the audio host: each side gets one end of a new channel
   ipcMain.on('native-audio:connect', async (e) => {
     if (!fromApp(e) || !nativeAudioAvailable()) return;
-    // macOS: Core Audio inputs need the microphone permission (asked once; the system remembers the answer)
+    // macOS: Core Audio inputs need the microphone permission (asked once; the system remembers the answer).
+    // Without it every input records silence: the page is told, so it can say where to allow it
+    let denied = false;
     if (process.platform === 'darwin' && systemPreferences.getMediaAccessStatus('microphone') !== 'granted') {
-      await systemPreferences.askForMediaAccess('microphone').catch(() => false);
+      denied = !(await systemPreferences.askForMediaAccess('microphone').catch(() => false));
     }
+    // (The window may have closed or reloaded while the system dialog was open)
+    if (e.sender.isDestroyed()) return;
     const host = startAudioHost();
     const { port1, port2 } = new MessageChannelMain();
     host.postMessage({ type: 'connect' }, [port2]);
     e.sender.postMessage('native-audio:port', null, [port1]);
+    if (denied) e.sender.send('native-audio:denied');
   });
 }
 
@@ -171,6 +188,10 @@ function createWindow() {
     },
   });
   win.once('ready-to-show', () => win.show());
+  const thisWin = win;
+  win.on('closed', () => {
+    if (win === thisWin) win = null;
+  });
 
   // Keep navigation inside the app; open external links in the default browser
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -233,10 +254,11 @@ function buildMenu() {
 }
 
 app.on('second-instance', () => {
-  if (win) {
+  // (On macOS the window may have been closed while the app keeps running: open a new one then)
+  if (win && !win.isDestroyed()) {
     if (win.isMinimized()) win.restore();
     win.focus();
-  }
+  } else if (app.isReady()) createWindow();
 });
 
 app.whenReady().then(() => {

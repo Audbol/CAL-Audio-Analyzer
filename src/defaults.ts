@@ -37,6 +37,15 @@ const KEEP = [
   'workspaces',
   'nativeAudio',
   'session',
+  // Your own things and per-device choices: saved system presets, target curves, the view (simple / advanced),
+  // the room and loopback input, the EQ console and the air conditions
+  'presets',
+  'customTargets',
+  'uiMode',
+  'room',
+  'loopbackInput',
+  'eqConsole',
+  'air',
 ] as const satisfies readonly (keyof Settings)[];
 
 export interface DefaultsProfile {
@@ -79,7 +88,8 @@ export function resetToProfile(current: Settings, profileId: string): Settings {
   const d = defaultSettings();
   const out = { ...d, ...(DEFAULT_PROFILES.find((p) => p.id === profileId)?.settings ?? {}) } as Settings;
   const rec = out as unknown as Record<string, unknown>;
-  for (const k of KEEP) rec[k] = JSON.parse(JSON.stringify(current[k]));
+  // (Optional settings may be unset: they keep the default)
+  for (const k of KEEP) if (current[k] !== undefined) rec[k] = JSON.parse(JSON.stringify(current[k]));
   out.workspace = '';
   return out;
 }

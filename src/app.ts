@@ -1,7 +1,7 @@
 import { AudioEngine, GEN_CHANNEL } from './audio/engine';
 import type { GeneratorType } from './audio/protocol';
 import { logGrid, SMOOTHING_OPTIONS } from './dsp/freq';
-import { calCorrection } from './dsp/calibration';
+import { calCorrection, validCal } from './dsp/calibration';
 import { SplMeter, type SplReading } from './dsp/spl';
 import { LoudnessMeter } from './dsp/loudness';
 import { airLoss } from './dsp/air';
@@ -275,7 +275,11 @@ export class App {
     return this.engine.sampleRate;
   }
 
+  /** Changes with every save (what is shared with remote devices is built again only then). */
+  settingsVersion = 0;
+
   save(): void {
+    this.settingsVersion++;
     saveSettings(this.settings);
     if (this.remote) this.pushShared();
   }
@@ -291,9 +295,10 @@ export class App {
   /** Remote client: send calibration / measurement setup changes made on this device to the host. */
   private pushShared(): void {
     if (!this.sharedApplied) return; // not yet synchronised with the host
-    const shared = JSON.stringify(sharedOf(this.settings));
+    const obj = sharedOf(this.settings);
+    const shared = JSON.stringify(obj);
     if (shared === this.sharedApplied) return;
-    if (this.sendToHost({ t: 'cmd', cmd: 'setShared', shared: sharedOf(this.settings) })) this.sharedApplied = shared;
+    if (this.sendToHost({ t: 'cmd', cmd: 'setShared', shared: obj })) this.sharedApplied = shared;
   }
 
   /** Host: apply measurement setup changes sent by a remote device. */
@@ -364,14 +369,19 @@ export class App {
         // The demo room provides a loopback on In 2; real setups most often start with the internal reference
         for (const m of this.settings.measurements) {
           m.ref = this.settings.simulate ? 1 : GEN_CHANNEL;
+          if (m.mic !== 0) delete m.micId;
           m.mic = 0;
           m.delay = 0;
         }
         if (!this.settings.simulate) this.toast('Reference set to the internal generator. Use In 2 instead if you have a hardware loopback.', 'info');
       }
-      // Make channel assignments valid for this device
+      // Make channel assignments valid for this device. A measurement moved to another input takes that input's
+      // mic: its own stays on the input it is plugged into (it would otherwise be moved, unplugging the other)
       for (const m of this.settings.measurements) {
-        if (m.mic >= nCh) m.mic = 0;
+        if (m.mic >= nCh) {
+          m.mic = 0;
+          delete m.micId;
+        }
         if (m.ref !== GEN_CHANNEL && (m.ref >= nCh || m.ref === m.mic)) m.ref = nCh > 1 && !this.settings.simulate ? GEN_CHANNEL : nCh > 1 ? 1 : GEN_CHANNEL;
       }
       if (this.settings.splChannel >= nCh) this.settings.splChannel = 0;
@@ -713,7 +723,8 @@ export class App {
   calFor(channel: number): Float64Array | null {
     const mic = this.micOn(channel);
     const cal = mic?.micCal;
-    if (!cal) return null;
+    // (A damaged correction, e.g. from an old or edited file, counts as none rather than stopping the app)
+    if (!cal || !validCal(cal)) return null;
     const key = `${mic.id}|${cal.name}|${cal.freqs.length}|${this.grid.length}`;
     let c = this.calCache.get(key);
     if (!c) {
@@ -735,7 +746,7 @@ export class App {
     const d = air.distance > 0 ? air.distance : this.measurementDistance(cfg);
     if (!(d > 0.05)) return cal;
     const mic = this.micOn(cfg.mic);
-    const calKey = mic?.micCal ? `${mic.id}|${mic.micCal.name}|${mic.micCal.freqs.length}` : 'none';
+    const calKey = mic?.micCal ? `${mic.id}|${mic.micCal.name}|${mic.micCal.freqs?.length ?? 0}` : 'none';
     const key = `air|${calKey}|${d.toFixed(1)}|${this.settings.tempC}|${air.humidity}|${this.grid.length}`;
     let c = this.calCache.get(key);
     if (!c) {
@@ -831,11 +842,16 @@ export class App {
   /** Adopt shared mic settings from the host or a remote (older versions only send one calibration). */
   private adoptMics(shared: SharedSettings): void {
     const s = this.settings;
-    s.mics = shared.mics
-      ? JSON.parse(JSON.stringify(shared.mics))
-      : shared.splCalibrated || shared.micCal
-        ? [{ id: 'mic1', name: 'Mic 1', channel: s.splChannel, micCal: shared.micCal, splOffset: shared.splOffset, splCalibrated: shared.splCalibrated }]
-        : [];
+    if (Array.isArray(shared.mics)) {
+      // (Damaged corrections are dropped rather than carried along)
+      s.mics = (JSON.parse(JSON.stringify(shared.mics)) as Settings['mics']).map((m) => ({ ...m, micCal: validCal(m.micCal) ? m.micCal : null }));
+      return;
+    }
+    // From before mic inventories (a session saved by 1.8 or earlier, an old host): its single calibration
+    // becomes a mic when there is none here; an inventory here is never replaced by it
+    if (!s.mics.length && (shared.splCalibrated || shared.micCal)) {
+      s.mics = [{ id: 'mic1', name: 'Mic 1', channel: s.splChannel, micCal: validCal(shared.micCal) ? shared.micCal : null, splOffset: shared.splOffset, splCalibrated: shared.splCalibrated }];
+    }
   }
 
   setGenerator(patch: Partial<Settings['generator']>): void {
@@ -1097,6 +1113,10 @@ export class App {
     } catch (e) {
       rs.enabled = false;
       this.save();
+      // Nothing left half on: a server that started but this app couldn't connect to stops again
+      this.hostLink?.disconnect();
+      this.hostLink = null;
+      await bridge.server.stop().catch(() => undefined);
       this.toast(`Could not start remote access: ${(e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`, 'warn');
       throw e;
     } finally {
@@ -1334,7 +1354,10 @@ export class App {
       this.toast(`The audio interface stopped: ${reason}`, 'warn');
       this.renderTopState();
     };
-    if (!this.remote) this.engine.native.onStatus = () => (this.views.find((v) => v.id === 'tools') as ToolsView | undefined)?.nativeCard.update();
+    if (!this.remote) {
+      this.engine.native.onStatus = () => (this.views.find((v) => v.id === 'tools') as ToolsView | undefined)?.nativeCard.update();
+      this.engine.native.onNotice = (msg) => this.toast(msg, 'warn');
+    }
     // Noise-log limit: colour the level readout and warn when the rolling Leq nears or passes the limit
     this.logger.onState = (st, lvl) => {
       this.splMini.classList.toggle('log-near', st === 'near');
@@ -1691,6 +1714,8 @@ export class App {
     if (!ok) this.toast('This driver has no control panel.', 'info');
   }
 
+  private refreshGen = 0;
+
   async refreshDevices(): Promise<void> {
     if (this.remote) {
       // The host's own source menu: any device with control rights can switch the host's input
@@ -1732,14 +1757,15 @@ export class App {
       }
       return;
     }
+    // Built completely, then shown at once, and only by the newest refresh (refreshes overlap: start, the host,
+    // a source change; each waits on the device lists, and one finishing late would add its devices again)
+    const gen = ++this.refreshGen;
     const devices = await AudioEngine.listDevices().catch(() => []);
     const cur = this.settings.simulate ? '__demo' : this.settings.deviceId || '__default';
-    clear(this.sourceSel);
-    this.sourceSel.append(h('option', { value: '__demo' }, 'Demo: virtual room'));
-    this.sourceSel.append(h('option', { value: '__default' }, 'System default input'));
+    const nodes: HTMLElement[] = [h('option', { value: '__demo' }, 'Demo: virtual room'), h('option', { value: '__default' }, 'System default input')];
     devices
       .filter((d) => d.deviceId && d.deviceId !== 'default')
-      .forEach((d, i) => this.sourceSel.append(h('option', { value: d.deviceId }, d.label || `Input device ${i + 1}`)));
+      .forEach((d, i) => nodes.push(h('option', { value: d.deviceId }, d.label || `Input device ${i + 1}`)));
     // Desktop app: native devices (ASIO, Core Audio, JACK / PipeWire, ALSA)
     if (await NativeAudio.available()) {
       const apis = await this.engine.native.listApis().catch(() => [] as string[]);
@@ -1755,12 +1781,15 @@ export class App {
         const ins = list.filter((d) => d.inputs > 0);
         for (const d of ins) g.append(h('option', { value: `native:${api}:${d.name}` }, `${nativeDeviceLabel(api, d.name)} · ${d.inputs} in / ${d.outputs} out`));
         if (!ins.length) g.append(h('option', { value: '', disabled: true }, info.none));
-        this.sourceSel.append(g);
+        nodes.push(g);
       }
       // Keep a selected native device listed even if it is missing right now
       const sel = this.nativeSelection();
-      if (sel && ![...this.sourceSel.options].some((o) => o.value === cur)) this.sourceSel.append(h('option', { value: cur }, `${sel.name} (not found)`));
+      const listed = nodes.some((n) => (n as HTMLOptionElement).value === cur || [...n.querySelectorAll('option')].some((o) => o.value === cur));
+      if (sel && !listed) nodes.push(h('option', { value: cur }, `${sel.name} (not found)`));
     }
+    if (gen !== this.refreshGen) return;
+    this.sourceSel.replaceChildren(...nodes);
     this.sourceSel.value = cur;
     if (this.sourceSel.value !== cur) this.sourceSel.value = '__default';
     await this.renderOutputs();
@@ -1854,7 +1883,8 @@ export class App {
       enabled: true,
       invert: false,
     };
-    if (cfg.mic === cfg.ref) cfg.mic = 0;
+    // Never the reference's own input (that would compare the reference with itself)
+    if (cfg.mic === cfg.ref) cfg.mic = cfg.ref === 0 && nCh > 1 ? 1 : 0;
     // The mic already on that input, unless another one is chosen ('' = none: the input becomes uncalibrated,
     // unless other measurements on it still use its mic, as one mic serves one input)
     const micId = opts.micId !== undefined ? opts.micId : this.micOn(cfg.mic)?.id;

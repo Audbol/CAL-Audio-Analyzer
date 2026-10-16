@@ -35,7 +35,6 @@ interface Addon {
   read(): ReadResult | null;
   write(a: Float32Array): number;
   setOutputs(ch: number[]): void;
-  clearOutput(): void;
   controlPanel(): boolean;
   version: string;
 }

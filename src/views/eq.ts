@@ -1,7 +1,7 @@
-import { CHART } from '../ui/theme';
+import { CHART, chartTheme } from '../ui/theme';
 import type { App, View } from '../app';
-import { Plot } from '../ui/plot';
-import { h, icon, select, clear } from '../ui/dom';
+import { Plot, escapeHtml } from '../ui/plot';
+import { h, icon, select, clear, copyText } from '../ui/dom';
 import { allTargets, autoEq, byBand, eqResponse, findTarget, isBand, TARGETS, targetsVersion, type AutoEqResult, type PeqFilter } from '../dsp/eq';
 import { showTargetEditor } from '../ui/target-editor';
 import { EqBoard } from '../ui/eq-board';
@@ -224,7 +224,7 @@ export class EqView implements View {
     const ends = [ro.low ? `below ${fmt(ro.low)}` : '', ro.high ? `above ${fmt(ro.high)}` : ''].filter(Boolean).join(' and ');
     const rollText = ends ? ` The system rolls off ${ends}: left as it is (boosting a loudspeaker past its range only costs headroom).` : '';
     this.summary.innerHTML = this.filters.length
-      ? `<b>${this.filters.length} filters</b> for “${src.name}” → ${target.label}${target.note ? ` (${target.note})` : ''}. RMS deviation ${this.result.rmsBefore.toFixed(1)} dB → <b>${this.result.rmsAfter.toFixed(1)} dB</b>.${rollText} Tip: verify with a new measurement, and prefer fixing large dips with placement/delay rather than boost.`
+      ? `<b>${this.filters.length} filters</b> for “${escapeHtml(src.name)}” → ${escapeHtml(target.label)}${target.note ? ` (${escapeHtml(target.note)})` : ''}. RMS deviation ${this.result.rmsBefore.toFixed(1)} dB → <b>${this.result.rmsAfter.toFixed(1)} dB</b>.${rollText} Tip: verify with a new measurement, and prefer fixing large dips with placement/delay rather than boost.`
       : `The response is already within ±1 dB of the target in the selected range — no EQ needed.${rollText}`;
     this.renderList();
     this.dirty = true;
@@ -325,7 +325,8 @@ export class EqView implements View {
           if (key === 'gain' && octaves) {
             // The width stays as set on the console (on Allen & Heath consoles its Q follows the gain)
             const w = bandWidth(f, p);
-            f.gain = v;
+            // (Within the console's range first, so the width kept is for the gain it ends up with)
+            f.gain = Math.min(p.gainMax, Math.max(p.gainMin, v));
             f.q = widthToQ(w, p, f);
           } else f[key] = key === 'q' ? widthToQ(v, p, f) : v;
           // Within the console's ranges
@@ -363,10 +364,7 @@ export class EqView implements View {
         : fmt === 'text'
         ? this.filters.map((f, i) => (f.type === 'highpass' ? `Filter ${i + 1}: ON HP Fc ${f.f.toFixed(1)} Hz ${f.slope ?? 12} dB/oct` : `Filter ${i + 1}: ON PK Fc ${f.f.toFixed(1)} Hz Gain ${f.gain.toFixed(1)} dB Q ${f.q.toFixed(2)}`)).join('\n')
         : ['type,frequency_hz,gain_db,q,slope_db_oct', ...this.filters.map((f) => `${f.type},${f.f},${f.gain},${f.q},${f.type === 'highpass' ? (f.slope ?? 12) : ''}`)].join('\n');
-    navigator.clipboard?.writeText(text).then(
-      () => this.app.toast('Filters copied to clipboard', 'ok'),
-      () => this.app.toast('Clipboard not available', 'warn'),
-    );
+    void copyText(text).then((ok) => this.app.toast(ok ? 'Filters copied to clipboard' : 'Clipboard not available', ok ? 'ok' : 'warn'));
   }
 
   invalidate(): void {
@@ -487,6 +485,9 @@ export class EqView implements View {
   }
 
   restore(snap: EqSnapshot | null): void {
+    // A comparison belongs to the EQ it checked (and its frequency grid)
+    this.verify = null;
+    this.verifyOut.replaceChildren();
     if (!snap) {
       this.result = null;
       this.filters = [];
@@ -572,7 +573,7 @@ export class EqView implements View {
     const r = this.result;
     this.verifyBox.hidden = !r;
     this.board.update(this.filters, this.profile, this.boardInfo());
-    const day = CHART.bg === '#ffffff';
+    const day = chartTheme() === 'day';
     if (r) {
       const x = this.freqs;
       const eq = eqResponse(this.filters, x);

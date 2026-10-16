@@ -2,15 +2,26 @@ import type { App } from '../app';
 import { GEN_CHANNEL } from '../audio/engine';
 import { h, icon, clear } from './dom';
 
-export function modal(title: string, body: HTMLElement, footer: HTMLElement[] = []): { close: () => void; el: HTMLElement } {
+/** Open dialogs, the newest last: Escape closes only the one on top (a dialog opened from another). */
+const openModals: HTMLElement[] = [];
+
+export function modal(title: string, body: HTMLElement, footer: HTMLElement[] = [], opts: { onClose?: () => void } = {}): { close: () => void; el: HTMLElement } {
   const overlay = h('div', { class: 'modal-overlay' });
+  let closed = false;
   const close = () => {
+    if (closed) return;
+    closed = true;
     overlay.classList.add('out');
     setTimeout(() => overlay.remove(), 150);
     window.removeEventListener('keydown', onKey);
+    openModals.splice(openModals.indexOf(overlay), 1);
+    opts.onClose?.();
   };
-  const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && openModals[openModals.length - 1] === overlay) close();
+  };
   window.addEventListener('keydown', onKey);
+  openModals.push(overlay);
   const box = h(
     'div',
     { class: 'modal', role: 'dialog', 'aria-label': title },

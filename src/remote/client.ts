@@ -71,19 +71,38 @@ export class RemoteEngine extends AudioEngine {
     ws.binaryType = 'arraybuffer';
     this.ws = ws;
     await new Promise<void>((resolve, reject) => {
+      let settled = false;
       const fail = (msg: string) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
         this.state = 'error';
         this.lastError = msg;
         this.onChange?.();
         reject(new Error(msg));
       };
+      // A handshake that never completes (Wi-Fi gone mid-connect, no close for minutes) gives up, so reconnecting
+      // can try again instead of waiting on it
+      const timer = setTimeout(() => {
+        if (this.ws !== ws || this.state === 'connected') return;
+        fail('The measurement host did not answer');
+        ws.onclose = null;
+        this.ws = null;
+        try {
+          ws.close();
+        } catch {
+          /* already closing */
+        }
+      }, 12000);
       ws.onmessage = (e) => {
         // A socket replaced by a newer connection (stop() then start()) no longer speaks for this engine
         if (this.ws !== ws) return;
         if (typeof e.data !== 'string') return this.onAudio(e.data as ArrayBuffer);
         const msg = JSON.parse(e.data) as HubMessage;
         this.onMessage(msg);
-        if (msg.t === 'welcome') {
+        if (msg.t === 'welcome' && !settled) {
+          settled = true;
+          clearTimeout(timer);
           this.sendPrefs();
           this.state = 'connected';
           this.onChange?.();

@@ -1,4 +1,5 @@
 import { h, icon, clear } from './dom';
+import { prepareAppWindow } from './app-window';
 
 /**
  * Panel dock for measurement displays. Panels live in a vertical stack and can be:
@@ -222,35 +223,8 @@ export class Dock {
     if (isPip) this.pipIds.add(id);
     else this.pipIds.delete(id);
     const doc = win.document;
-    doc.title = `${panel.title} · CAL Audio Analyzer`;
-    // Bring the app's styles along (inline <style> in development, <link> in production builds)
-    for (const node of Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))) {
-      if (node instanceof HTMLLinkElement) {
-        const link = doc.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = node.href;
-        doc.head.append(link);
-      } else doc.head.append(doc.importNode(node, true));
-    }
-    const meta = doc.createElement('meta');
-    meta.name = 'color-scheme';
-    meta.content = 'dark';
-    doc.head.append(meta);
+    prepareAppWindow(win, `${panel.title} · CAL Audio Analyzer`);
     doc.body.className = 'popout-body';
-    // Follow the main window's colour scheme (day / night), now and when it changes
-    const syncTheme = () => {
-      const t = document.documentElement.dataset.theme;
-      if (t) doc.documentElement.dataset.theme = t;
-      else delete doc.documentElement.dataset.theme;
-      // Custom themes set their colours as properties on the root element
-      const style = document.documentElement.getAttribute('style');
-      if (style) doc.documentElement.setAttribute('style', style);
-      else doc.documentElement.removeAttribute('style');
-    };
-    syncTheme();
-    const themeObserver = new MutationObserver(syncTheme);
-    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'style'] });
-    win.addEventListener('pagehide', () => themeObserver.disconnect());
     frame.classList.remove('floating');
     frame.classList.add('popped');
     frame.style.cssText = '';

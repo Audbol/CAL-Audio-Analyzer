@@ -1,5 +1,5 @@
 import type { App } from '../app';
-import { h, icon, clear } from '../ui/dom';
+import { h, icon, clear, copyText } from '../ui/dom';
 import { randomPin } from '../state';
 import type { RemoteEngine } from '../remote/client';
 
@@ -124,7 +124,7 @@ export class RemoteCard {
         {
           class: 'btn tiny ghost',
           title: 'Copy',
-          onclick: () => navigator.clipboard?.writeText(text).then(() => this.app.toast('Copied', 'ok'), () => this.app.toast('Copy not available', 'warn')),
+          onclick: () => void copyText(text).then((ok) => this.app.toast(ok ? 'Copied' : 'Copy not available', ok ? 'ok' : 'warn')),
         },
         icon('download', 12),
         'Copy',

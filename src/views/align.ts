@@ -399,7 +399,20 @@ export class AlignView implements View {
     this.tracesVersion = this.app.traces.version;
     const opts = this.sourceOptions();
     if (!opts.some((o) => o.value === this.reference)) this.reference = this.guess('Mains', opts);
-    this.refHost.replaceChildren(select(opts, this.reference, (v) => { this.reference = v; this.dirty = true; }, { dataset: { align: 'ref' } }));
+    this.refHost.replaceChildren(
+      select(opts, this.reference, (v) => {
+        this.reference = v;
+        // Results against the old mains no longer hold (parts with mains of their own keep theirs)
+        for (const el of this.elements) {
+          if (el.ref) continue;
+          el.result = null;
+          el.names = null;
+        }
+        this.renderList();
+        this.renderSelected();
+        this.dirty = true;
+      }, { dataset: { align: 'ref' } }),
+    );
     for (const el of this.elements) {
       if (!opts.some((o) => o.value === el.source)) el.source = this.guess(el.name, opts);
       if (el.ref && !opts.some((o) => o.value === el.ref)) el.ref = '';
@@ -673,7 +686,8 @@ export class AlignView implements View {
     if (this.app.traces.version !== this.tracesVersion) this.renderSources();
     const el = this.current;
     const refSrc = el?.ref || this.reference;
-    const live = refSrc.startsWith('live:') || !!el?.source.startsWith('live:');
+    // Live sources redraw as they update, unless a stored result is shown (that doesn't change by itself)
+    const live = !el?.result && (refSrc.startsWith('live:') || !!el?.source.startsWith('live:'));
     if (!this.dirty && !live) return;
     this.dirty = false;
     const r = el?.result ?? null;

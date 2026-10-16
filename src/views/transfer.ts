@@ -121,8 +121,9 @@ export class TransferView extends DockedView implements View {
     const app = this.app;
     const s = app.settings;
     if (this.notes.apply()) this.lastKey = '';
-    // Redraw only when what is shown changed
-    const key = `${app.traces.version}|${s.targetCurve}|${s.targetTolerance}|${s.micAverage}|${s.coherenceThreshold}|${s.showCoherence}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.tfReady}:${m.tfShown}`).join(',')}`;
+    // Redraw only when what is shown changed (including which panels get drawn: one skipped while hidden, or
+    // while only popped-out panels draw, is drawn as soon as it shows again)
+    const key = `${detachedOnly}|${this.visible('mag')}|${this.visible('phase')}|${this.visible('gd')}|${app.traces.version}|${s.targetCurve}|${s.targetTolerance}|${s.micAverage}|${s.coherenceThreshold}|${s.showCoherence}|${app.measurements.map((m) => `${m.cfg.id}:${m.cfg.enabled}:${m.cfg.color}:${m.tfReady}:${m.tfShown}`).join(',')}`;
     if (key === this.lastKey) return this.tickMeters();
     this.lastKey = key;
     const g = app.grid;

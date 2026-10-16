@@ -1,7 +1,7 @@
 import type { App } from '../app';
 import type { MicProfile } from '../state';
 import { h, icon, select } from '../ui/dom';
-import { parseMicCal } from '../dsp/calibration';
+import { parseMicCal, validCal } from '../dsp/calibration';
 import { WeightingFilter } from '../dsp/weighting';
 
 /**
@@ -201,7 +201,7 @@ export class MicsCard {
         let n = 0;
         for (const raw of data.mics) {
           if (typeof raw.id !== 'string' || typeof raw.name !== 'string') continue;
-          const mic: MicProfile = { id: raw.id, name: raw.name, model: raw.model, serial: raw.serial, channel: -1, micCal: raw.micCal ?? null, splOffset: Number(raw.splOffset) || 0, splCalibrated: !!raw.splCalibrated, calibratedAt: raw.calibratedAt, calLevel: raw.calLevel };
+          const mic: MicProfile = { id: raw.id, name: raw.name, model: raw.model, serial: raw.serial, channel: -1, micCal: validCal(raw.micCal) ? raw.micCal : null, splOffset: Number(raw.splOffset) || 0, splCalibrated: !!raw.splCalibrated, calibratedAt: raw.calibratedAt, calLevel: raw.calLevel };
           const i = this.mics.findIndex((x) => x.id === mic.id);
           if (i >= 0) this.mics[i] = { ...mic, channel: this.mics[i].channel };
           else this.mics.push(mic);

@@ -1,6 +1,6 @@
 import type { App } from './app';
 import type { Settings, MeasurementConfig } from './state';
-import { CUSTOM_PREFIX, validTargets, type CustomTarget } from './dsp/eq';
+import { CUSTOM_PREFIX, findTarget, validTargets, type CustomTarget } from './dsp/eq';
 import type { CrossoverDesign } from './dsp/crossover';
 import type { EqView } from './views/eq';
 
@@ -73,11 +73,20 @@ export function applyPreset(app: App, p: SystemPreset): void {
   }
   const rec = s as unknown as Record<string, unknown>;
   for (const k of PRESET_SETTINGS) if (p.settings[k] !== undefined) rec[k] = clone(p.settings[k]);
-  // Mics it names that this computer's inventory doesn't have are left unset (calibration stays with the mics here)
+  // Mics it names that this computer's inventory doesn't have are left unset (calibration stays with the mics here).
+  // The name must match too: mics from before the inventory all have the id "mic1", on every computer
   s.measurements = clone(p.measurements).map((m) => {
-    if (m.micId && !s.mics.some((x) => x.id === m.micId)) delete m.micId;
+    const here = m.micId ? s.mics.find((x) => x.id === m.micId) : undefined;
+    const named = m.micId ? p.micNames?.[m.micId] : undefined;
+    if (m.micId && (!here || (named !== undefined && named !== here.name))) delete m.micId;
     return m;
   });
+  // A target that doesn't exist here (a trace on the other computer, a deleted one) is off rather than unlisted
+  for (const k of ['targetCurve', 'roomTargetCurve'] as const) {
+    const v = s[k];
+    const ok = v === 'off' || !!findTarget(v) || (v.startsWith('trace:') && app.traces.traces.some((t) => `trace:${t.id}` === v));
+    if (!ok) s[k] = 'off';
+  }
   if (p.crossover) s.crossover = { ...s.crossover, ...clone(p.crossover) };
   if (app.engine.running) app.rebuildMeasurements();
   app.syncCal();

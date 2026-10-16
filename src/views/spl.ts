@@ -95,13 +95,13 @@ export class SplView extends DockedView implements View {
   private ldControlsKey = '';
 
   /** Loudness: start / stop, reset, the inputs (a mono input, or a left / right pair) and the target. */
-  private renderLoudnessControls(force = false): void {
+  private renderLoudnessControls(): void {
     const app = this.app;
     const ld = app.settings.loudness;
     const inputs = app.channelOptions(false);
     // Rebuilt only when something it shows changed (an open list stays open through other redraws)
     const key = JSON.stringify([inputs, ld.on, ld.left, ld.right, ld.target]);
-    if (!force && key === this.ldControlsKey) return;
+    if (key === this.ldControlsKey) return;
     this.ldControlsKey = key;
     const save = () => {
       app.save();
@@ -112,7 +112,7 @@ export class SplView extends DockedView implements View {
         ld.on = !ld.on;
         if (ld.on && app.loudness.reading().duration === 0) app.loudness.reset();
         save();
-        this.renderLoudnessControls(true);
+        this.renderLoudnessControls();
       } }, icon(ld.on ? 'pause' : 'play', 13), ld.on ? 'Pause' : 'Measure'),
       h('button', { class: 'btn small ghost', dataset: { loudness: 'reset' }, title: 'Start the integrated loudness, range and true peak again', onclick: () => { app.loudness.reset(); save(); } }, icon('reset', 13), 'Reset'),
       h('label', { class: 'inline' }, 'Input', select(inputs, ld.left, (v) => { ld.left = v; app.loudness.reset(); save(); }, { dataset: { loudness: 'left' } })),

@@ -73,6 +73,8 @@ export function chartTheme(): ThemeName {
  * mode they are darkened and saturated so they keep strong contrast on white (hex colours, with optional alpha).
  */
 export function seriesColor(c: string): string {
+  // Colours also come from files and other devices and end up in HTML attributes: only colour syntax passes
+  c = safeColor(c);
   if (current === 'night' && !palette) return c;
   const hit = cache.get(c);
   if (hit) return hit;
@@ -134,3 +136,8 @@ export const PALETTE = ['#4d9fff', '#ffb020', '#3ddc97', '#ff5c7a', '#b18cff', '
 
 /** Sequential palette for band-ordered series (low → high frequency). */
 export const BAND_COLORS = ['#5b6cff', '#4d9fff', '#2ec5d3', '#3ddc97', '#9ad14b', '#ffd84d', '#ffb020', '#ff8a3d', '#ff5c7a', '#e27bd6'];
+
+/** A CSS colour as it may be written into markup: hex, rgb()/rgba()/hsl() or a name; anything else is grey. */
+export function safeColor(c: unknown): string {
+  return typeof c === 'string' && /^(#[0-9a-f]{3,8}|(rgb|rgba|hsl|hsla)\([\d.,%\s/-]+\)|[a-z]+)$/i.test(c.trim()) ? c.trim() : '#888888';
+}

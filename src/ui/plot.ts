@@ -1,4 +1,4 @@
-import { CHART, seriesColor } from './theme';
+import { CHART, chartTheme, seriesColor } from './theme';
 import { formatFreq, noteName } from '../dsp/freq';
 import { drawWatermark, onWatermarkChange, watermarkEpoch } from './watermark';
 
@@ -792,7 +792,7 @@ export class Plot {
     }
     // By frequency: red in the bass through to violet in the treble
     const gr = ctx.createLinearGradient(this.pad.l, 0, this.w - this.pad.r, 0);
-    for (let i = 0; i <= 6; i++) gr.addColorStop(i / 6, `hsl(${i * 45}, 88%, ${CHART.bg === '#ffffff' ? 45 : 56}%)`);
+    for (let i = 0; i <= 6; i++) gr.addColorStop(i / 6, `hsl(${i * 45}, 88%, ${chartTheme() === 'day' ? 45 : 56}%)`);
     return gr;
   }
 

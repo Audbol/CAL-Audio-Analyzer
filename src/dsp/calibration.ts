@@ -39,6 +39,12 @@ export function parseMicCal(text: string, name = 'Microphone'): MicCalibration {
 
 /** Correction (dB to add to a measurement) at frequency f. */
 export function calCorrection(cal: MicCalibration | null | undefined, f: number): number {
-  if (!cal) return 0;
+  if (!cal || !Array.isArray(cal.freqs) || !Array.isArray(cal.db)) return 0;
   return -interpLogF(cal.freqs, cal.db, f);
+}
+
+/** A mic correction from a file or another device can be used: matching numeric frequency and dB lists. */
+export function validCal(c: unknown): c is MicCalibration {
+  const o = c as MicCalibration;
+  return !!o && typeof o === 'object' && Array.isArray(o.freqs) && Array.isArray(o.db) && o.freqs.length === o.db.length && o.freqs.length > 0 && o.freqs.every((v) => typeof v === 'number') && o.db.every((v) => typeof v === 'number');
 }

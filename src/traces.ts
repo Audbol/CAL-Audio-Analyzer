@@ -1,5 +1,6 @@
 import { PALETTE } from './state';
 import { interp } from './dsp/freq';
+import { safeColor } from './ui/theme';
 
 export type TraceKind = 'tf' | 'rta' | 'sweep';
 
@@ -86,12 +87,13 @@ export class TraceStore {
   /** Host: apply a change made on a remote device. */
   apply(op: TraceOp): void {
     switch (op.op) {
+      // (Operations also come from remote devices: only well-formed traces and known fields are taken)
       case 'add':
-        if (!this.traces.some((t) => t.id === op.trace.id)) this.traces.push(op.trace);
+        if (validTrace(op.trace) && !this.traces.some((t) => t.id === op.trace.id)) this.traces.push({ ...op.trace, color: safeColor(op.trace.color) });
         break;
       case 'update': {
         const t = this.traces.find((x) => x.id === op.id);
-        if (t) Object.assign(t, op.patch);
+        if (t) Object.assign(t, cleanPatch(op.patch));
         break;
       }
       case 'remove':
@@ -248,4 +250,26 @@ export function download(name: string, content: string, type = 'text/csv'): void
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** A trace from a file or another device can be used: an id, a name and matching numeric curves. */
+export function validTrace(t: unknown): t is Trace {
+  const o = t as Trace;
+  const nums = (a: unknown, n?: number) => Array.isArray(a) && (n === undefined || a.length === n) && a.every((v) => typeof v === 'number');
+  return !!o && typeof o === 'object' && typeof o.id === 'string' && typeof o.name === 'string' && nums(o.freqs) && nums(o.mag, o.freqs.length) && (o.phase === undefined || nums(o.phase, o.freqs.length)) && (o.coh === undefined || nums(o.coh, o.freqs.length));
+}
+
+/** The fields of a trace that may be changed, each of its own type (a colour as a colour). */
+function cleanPatch(p: unknown): Partial<Trace> {
+  const out: Partial<Trace> = {};
+  if (!p || typeof p !== 'object') return out;
+  const o = p as Record<string, unknown>;
+  if (typeof o.name === 'string') out.name = o.name;
+  if (typeof o.color === 'string') out.color = safeColor(o.color);
+  if (typeof o.visible === 'boolean') out.visible = o.visible;
+  if (typeof o.offset === 'number' && Number.isFinite(o.offset)) out.offset = o.offset;
+  if (typeof o.note === 'string') out.note = o.note;
+  if (typeof o.photo === 'string' && o.photo.startsWith('data:image/')) out.photo = o.photo;
+  if ('photo' in o && o.photo === undefined) out.photo = undefined;
+  return out;
 }

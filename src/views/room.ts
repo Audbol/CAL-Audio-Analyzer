@@ -296,6 +296,8 @@ export class RoomView implements View {
       f2: num(req.f2, 200, 24000, o.f2),
       measIdx: Math.round(num(req.measIdx, 0, Math.max(0, this.app.settings.measurements.length - 1), 0)),
     });
+    // At least two octaves, rising (a reversed or empty range gives no usable sweep)
+    if (o.f2 < o.f1 * 4) o.f2 = Math.min(24000, o.f1 * 4);
     this.show();
     this.app.toast(`Sweep requested by ${by}`, 'info');
     await this.measure(by);
@@ -833,10 +835,11 @@ export class RoomView implements View {
     }
     if (!this.dirty) return;
     this.dirty = false;
-    this.fr.draw();
-    this.thdPlot.draw();
-    this.irPlot.draw();
-    this.decay.draw();
+    // Only the sub-tab on screen (switching tab marks the view dirty, so the next one draws then)
+    if (this.tab === 'fr') this.fr.draw();
+    else if (this.tab === 'thd') this.thdPlot.draw();
+    else if (this.tab === 'ir') this.irPlot.draw();
+    else if (this.tab === 'rt') this.decay.draw();
     if (this.tab === 'wf') {
       this.wf.data = this.waterfallData(this.wfOpts.preset);
       this.wf.range = this.wfOpts.range;

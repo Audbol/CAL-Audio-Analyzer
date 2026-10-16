@@ -22,6 +22,8 @@ export class NativeAudio {
   onStatus?: (s: NativeStatus) => void;
   /** The host process went away (crash): the stream is gone. */
   onLost?: (reason: string) => void;
+  /** Something to tell the user (e.g. macOS refused microphone access: the inputs record silence). */
+  onNotice?: (message: string) => void;
   private static availability: Promise<boolean> | null = null;
 
   /** Whether this is the desktop app with native audio on this computer. */
@@ -37,6 +39,8 @@ export class NativeAudio {
       if (e.source !== window) return;
       if (e.data === 'cal-native-audio-exit') {
         this.drop('The audio host stopped unexpectedly.');
+      } else if (e.data === 'cal-native-audio-denied') {
+        this.onNotice?.('macOS doesn’t allow this app to use the microphone inputs, so they record silence. Allow CAL Audio Analyzer in System Settings → Privacy & Security → Microphone, then start audio again.');
       }
     });
   }
@@ -51,7 +55,8 @@ export class NativeAudio {
         window.removeEventListener('message', onMsg);
         this.connecting = null;
         reject(new Error('The audio host did not respond'));
-      }, 8000);
+        // (On macOS the system may be asking for microphone access first: the answer can take a while)
+      }, /Mac/.test(navigator.platform || navigator.userAgent) ? 120000 : 8000);
       const onMsg = (e: MessageEvent) => {
         if (e.source !== window || e.data !== 'cal-native-audio-port' || !e.ports[0]) return;
         window.removeEventListener('message', onMsg);

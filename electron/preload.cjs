@@ -39,6 +39,9 @@ contextBridge.exposeInMainWorld('calDesktop', {
 ipcRenderer.on('native-audio:port', (e) => {
   window.postMessage('cal-native-audio-port', window.location.origin === 'null' ? '*' : window.location.origin, e.ports);
 });
+ipcRenderer.on('native-audio:denied', () => {
+  window.postMessage('cal-native-audio-denied', window.location.origin === 'null' ? '*' : window.location.origin);
+});
 ipcRenderer.on('native-audio:exit', () => {
   window.postMessage('cal-native-audio-exit', window.location.origin === 'null' ? '*' : window.location.origin);
 });

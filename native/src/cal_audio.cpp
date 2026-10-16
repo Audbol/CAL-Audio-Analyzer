@@ -49,12 +49,16 @@ bool calJackLoad();
 
 namespace {
 
-// Single-producer / single-consumer ring of floats.
+// Single-producer / single-consumer ring of floats. The capacity is rounded up to a power of two, so an index
+// wraps with a mask instead of a division (once per sample on the audio thread).
 class Ring {
  public:
   void reset(size_t capacity) {
-    buf_.assign(capacity, 0.0f);
-    cap_ = capacity;
+    size_t cap = 1;
+    while (cap < capacity) cap <<= 1;
+    buf_.assign(cap, 0.0f);
+    cap_ = cap;
+    mask_ = cap - 1;
     w_.store(0);
     r_.store(0);
   }
@@ -64,7 +68,7 @@ class Ring {
   bool push(const float* data, size_t n) {
     if (space() < n) return false;
     uint64_t w = w_.load(std::memory_order_relaxed);
-    for (size_t i = 0; i < n; i++) buf_[(w + i) % cap_] = data[i];
+    for (size_t i = 0; i < n; i++) buf_[(w + i) & mask_] = data[i];
     w_.store(w + n, std::memory_order_release);
     return true;
   }
@@ -72,7 +76,7 @@ class Ring {
   bool pop1(float& v) {
     uint64_t r = r_.load(std::memory_order_relaxed);
     if (w_.load(std::memory_order_acquire) == r) return false;
-    v = buf_[r % cap_];
+    v = buf_[r & mask_];
     r_.store(r + 1, std::memory_order_release);
     return true;
   }
@@ -80,15 +84,15 @@ class Ring {
     size_t avail = size();
     if (n > avail) n = avail;
     uint64_t r = r_.load(std::memory_order_relaxed);
-    for (size_t i = 0; i < n; i++) out[i] = buf_[(r + i) % cap_];
+    for (size_t i = 0; i < n; i++) out[i] = buf_[(r + i) & mask_];
     r_.store(r + n, std::memory_order_release);
     return n;
   }
-  void clear() { r_.store(w_.load()); }
 
  private:
   std::vector<float> buf_;
   size_t cap_ = 1;
+  uint64_t mask_ = 0;
   std::atomic<uint64_t> w_{0};
   std::atomic<uint64_t> r_{0};
 };
@@ -135,7 +139,7 @@ struct Stream {
   unsigned int repeat = 0;
   uint64_t owed = 0;  // frames padded while the queue was empty (the output stalled): dropped once it catches up
   float lastG = 0.0f;
-  std::array<double, 2048> winLevels{};
+  std::vector<double> winLevels = std::vector<double>(2048);
   size_t winCount = 0;
   uint64_t winFrames = 0;
   int windows = 0;
@@ -187,6 +191,15 @@ struct Stream {
     if (under && primed.load(std::memory_order_relaxed)) underruns.fetch_add(1, std::memory_order_relaxed);
     if (driverXrun) xruns.fetch_add(1, std::memory_order_relaxed);
     wake();
+  }
+
+  // Two seconds of capture, one second of generator and of queue between two devices, and room for the servo's
+  // levels over a quarter second (one per input callback), all at this rate
+  void sizeBuffers(unsigned int fs) {
+    capture.reset(static_cast<size_t>(fs) * 2 * (nIn + 1));
+    output.reset(fs);
+    if (split) loop.reset(fs);
+    winLevels.assign(fs / 4 / std::max(1u, std::min(bufferFrames, outBufferFrames)) + 256, 0.0);
   }
 
   void wake() {
@@ -385,6 +398,9 @@ std::string takeError() {
   return e;
 }
 
+// RtAudio's errors and warnings: kept for the next call to report
+void rtError(RtAudioErrorType, const std::string& msg) { setError(msg); }
+
 int rtCallback(void* outputBuffer, void* inputBuffer, unsigned int nFrames, double, RtAudioStreamStatus status, void* userData) {
   auto* s = static_cast<Stream*>(userData);
   s->process(static_cast<float*>(outputBuffer), static_cast<const float*>(inputBuffer), nFrames, status != 0);
@@ -471,7 +487,7 @@ Napi::Value Devices(const Napi::CallbackInfo& info) {
   RtAudio::Api a = apiByName(api);
   if (a == RtAudio::RTAUDIO_DUMMY) return out;
   try {
-    RtAudio probe(a, [](RtAudioErrorType, const std::string& msg) { setError(msg); });
+    RtAudio probe(a, rtError);
     probe.showWarnings(false);
     uint32_t k = 0;
     for (unsigned int id : probe.getDeviceIds()) {
@@ -649,7 +665,7 @@ Napi::Value Open(const Napi::CallbackInfo& info) {
     if (a == RtAudio::RTAUDIO_DUMMY) return fail("This audio API is not available in this build");
     if (twoDevices && api == "asio") return fail("ASIO opens one driver for both input and output: choose the same device for the output");
     try {
-      gAudio = std::make_unique<RtAudio>(a, [](RtAudioErrorType, const std::string& msg) { setError(msg); });
+      gAudio = std::make_unique<RtAudio>(a, rtError);
       gAudio->showWarnings(false);
       RtAudio::DeviceInfo di = gAudio->getDeviceInfo(device);
       RtAudio::DeviceInfo dout = twoDevices ? gAudio->getDeviceInfo(outDevice) : di;
@@ -667,16 +683,15 @@ Napi::Value Open(const Napi::CallbackInfo& info) {
       return fail(e.what());
     }
   }
-  // Two seconds of capture, one second of generator
-  s->capture.reset(static_cast<size_t>(s->sampleRate * 2) * (s->nIn + 1));
-  s->output.reset(s->sampleRate);
+  // Sized ahead, so the audio callbacks never allocate
+  s->frameBuf.resize(s->nIn + 1);
   if (split) {
     s->split = true;
-    s->loop.reset(s->sampleRate);
-    // Sized ahead, so the audio callbacks don't allocate
     s->outBuf.resize(8192);
-    s->frameBuf.resize(s->nIn + 1);
   }
+  // At the requested rate for now; again below once the stream's actual rate is known (callbacks only run after
+  // start, so resizing until then is safe)
+  s->sizeBuffers(rate ? rate : s->sampleRate);
   s->notify = Napi::ThreadSafeFunction::New(env, info[1].As<Napi::Function>(), "cal-audio-notify", 0, 1);
   s->notify.Unref(env);
 
@@ -706,10 +721,11 @@ Napi::Value Open(const Napi::CallbackInfo& info) {
       if (err != RTAUDIO_NO_ERROR) return openErr("Could not open the audio device");
       s->bufferFrames = bf;
       s->sampleRate = gAudio->getStreamSampleRate();
+      s->sizeBuffers(s->sampleRate);
       latency = static_cast<double>(gAudio->getStreamLatency());
     } else {
       // Output first: its rate is the one the input must match
-      gAudioOut = std::make_unique<RtAudio>(apiByName(api), [](RtAudioErrorType, const std::string& msg) { setError(msg); });
+      gAudioOut = std::make_unique<RtAudio>(apiByName(api), rtError);
       gAudioOut->showWarnings(false);
       RtAudio::StreamParameters ip, op;
       op.deviceId = outDevice;
@@ -731,6 +747,7 @@ Napi::Value Open(const Napi::CallbackInfo& info) {
       s->bufferFrames = bfi;
       s->outBufferFrames = bfo;
       s->sampleRate = ri;
+      s->sizeBuffers(s->sampleRate);
       latency = static_cast<double>(gAudio->getStreamLatency()) + static_cast<double>(gAudioOut->getStreamLatency());
     }
     gStream = std::move(s);
@@ -755,6 +772,8 @@ Napi::Value Start(const Napi::CallbackInfo& info) {
   }
   gStream->notifyOn.store(true);
   if (gTestOpen) {
+    // Already running: nothing to do (a second thread would replace a running one)
+    if (gTestRunning.load()) return env.Undefined();
     gTestRunning.store(true);
     if (gStream->split) {
       gTestThread = std::thread(testSplitLoop, gStream.get());
@@ -763,7 +782,9 @@ Napi::Value Start(const Napi::CallbackInfo& info) {
     }
     return env.Undefined();
   }
-  if ((gAudioOut && gAudioOut->startStream() != RTAUDIO_NO_ERROR) || gAudio->startStream() != RTAUDIO_NO_ERROR) {
+  // A warning (e.g. the stream is already running) is not a failure
+  auto start = [](RtAudio& a) { return a.isStreamRunning() || a.startStream() == RTAUDIO_NO_ERROR || a.isStreamRunning(); };
+  if ((gAudioOut && !start(*gAudioOut)) || !start(*gAudio)) {
     std::string msg = takeError();
     // Nothing half-started: an output already running stops with the rest
     closeAll();
@@ -828,12 +849,6 @@ Napi::Value SetOutputs(const Napi::CallbackInfo& info) {
   return env.Undefined();
 }
 
-// clearOutput(): drop generator samples not yet played (e.g. stop a sweep at once)
-Napi::Value ClearOutput(const Napi::CallbackInfo& info) {
-  if (gStream) gStream->output.clear();
-  return info.Env().Undefined();
-}
-
 // controlPanel(): open the ASIO driver's own settings window (buffer size, clock source…)
 Napi::Value ControlPanel(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
@@ -860,7 +875,6 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("read", Napi::Function::New(env, Read));
   exports.Set("write", Napi::Function::New(env, Write));
   exports.Set("setOutputs", Napi::Function::New(env, SetOutputs));
-  exports.Set("clearOutput", Napi::Function::New(env, ClearOutput));
   exports.Set("controlPanel", Napi::Function::New(env, ControlPanel));
   exports.Set("version", Napi::String::New(env, RtAudio::getVersion()));
   env.AddCleanupHook([]() { closeAll(); });
