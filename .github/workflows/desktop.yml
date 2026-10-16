@@ -170,6 +170,7 @@ jobs:
           prerelease: ${{ inputs.prerelease == true }}
           draft: ${{ inputs.draft == true }}
           make_latest: ${{ inputs.prerelease == true && 'false' || 'true' }}
-          body_path: ${{ inputs.prerelease == true && 'docs/beta-notes.md' || 'docs/release-notes.md' }}
+          # The release page stays short (docs/release-page.md); the full history is in docs/release-notes.md
+          body_path: ${{ inputs.prerelease == true && 'docs/beta-notes.md' || 'docs/release-page.md' }}
           files: dist-release/*
           fail_on_unmatched_files: true
