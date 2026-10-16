@@ -682,13 +682,18 @@ export class AlignView implements View {
     this.renderSelected();
   }
 
+  private liveKey = '';
+
   tick(): void {
     if (this.app.traces.version !== this.tracesVersion) this.renderSources();
     const el = this.current;
     const refSrc = el?.ref || this.reference;
-    // Live sources redraw as they update, unless a stored result is shown (that doesn't change by itself)
+    // Live sources redraw when a new transfer function is shown (not every frame), unless a stored result is
+    // shown (that doesn't change by itself)
     const live = !el?.result && (refSrc.startsWith('live:') || !!el?.source.startsWith('live:'));
-    if (!this.dirty && !live) return;
+    const liveKey = live ? this.app.measurements.map((m) => m.tfShown).join(',') : '';
+    if (!this.dirty && (!live || liveKey === this.liveKey)) return;
+    this.liveKey = liveKey;
     this.dirty = false;
     const r = el?.result ?? null;
     const sub = !el || el.kind === 'sub';

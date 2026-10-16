@@ -19,6 +19,32 @@ The builds are not code-signed yet:
 
 On first launch, choose **Explore with the demo room** to try every feature without hardware.
 
+## What's new in 2.0.3
+
+A thorough check of the whole app: fixes and speed.
+
+- **Measurements:** a measurement switched back on, or moved to an input that wasn't in use, now lines up with its reference at once (it could lag by however long it had been off, giving a meaningless transfer function).
+- **Generator:** switching it off, or to another signal, fades out first instead of stopping on the spot (a click through the system).
+- **FIR export** now includes the high-pass; it was left out.
+- **Your data stays yours:**
+  - **Reset analysis & display** keeps your saved presets, custom targets, view and EQ console.
+  - **Opening an old session** no longer clears your microphone inventory.
+  - **A device with fewer inputs** no longer moves a mic's calibration onto In 1.
+  - **Damaged files:** damaged mic corrections or targets from files are skipped instead of stopping the app.
+- **Security:** names and colours from files or other devices can no longer inject code into the app or reports.
+- **Remote devices:**
+  - **Reconnecting:** a connection that never completes gives up and tries again.
+  - **Copy** works on phones and tablets.
+  - **Analysis settings** sent from a device are checked.
+  - **The computer's work:** sending its status to remote devices takes far less.
+- **Desktop app:**
+  - **macOS microphone permission:** the app waits while macOS asks for it, and says so when access is refused.
+  - **High sample rates:** the native audio buffers are the intended size at high sample rates.
+  - **Starting twice:** a second start no longer stops the stream.
+  - **Remote-access server:** it starts reliably.
+- **Smaller fixes:** dialogs (Escape closes only the top one), Set delay to peak, Align results, Compare, light custom themes, panel windows and the EQ comparison after opening a session.
+- **Faster:** graphs use noticeably less of the computer (Spectrum about a fifth less, Align about a fifth less), and Sweep & Room draws only the graph on screen.
+
 ## What's new in 2.0.2
 
 - **Distortion tab (Sweep & Room):** THD and the 2nd to 5th harmonics in percent, with the measurement floor shaded (where noise, not distortion, sets the value) and THD at 100 Hz, 1 kHz and 10 kHz and its highest value at a glance. The frequency response graph now shows only the response.
