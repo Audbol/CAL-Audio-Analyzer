@@ -19,6 +19,10 @@ The builds are not code-signed yet:
 
 On first launch, choose **Explore with the demo room** to try every feature without hardware.
 
+## What's new in 2.0.4
+
+- The same app as 2.0.3, with a shorter release page.
+
 ## What's new in 2.0.3
 
 A thorough check of the whole app: fixes and speed.
