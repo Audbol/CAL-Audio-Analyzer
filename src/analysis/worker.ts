@@ -28,6 +28,12 @@ interface Analyzer {
 
 let cfg: WorkerConfig | null = null;
 const rings = new Map<number, RingBuffer>();
+/**
+ * The absolute sample index of the next block, shared by every channel: only the channels in use are sent, so a
+ * channel that comes back (a measurement enabled again, a new input) continues at this index, level with the
+ * others, instead of where it stopped.
+ */
+let clock = 0;
 const analyzers = new Map<string, Analyzer>();
 /** The measurement whose impulse response the Impulse tab shows, and when it was last sent. */
 let impulseFor: { id: string; pre: number } | null = null;
@@ -49,6 +55,7 @@ function configure(next: WorkerConfig): void {
   if (restart) {
     rings.clear();
     analyzers.clear();
+    clock = 0;
   }
   const ids = new Set(next.measurements.map((m) => m.id));
   for (const id of [...analyzers.keys()]) if (!ids.has(id)) analyzers.delete(id);
@@ -76,6 +83,8 @@ function configure(next: WorkerConfig): void {
 function ring(ch: number): RingBuffer {
   let r = rings.get(ch);
   if (!r) rings.set(ch, (r = new RingBuffer(RING)));
+  // New, or not sent for a while: empty, continuing level with the other channels
+  if (r.written !== clock) r.anchor(clock);
   return r;
 }
 
@@ -83,6 +92,7 @@ function audio(channels: number[], blocks: Float32Array[]): void {
   if (!cfg) return;
   const t0 = performance.now();
   channels.forEach((ch, i) => ring(ch).push(blocks[i]));
+  clock += blocks[0]?.length ?? 0;
   if (cfg.paused) return;
   const frames: WorkerFrame[] = [];
   const now = performance.now();

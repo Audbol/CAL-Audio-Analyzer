@@ -152,13 +152,13 @@ export class SpectrumAnalyzer {
         cached.at = this.version;
       }
       const p = cached.p.values;
+      // Bands narrower than one bin: scale by fractional coverage so pink noise still reads correctly
+      const df = this.fs / this.size;
+      const bwPerHz = Math.pow(2, 1 / (2 * fraction)) - Math.pow(2, -1 / (2 * fraction));
       for (let i = 0; i < g.length; i++) {
         if (g[i] < fLo || g[i] >= fHi) continue;
         let s = rangeSum(p, lo[i], hi[i]);
-        // Bands narrower than one bin: scale by fractional coverage so pink noise still reads correctly
-        const df = this.fs / this.size;
-        const f = g[i];
-        const bw = f * (Math.pow(2, 1 / (2 * fraction)) - Math.pow(2, -1 / (2 * fraction)));
+        const bw = g[i] * bwPerHz;
         const coveredBins = hi[i] - lo[i] + 1;
         if (bw < coveredBins * df) s *= bw / (coveredBins * df);
         out[i] = 10 * Math.log10(Math.max(s, 1e-30));

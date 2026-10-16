@@ -16,6 +16,11 @@ export class GeneratorCore {
   private phase = 0;
   private gain = 0;
   private targetGain = 0;
+  /**
+   * The signal actually sounding. A new signal type (or Off) first fades the sounding one out, then takes over,
+   * so switching never jumps the output (a click through the system).
+   */
+  private sounding: GeneratorConfig['type'] = 'off';
   private playback: { data: Float32Array; pos: number; id: number } | null = null;
   private sweepPos = 0;
   private sweepCache: Float32Array | null = null;
@@ -37,7 +42,8 @@ export class GeneratorCore {
     switch (m.type) {
       case 'generator':
         this.gen = m.config;
-        this.targetGain = m.config.type === 'off' ? 0 : Math.pow(10, m.config.level / 20);
+        // Same signal: glide to the new level; another one: fade out first (next() switches when quiet)
+        this.targetGain = m.config.type === this.sounding && m.config.type !== 'off' ? Math.pow(10, m.config.level / 20) : 0;
         return true;
       case 'play':
         this.playback = { data: m.data, pos: 0, id: m.id };
@@ -97,9 +103,14 @@ export class GeneratorCore {
     }
     // Smooth level changes (≈10 ms) to avoid clicks
     this.gain += (this.targetGain - this.gain) * 0.002;
+    if (this.sounding !== this.gen.type && this.gain < 1e-3) {
+      // The old signal has faded out: the new one (or silence) takes over and fades in
+      this.sounding = this.gen.type;
+      this.targetGain = this.gen.type === 'off' ? 0 : Math.pow(10, this.gen.level / 20);
+    }
     if (this.gain < 1e-6 && this.targetGain === 0) return 0;
     let v = 0;
-    switch (this.gen.type) {
+    switch (this.sounding) {
       case 'pink':
         v = (this.pink.next() / PINK_RMS) * Math.SQRT1_2;
         break;

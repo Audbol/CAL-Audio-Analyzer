@@ -24,6 +24,16 @@ describe('FIR correction', () => {
       expect(r.latencyMs).toBeCloseTo(phase === 'linear' ? (8192 / 48000) * 1000 : 0, 6);
     });
   }
+  it('includes the high-pass (every slope), as the EQ predicts it', () => {
+    for (const slope of [12, 18, 24, 48]) {
+      const withHp: PeqFilter[] = [{ type: 'highpass', f: 80, gain: 0, q: 0.707, slope }, ...eq];
+      const r = designFir(withHp, { fs: 48000, taps: 16384, phase: 'minimum', headroom: false });
+      const f = [30, 50, 80, 120, 1000];
+      const want = eqResponse(withHp, f);
+      const got = firResponse(r.taps, 48000, f);
+      for (let i = 0; i < f.length; i++) expect(Math.abs(got[i] - want[i])).toBeLessThan(0.5);
+    }
+  });
   it('headroom lowers boosts to 0 dB', () => {
     const r = designFir(eq, { fs: 48000, taps: 8192, phase: 'minimum', headroom: true });
     expect(r.gainDb).toBeLessThan(-2.5);

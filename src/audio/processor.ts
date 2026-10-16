@@ -47,8 +47,9 @@ class CalProcessor extends AudioWorkletProcessor {
     const n = output[0]?.length ?? input[0]?.length ?? 128;
     const nIn = this.sim ? this.simInputs : Math.max(input.length, 1);
     if (this.bufs.length !== nIn) {
-      this.bufs = Array.from({ length: nIn }, () => new Float32Array(BLOCK));
-      this.fill = 0;
+      // The input's channel count changed (e.g. a device glitch): keep the block being filled, so no samples
+      // are lost and the capture stays on the generator's timeline; new channels start silent
+      this.bufs = Array.from({ length: nIn }, (_, c) => this.bufs[c] ?? new Float32Array(BLOCK));
     }
     // Which outputs carry the generator, looked up once per render quantum (not per sample)
     if (this.outOn.length < output.length) this.outOn = new Uint8Array(output.length);

@@ -147,8 +147,22 @@ export function interp(x: ArrayLike<number>, y: ArrayLike<number>, xi: number): 
 
 /** Interpolate in log-frequency, useful for calibration curves. */
 export function interpLogF(freqs: ArrayLike<number>, vals: ArrayLike<number>, f: number): number {
-  const lx = Array.from(freqs, (v) => Math.log(Math.max(v, 1e-9)));
-  return interp(lx, vals, Math.log(Math.max(f, 1e-9)));
+  // Binary search on the frequencies themselves (rising), then interpolate in log frequency: no arrays built
+  const n = freqs.length;
+  if (n === 0) return 0;
+  if (f <= freqs[0]) return vals[0];
+  if (f >= freqs[n - 1]) return vals[n - 1];
+  let lo = 0;
+  let hi = n - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (freqs[mid] <= f) lo = mid;
+    else hi = mid;
+  }
+  const l0 = Math.log(Math.max(freqs[lo], 1e-9));
+  const l1 = Math.log(Math.max(freqs[hi], 1e-9));
+  const t = l1 > l0 ? (Math.log(f) - l0) / (l1 - l0) : 0;
+  return vals[lo] + (vals[hi] - vals[lo]) * t;
 }
 
 /** Nominal / exact fractional octave band centres (base-10, IEC 61260). */

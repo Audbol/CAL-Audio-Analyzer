@@ -1,4 +1,5 @@
 import { PALETTE } from './state';
+import { interp } from './dsp/freq';
 
 export type TraceKind = 'tf' | 'rta' | 'sweep';
 
@@ -175,15 +176,15 @@ export class TraceStore {
     const hasCoh = src.every((t) => t.coh);
     for (const t of src) {
       for (let i = 0; i < n; i++) {
-        const m = interpAt(t.freqs, t.mag, freqs[i]) + t.offset + (toSpl ? splOffsetOf(t.channel) : 0);
+        const m = interp(t.freqs, t.mag, freqs[i]) + t.offset + (toSpl ? splOffsetOf(t.channel) : 0);
         const w = wOf(t);
         mag[i] += w * Math.pow(10, m / 10);
         if (hasPhase) {
-          const p = (interpAt(t.freqs, t.phase!, freqs[i]) * Math.PI) / 180;
+          const p = (interp(t.freqs, t.phase!, freqs[i]) * Math.PI) / 180;
           re[i] += w * Math.cos(p);
           im[i] += w * Math.sin(p);
         }
-        if (hasCoh) coh[i] += w * interpAt(t.freqs, t.coh!, freqs[i]);
+        if (hasCoh) coh[i] += w * interp(t.freqs, t.coh!, freqs[i]);
       }
     }
     return this.add({
@@ -198,21 +199,6 @@ export class TraceStore {
       channel,
     });
   }
-}
-
-function interpAt(x: number[], y: number[], xi: number): number {
-  const n = x.length;
-  if (xi <= x[0]) return y[0];
-  if (xi >= x[n - 1]) return y[n - 1];
-  let lo = 0;
-  let hi = n - 1;
-  while (hi - lo > 1) {
-    const m = (lo + hi) >> 1;
-    if (x[m] <= xi) lo = m;
-    else hi = m;
-  }
-  const t = (xi - x[lo]) / (x[hi] - x[lo]);
-  return y[lo] + (y[hi] - y[lo]) * t;
 }
 
 export function traceToCsv(t: Trace): string {

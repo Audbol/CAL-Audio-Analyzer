@@ -230,6 +230,8 @@ export class Playlist implements PlaylistApi {
     if (!e.running || !id || this.loading) return;
     if (this.loadedId === id && this.loadedFs === e.sampleRate && e.musicPos?.id === this.loadedKey) return;
     this.loading = true;
+    // (An error belongs to the song it was about: a new attempt starts without it)
+    this.error = '';
     this.emit();
     try {
       const blob = await this.blobOf(id);
@@ -251,7 +253,8 @@ export class Playlist implements PlaylistApi {
     } finally {
       this.loading = false;
       this.emit();
-      if (this.prefs.current && this.prefs.current !== this.loadedId && !this.error) queueMicrotask(() => this.ensureLoaded());
+      // Another song was chosen meanwhile: load it now (whether or not this one failed; not the same one again)
+      if (this.prefs.current && this.prefs.current !== id && this.prefs.current !== this.loadedId) queueMicrotask(() => this.ensureLoaded());
     }
   }
 

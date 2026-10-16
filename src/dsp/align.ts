@@ -1,3 +1,4 @@
+import { interp } from './freq';
 /**
  * Sub / main alignment: from two transfer functions measured at the same position with the same reference
  * (the mains alone, then the sub alone), find the delay and polarity for the sub that make them add up best
@@ -100,10 +101,12 @@ export function alignSubMain(main: AlignInput, sub: AlignInput, opts: AlignOptio
   const idx: number[] = [];
   for (let i = 0; i < n; i++) if (freqs[i] >= region[0] && freqs[i] <= region[1]) idx.push(i);
   if (idx.length < 3) throw new Error('The crossover region is too narrow.');
-  // Weight: equal-level points count most; low coherence counts less
+  // Weight: equal-level points count most; low coherence counts less (each part's coherence at these frequencies:
+  // the second part may come on another grid, e.g. an imported file)
+  const subCoh = (i: number) => (sub.coh ? (sub.freqs.length === n && sub.freqs[0] === freqs[0] ? sub.coh[i] : interp(sub.freqs, sub.coh, freqs[i])) : 1);
   const w = idx.map((i) => {
     const d = Math.abs(mDb[i] - sDb[i]);
-    const c = Math.min(main.coh?.[i] ?? 1, sub.coh?.[i] ?? 1);
+    const c = Math.min(main.coh?.[i] ?? 1, subCoh(i) ?? 1);
     return Math.pow(10, -d / 20) * Math.max(0.05, c);
   });
   const denom = idx.reduce((acc, i, k) => acc + w[k] * (Math.hypot(M.re[i], M.im[i]) + Math.hypot(S.re[i], S.im[i])) ** 2, 0);

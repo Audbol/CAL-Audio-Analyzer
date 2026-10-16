@@ -38,7 +38,7 @@ interface Biquad {
   a2: number;
 }
 
-/** RBJ-cookbook coefficients of a parametric filter at sample rate fs (normalised, a0 = 1). */
+/** RBJ-cookbook coefficients of a bell or shelf at sample rate fs (normalised, a0 = 1); see highpassSections. */
 export function biquad(f: PeqFilter, fs: number): Biquad {
   const A = Math.pow(10, f.gain / 40);
   const w0 = (2 * Math.PI * f.f) / fs;
@@ -73,6 +73,30 @@ export function biquad(f: PeqFilter, fs: number): Biquad {
   return { b0: b0 / a0, b1: b1 / a0, b2: b2 / a0, a1: a1 / a0, a2: a2 / a0 };
 }
 
+/**
+ * A Butterworth high-pass of `slope` dB/octave (as filterDb has it) as second-order sections, with a first-order
+ * one for odd orders (18, 30 dB/oct): |H|² = 1 / (1 + (fc/f)^2N).
+ */
+export function highpassSections(f: PeqFilter, fs: number): Biquad[] {
+  const order = Math.max(1, Math.round((f.slope ?? 12) / 6));
+  const w0 = (2 * Math.PI * f.f) / fs;
+  const cos = Math.cos(w0);
+  const out: Biquad[] = [];
+  // Pole angles from the axis: (2k+1)π/2N for even orders; kπ/N (k ≥ 1) plus a real pole for odd ones
+  const angles = order % 2 === 0 ? Array.from({ length: order / 2 }, (_, k) => ((2 * k + 1) * Math.PI) / (2 * order)) : Array.from({ length: (order - 1) / 2 }, (_, k) => ((k + 1) * Math.PI) / order);
+  for (const th of angles) {
+    const q = 1 / (2 * Math.cos(th));
+    const alpha = Math.sin(w0) / (2 * q);
+    const a0 = 1 + alpha;
+    out.push({ b0: (1 + cos) / 2 / a0, b1: -(1 + cos) / a0, b2: (1 + cos) / 2 / a0, a1: (-2 * cos) / a0, a2: (1 - alpha) / a0 });
+  }
+  if (order % 2 === 1) {
+    const k = Math.tan(w0 / 2);
+    out.push({ b0: 1 / (1 + k), b1: -1 / (1 + k), b2: 0, a1: (k - 1) / (k + 1), a2: 0 });
+  }
+  return out;
+}
+
 /** |H| of a biquad at frequency f. */
 function biquadMag(q: Biquad, f: number, fs: number): number {
   const w = (2 * Math.PI * f) / fs;
@@ -93,7 +117,8 @@ export function designFir(filters: PeqFilter[], o: FirOptions): FirResult {
   const nyq = o.fs / 2;
   const use = filters.filter((f) => f.f > 0 && f.f < nyq * 0.98);
   const skipped = filters.filter((f) => !use.includes(f));
-  const qs = use.map((f) => biquad(f, o.fs));
+  // (A high-pass is a cascade of sections; everything else one biquad)
+  const qs = use.flatMap((f) => (f.type === 'highpass' ? highpassSections(f, o.fs) : [biquad(f, o.fs)]));
   // Headroom: the highest point of the EQ (as designed, up to the top of the band) goes to 0 dB
   const probe = Array.from({ length: 400 }, (_, i) => 10 * Math.pow(Math.min(20000, nyq * 0.98) / 10, i / 399));
   const peak = Math.max(0, ...eqResponse(use, probe));

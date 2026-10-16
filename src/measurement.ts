@@ -92,6 +92,9 @@ export class Measurement {
     this.tf.setLfResolution(s.lfResolution);
     if (this.rta.size !== s.rtaFft || this.rta.lf !== s.lfResolution || this.rta.rate !== Measurement.rtaRate) {
       this.rta = new MultiSpectrum(this.fs, s.rtaFft, this.grid, s.lfResolution, Measurement.rtaRate);
+      // (A new analyzer counts its versions from 0 again: nothing cached from the old one is reused)
+      this.narrowFor = -1;
+      this.rtaKey = '';
       this.rta.averaging = s.rtaAveraging;
     }
   }
@@ -156,10 +159,9 @@ export class Measurement {
         const to = this.glideTarget();
         this.rta.render(s.rtaSmoothing, 'avg', to);
         if (s.peakHold) this.rta.render(s.rtaSmoothing, 'peak', this.rtaPeakOut);
-        if (cal) for (let i = 0; i < this.grid.length; i++) {
-          to[i] += cal[i];
-          this.rtaPeakOut[i] += cal[i];
-        }
+        // (The peak only when it was rendered just now: otherwise the calibration would pile up on it)
+        if (cal) for (let i = 0; i < this.grid.length; i++) to[i] += cal[i];
+        if (cal && s.peakHold) for (let i = 0; i < this.grid.length; i++) this.rtaPeakOut[i] += cal[i];
         this.startGlide(s, fresh && this.hasRta);
         this.hasRta = true;
         this.updateAverage(s, cal, to);
@@ -361,7 +363,7 @@ export class Measurement {
     const x = new Float64Array(n);
     const y = new Float64Array(n);
     const head = Math.min(mic.written, ref.written);
-    // Use a reference window that starts earlier so delays up to half the window are captured
+    // The same span of both: a delay d leaves n − d samples to correlate (enough up to about 3/4 of the window)
     ref.read(head - n, n, x);
     mic.read(head - n, n, y);
     const est = findDelay(x, y, this.fs, Math.floor(n * 0.75));
