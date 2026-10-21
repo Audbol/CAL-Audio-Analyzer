@@ -429,12 +429,6 @@ export class SpectrumView extends DockedView implements View {
       const offOf = (channel: number) => app.splOffsetFor(channel);
       const cal = shown.length ? offOf(shown[0].cfg.mic) : 0;
       const nameOf = (m: (typeof shown)[number]) => (spl && !app.isCalibrated(m.cfg.mic) ? `${m.cfg.name} (uncal.)` : m.cfg.name);
-      for (const t of app.traces.traces) {
-        if (!t.visible || t.kind !== 'rta') continue;
-        // Captured RTAs are stored in dBFS: show them in the same units as the live curves (their input's mic)
-        const add = t.offset + (t.dbfs ? offOf(t.channel ?? s.splChannel) : 0);
-        series.push({ id: t.id, label: t.name, x: t.freqs, y: add ? t.mag.map((v) => v + add) : t.mag, color: t.color, width: 1.2, dash: [5, 3] });
-      }
       if (cal !== this.appliedCal) {
         // Keep the view on the data when SPL calibration (e.g. adopted from the measurement host) changes units
         this.rta.shiftY(cal - this.appliedCal);
@@ -463,6 +457,14 @@ export class SpectrumView extends DockedView implements View {
         }
         if (s.peakHold) series.push({ id: `${m.cfg.id}-pk`, label: `${m.cfg.name} peak`, x: g, y: shiftBy(m.rtaPeakOut, off), color: traceOf(m.cfg.color), colorExact: s.rtaTraceColor !== 'auto', width: 1, dash: [2, 2] });
         series.push({ id: m.cfg.id, label: nameOf(m), x: g, y: shiftBy(m.rtaOut, off), color: traceOf(m.cfg.color), colorExact: s.rtaTraceColor !== 'auto', width: 1.6, fill: true, ...fillStyle });
+      }
+      // Saved traces over the live curves: drawn under them, the live fill tinted them (a red trace looked orange
+      // under a yellow fill) and hid them where the live curve is higher
+      for (const t of app.traces.traces) {
+        if (!t.visible || t.kind !== 'rta') continue;
+        // Captured RTAs are stored in dBFS: show them in the same units as the live curves (their input's mic)
+        const add = t.offset + (t.dbfs ? offOf(t.channel ?? s.splChannel) : 0);
+        series.push({ id: t.id, label: t.name, x: t.freqs, y: add ? t.mag.map((v) => v + add) : t.mag, color: t.color, width: 1.4, dash: [5, 3] });
       }
       // Average curves (for tuning) on top of everything: the long-term balance behind the live RTA
       const day = s.theme === 'day';

@@ -19,6 +19,10 @@ The builds are not code-signed yet:
 
 On first launch, choose **Explore with the demo room** to try every feature without hardware.
 
+## What's new in 2.0.5
+
+- Spectrum: saved traces are drawn over the live curve, so they keep their own colour instead of being tinted and hidden by the live fill.
+
 ## What's new in 2.0.4
 
 - The same app as 2.0.3, with a shorter release page.

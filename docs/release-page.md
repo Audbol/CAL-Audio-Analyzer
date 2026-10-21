@@ -6,6 +6,7 @@ Not code-signed yet: on Windows choose **More info → Run anyway**; on macOS ri
 
 **New in this version**
 
+- Saved spectrum traces keep their own colour (they were tinted and hidden by the live fill).
 - A thorough check of the whole app: dozens of fixes, safer handling of files and remote devices, and faster graphs.
 - Separate input and output devices, native Core Audio and JACK / PipeWire / ALSA, loudness meter (LUFS), distortion from sweeps, air absorption compensation and the EQ board.
 - Allen & Heath EQ widths that match the console, and the dLive NEQ12.
